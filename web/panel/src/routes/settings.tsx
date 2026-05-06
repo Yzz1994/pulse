@@ -40,11 +40,7 @@ export default function SettingsPage() {
   const [dbStats, setDbStats] = useState<DBStats | null>(null);
   const [dbStatsLoading, setDbStatsLoading] = useState(true);
 
-  // Node certificate
-  const [cert, setCert] = useState<string | null>(null);
-  const [certLoading, setCertLoading] = useState(true);
-  const [certError, setCertError] = useState<string | null>(null);
-  const [copied, setCopied] = useState(false);
+  // Node certificate (legacy, removed in gRPC push model)
 
   // Bark alert
   const [barkURL, setBarkURL] = useState("");
@@ -141,37 +137,10 @@ export default function SettingsPage() {
       .finally(() => setDbStatsLoading(false));
   }, [handleAuthError]);
 
-  // ── Fetch certificate (plain text endpoint) ──────────────────
-
-  const fetchCert = useCallback(() => {
-    setCertLoading(true);
-    setCertError(null);
-
-    const token = getToken();
-    const headers: Record<string, string> = {};
-    if (token) headers["Authorization"] = `Bearer ${token}`;
-
-    fetch("/v1/node/settings.pem", { headers })
-      .then((res) => {
-        if (res.status === 401 || res.redirected) {
-          clearToken();
-          navigate({ to: "/panel/login" });
-          throw new AuthError("未登录");
-        }
-        if (!res.ok) throw new Error(`HTTP ${res.status}`);
-        return res.text();
-      })
-      .then(setCert)
-      .catch((err) => {
-        if (err instanceof AuthError) return;
-        setCertError(err instanceof Error ? err.message : "加载失败");
-      })
-      .finally(() => setCertLoading(false));
-  }, [navigate]);
+  // ── Fetch certificate (removed in gRPC push model) ───────────
 
   useEffect(() => {
     fetchDbStats();
-    fetchCert();
     fetchStripeSettings();
     fetchShopSettings();
     fetchBarkAlert();
@@ -182,7 +151,7 @@ export default function SettingsPage() {
       .then((d) => { setLogUptimeDays(d.uptime_retain_days); setLogDailyDays(d.daily_retain_days); })
       .catch((err) => { if (handleAuthError(err)) return; })
       .finally(() => setLogRetentionLoading(false));
-  }, [fetchDbStats, fetchCert]);
+  }, [fetchDbStats]);
 
   function fetchCFToken() {
     api
@@ -426,29 +395,6 @@ export default function SettingsPage() {
       .finally(() => { setRestoringKey(null); });
   }
 
-  // ── Copy certificate to clipboard ────────────────────────────
-
-  async function handleCopy() {
-    if (!cert) return;
-    try {
-      await navigator.clipboard.writeText(cert);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
-    } catch {
-      // Fallback for older browsers
-      const textarea = document.createElement("textarea");
-      textarea.value = cert;
-      textarea.style.position = "fixed";
-      textarea.style.opacity = "0";
-      document.body.appendChild(textarea);
-      textarea.select();
-      document.execCommand("copy");
-      document.body.removeChild(textarea);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
-    }
-  }
-
   // ── 修改管理员凭据 ───────────────────────────────────────────────
 
   async function saveCredentials() {
@@ -504,82 +450,6 @@ export default function SettingsPage() {
 
         {/* ── 常规 Tab ──────────────────────────────────────────── */}
         <TabsContent value="general" className="grid gap-6 mt-0">
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between space-y-0">
-              <CardTitle className="text-base font-medium">节点证书</CardTitle>
-              <Button
-                variant="outline"
-                size="sm"
-                disabled={!cert || certLoading}
-                onClick={handleCopy}
-              >
-                {copied ? (
-                  <>
-                    <svg
-                      xmlns="http://www.w3.org/2000/svg"
-                      viewBox="0 0 24 24"
-                      fill="none"
-                      stroke="currentColor"
-                      strokeWidth={2}
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      className="mr-1.5 h-4 w-4"
-                    >
-                      <polyline points="20 6 9 17 4 12" />
-                    </svg>
-                    已复制
-                  </>
-                ) : (
-                  <>
-                    <svg
-                      xmlns="http://www.w3.org/2000/svg"
-                      viewBox="0 0 24 24"
-                      fill="none"
-                      stroke="currentColor"
-                      strokeWidth={2}
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      className="mr-1.5 h-4 w-4"
-                    >
-                      <rect x="9" y="9" width="13" height="13" rx="2" ry="2" />
-                      <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
-                    </svg>
-                    复制证书
-                  </>
-                )}
-              </Button>
-            </CardHeader>
-            <Separator />
-            <CardContent className="pt-4">
-              {certLoading ? (
-                <div className="h-48 w-full animate-pulse rounded-lg bg-[hsl(var(--muted))]" />
-              ) : certError ? (
-                <div className="flex flex-col items-center gap-3 py-8">
-                  <p className="text-sm text-[hsl(var(--destructive))]">
-                    {certError}
-                  </p>
-                  <Button variant="outline" size="sm" onClick={fetchCert}>
-                    重试
-                  </Button>
-                </div>
-              ) : cert ? (
-                <textarea
-                  readOnly
-                  value={cert}
-                  rows={12}
-                  className="w-full resize-none rounded-lg border border-[hsl(var(--border))] bg-[hsl(var(--muted))] p-3 font-mono text-xs text-[hsl(var(--foreground))] focus:outline-none focus:ring-2 focus:ring-[hsl(var(--ring))]"
-                />
-              ) : (
-                <div className="flex h-32 items-center justify-center rounded-lg border border-dashed border-[hsl(var(--border))] text-sm text-[hsl(var(--muted-foreground))]">
-                  暂无证书数据
-                </div>
-              )}
-              <p className="mt-3 text-xs text-[hsl(var(--muted-foreground))]">
-                此证书用于节点客户端连接面板时的身份验证，请妥善保管。
-              </p>
-            </CardContent>
-          </Card>
-
           <Card>
             <CardHeader>
               <CardTitle className="text-base font-medium">告警推送</CardTitle>
