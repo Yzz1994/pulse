@@ -462,7 +462,6 @@ export default function OutboundsPage() {
   const [error, setError] = useState<string | null>(null);
 
   // Dialog states
-  const [createOpen, setCreateOpen] = useState(false);
   const [editOpen, setEditOpen] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [importOpen, setImportOpen] = useState(false);
@@ -526,29 +525,6 @@ export default function OutboundsPage() {
       if (form.flow) body.flow = form.flow;
     }
     return body;
-  }
-
-  // ── Create ───────────────────────────────────────────────────
-
-  async function handleCreate(e: FormEvent) {
-    e.preventDefault();
-    setFormError(null);
-    setSubmitting(true);
-    try {
-      await api.post<Outbound>("/outbounds", buildBody());
-      setCreateOpen(false);
-      setForm(EMPTY_FORM);
-      fetchOutbounds();
-    } catch (err) {
-      if (err instanceof AuthError) {
-        clearToken();
-        navigate({ to: "/panel/login" });
-        return;
-      }
-      setFormError(err instanceof Error ? err.message : "创建失败");
-    } finally {
-      setSubmitting(false);
-    }
   }
 
   // ── Edit ─────────────────────────────────────────────────────
@@ -731,47 +707,9 @@ export default function OutboundsPage() {
           出站
         </h1>
 
-        {/* ── Create dialog ─────────────────────────────────── */}
-        <div className="flex gap-2">
-          <Button variant="outline" onClick={() => setImportOpen(true)}>
-            导入
-          </Button>
-          <Dialog
-            open={createOpen}
-            onOpenChange={(open) => {
-              setCreateOpen(open);
-              if (!open) {
-                setForm(EMPTY_FORM);
-                setFormError(null);
-              }
-            }}
-          >
-            <DialogTrigger asChild>
-              <Button>+ 添加出站</Button>
-            </DialogTrigger>
-          <DialogContent className="sm:max-w-lg">
-            <form onSubmit={handleCreate}>
-              <DialogHeader>
-                <DialogTitle>添加出站</DialogTitle>
-                <DialogDescription>
-                  配置新的出站代理连接。
-                </DialogDescription>
-              </DialogHeader>
-              {renderFormFields()}
-              <DialogFooter>
-                <DialogClose asChild>
-                  <Button type="button" variant="outline">
-                    取消
-                  </Button>
-                </DialogClose>
-                <Button type="submit" disabled={submitting}>
-                  {submitting ? "创建中…" : "创建"}
-                </Button>
-              </DialogFooter>
-            </form>
-          </DialogContent>
-          </Dialog>
-        </div>
+        <Button variant="outline" onClick={() => setImportOpen(true)}>
+          导入
+        </Button>
       </div>
 
       {/* ── Table ─────────────────────────────────────────────── */}
