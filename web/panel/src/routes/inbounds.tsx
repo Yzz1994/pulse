@@ -759,7 +759,7 @@ function InboundFormDialog({
                 <p className="text-sm font-medium text-[hsl(var(--foreground))]">AnyTLS 配置</p>
                 <p className="text-xs text-[hsl(var(--muted-foreground))]">
                   用户密码由系统自动生成。如需 NodeGate SNI 路由（443 端口），
-                  请在保存后为该入站添加 Host，填写对应域名作为客户端地址。
+                  请在保存后为该入站添加连接地址，填写对应域名作为客户端地址。
                 </p>
               </div>
             )}
@@ -1317,9 +1317,9 @@ function HostFormDialog({
       <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-lg">
         <form onSubmit={handleSubmit}>
           <DialogHeader>
-            <DialogTitle>{isEdit ? "编辑 Host" : "添加 Host"}</DialogTitle>
+            <DialogTitle>{isEdit ? "编辑连接地址" : "添加连接地址"}</DialogTitle>
             <DialogDescription>
-              {isEdit ? "修改 Host 配置。" : "为入站添加新的 Host 记录。"}
+              {isEdit ? "修改连接地址配置。" : "为入站添加新的连接地址。"}
             </DialogDescription>
           </DialogHeader>
 
@@ -1482,7 +1482,7 @@ function HostFormDialog({
                     <>
                       {portConflict && (
                         <p className="text-xs text-[hsl(var(--destructive))]">
-                          该端口已被同一前置节点的其他 Host 占用
+                          该端口已被同一前置节点的其他连接地址占用
                         </p>
                       )}
                       {isDirectMode && (
@@ -1868,10 +1868,10 @@ function HostsDialog({ open, onOpenChange, inbound, nodeIp = "", nodeId, nodes, 
         <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-2xl">
           <DialogHeader>
             <DialogTitle>
-              Hosts — {inbound ? `${inbound.protocol}:${inbound.port}` : ""}
+              连接地址 — {inbound ? `${inbound.protocol}:${inbound.port}` : ""}
             </DialogTitle>
             <DialogDescription>
-              管理入站 <span className="font-semibold">{inbound ? `${inbound.protocol}:${inbound.port}` : ""}</span> 的 Host 列表。
+              管理入站 <span className="font-semibold">{inbound ? `${inbound.protocol}:${inbound.port}` : ""}</span> 的连接地址列表。
             </DialogDescription>
           </DialogHeader>
 
@@ -1882,7 +1882,7 @@ function HostsDialog({ open, onOpenChange, inbound, nodeIp = "", nodeId, nodes, 
               </p>
               <Button size="sm" onClick={openAddHost}>
                 <IconPlus className="mr-1.5 h-3.5 w-3.5" />
-                添加 Host
+                添加连接地址
               </Button>
             </div>
 
@@ -1892,9 +1892,9 @@ function HostsDialog({ open, onOpenChange, inbound, nodeIp = "", nodeId, nodes, 
               </div>
             ) : hosts.length === 0 ? (
               <div className="py-8 text-center">
-                <p className="mb-1 text-sm font-medium text-[hsl(var(--foreground))]">暂无 Host</p>
+                <p className="mb-1 text-sm font-medium text-[hsl(var(--foreground))]">暂无连接地址</p>
                 <p className="text-xs text-[hsl(var(--muted-foreground))]">
-                  点击上方按钮添加第一个 Host。
+                  点击上方按钮添加第一个连接地址。
                 </p>
               </div>
             ) : (
@@ -2592,7 +2592,7 @@ export default function InboundsPage() {
                       {(() => {
                         const hosts = allHosts.filter((h) => h.inbound_id === ib.id);
                         if (hosts.length === 0) {
-                          return <span className="text-xs text-[hsl(var(--muted-foreground))]">无 Host</span>;
+                          return <span className="text-xs text-[hsl(var(--muted-foreground))]">无连接地址</span>;
                         }
                         const first = hosts[0]!;
                         const name = previewName(first, ib.traffic_rate);
