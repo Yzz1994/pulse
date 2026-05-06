@@ -12,4 +12,5 @@ Marzban/
 Marzban-node/
 .gocache/
 pulse-server
+pulse-node
 .claude/
