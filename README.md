@@ -2,59 +2,6 @@
 
 代理节点控制面与节点管理系统，控制面与节点统一在单一仓库。
 
-## 目录结构
-
-```text
-.
-├── cmd/pulse-server          # 控制面入口
-├── cmd/pulse-node            # 节点入口
-├── cmd/pulse                 # 合并入口（server + node）
-├── internal/alert            # 告警通知（Bark）
-├── internal/announcements    # 公告管理
-├── internal/app              # 应用启动与生命周期
-├── internal/auditlog         # 操作审计日志
-├── internal/auth             # 管理员认证（含 Discourse SSO）
-├── internal/backup           # 数据库备份（Cloudflare R2）
-├── internal/buildinfo        # 版本信息
-├── internal/cert             # 自签证书生成
-├── internal/certmgr          # mTLS 证书管理
-├── internal/cfdomain         # Cloudflare 域名管理
-├── internal/cloudflarex      # Cloudflare API 客户端
-├── internal/config           # 配置结构
-├── internal/coremanager      # 代理核心（sing-box / xray）统一运行时接口
-├── internal/geoip            # GeoIP 查询
-├── internal/idgen            # Snowflake ID 生成
-├── internal/inbounds         # inbound / host 模型与 store
-├── internal/ipsentinel       # IP 哨兵（按来源 IP 的区域限流与封锁）
-├── internal/jobs             # 后台调度任务（流量同步、重置、激活）
-├── internal/node             # 节点侧服务
-├── internal/nodeapi          # 节点 RPC API（含 NodeGate 同步、路由追踪）
-├── internal/nodeauth         # 节点认证中间件
-├── internal/nodes            # 节点 store 与 RPC client
-├── internal/orders           # 订单管理
-├── internal/outbounds        # outbound 出口模型与 store
-├── internal/panel            # 公开 API（/v1/stat、用户订阅 Token 重置）
-├── internal/payment          # 支付集成（Stripe）
-├── internal/plans            # 套餐管理
-├── internal/proxycfg         # 代理核心配置生成（sing-box / xray）
-├── internal/routerules       # 路由规则管理
-├── internal/server           # 控制面 HTTP 服务
-├── internal/serverapi        # 控制面 REST API（含用户门户）
-├── internal/singbox          # sing-box 进程管理
-├── internal/xray             # xray-core in-process 生命周期管理与流量采集
-├── internal/xrayanytls       # AnyTLS 入站服务（与 xray 并行，支持热更新用户）
-├── internal/spa              # React SPA 嵌入服务
-├── internal/store/postgres   # PostgreSQL 持久化
-├── internal/subscription     # 订阅 URL 生成
-├── internal/syslog           # 系统日志 SSE 推送
-├── internal/tickets          # 用户工单系统
-├── internal/usage            # 节点流量统计汇总
-├── internal/users            # 用户模型与 store
-├── web/panel/                # React SPA 前端（Bun + React 19 + TanStack Router + shadcn/ui）
-├── scripts/install.sh          # 生产安装脚本
-└── scripts/uninstall.sh        # 卸载脚本
-```
-
 ## 开发
 
 启动 server + node + React SPA 前端（开发模式，Bun dev server 监听 `:3000`，代理 API 到 `:8080`）：
