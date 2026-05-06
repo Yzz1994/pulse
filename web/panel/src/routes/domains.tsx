@@ -31,7 +31,7 @@ import {
   toast,
 } from "@/components/ui";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { cfApi, nodeDomainApi, api, ixApi, AuthError } from "@/lib/api";
+import { cfApi, nodeDomainApi, api, AuthError } from "@/lib/api";
 import { clearToken } from "@/lib/auth";
 import type {
   CFDomain,
@@ -41,8 +41,6 @@ import type {
   NodeDomain,
   Node,
   NodesResponse,
-  IXDomain,
-  IXDomainsResponse,
 } from "@/lib/types";
 
 // ── Icons ────────────────────────────────────────────────────────
@@ -1105,140 +1103,6 @@ function DomainCard({
   );
 }
 
-// ── IX 中转域名表单 Dialog ───────────────────────────────────────
-
-interface IXDomainFormState {
-  name: string;
-  domain: string;
-  remark: string;
-}
-
-const EMPTY_IX_FORM: IXDomainFormState = { name: "", domain: "", remark: "" };
-
-function IXDomainFormDialog({
-  open,
-  onOpenChange,
-  editing,
-  onSuccess,
-}: {
-  open: boolean;
-  onOpenChange: (open: boolean) => void;
-  editing: IXDomain | null;
-  onSuccess: () => void;
-}) {
-  const navigate = useNavigate();
-  const isEdit = editing !== null;
-  const [form, setForm] = useState<IXDomainFormState>(EMPTY_IX_FORM);
-  const [submitting, setSubmitting] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-
-  useEffect(() => {
-    if (open && editing) {
-      setForm({ name: editing.name, domain: editing.domain, remark: editing.remark });
-    } else if (open) {
-      setForm(EMPTY_IX_FORM);
-    }
-    setError(null);
-  }, [open, editing]);
-
-  function patch(p: Partial<IXDomainFormState>) {
-    setForm((prev) => ({ ...prev, ...p }));
-  }
-
-  async function handleSubmit(e: FormEvent) {
-    e.preventDefault();
-    setSubmitting(true);
-    setError(null);
-    const body = { name: form.name.trim(), domain: form.domain.trim(), remark: form.remark.trim() };
-    try {
-      if (isEdit && editing) {
-        await ixApi.update(editing.id, body);
-        toast.success("IX 域名已更新");
-      } else {
-        await ixApi.create(body);
-        toast.success("IX 域名已添加");
-      }
-      onOpenChange(false);
-      onSuccess();
-    } catch (err) {
-      if (err instanceof AuthError) {
-        clearToken();
-        navigate({ to: "/panel/login" });
-        return;
-      }
-      setError(err instanceof Error ? err.message : "操作失败");
-    } finally {
-      setSubmitting(false);
-    }
-  }
-
-  return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-md">
-        <form onSubmit={handleSubmit}>
-          <DialogHeader>
-            <DialogTitle>{isEdit ? "编辑 IX 域名" : "添加 IX 中转域名"}</DialogTitle>
-            <DialogDescription>
-              {isEdit ? "修改 IX 中转域名信息。" : "新增一条 IX 中转域名记录。"}
-            </DialogDescription>
-          </DialogHeader>
-
-          <div className="grid gap-4 py-4">
-            {error && (
-              <div className="rounded-lg border border-[hsl(var(--destructive))]/50 bg-[hsl(var(--destructive))]/10 px-4 py-2.5 text-sm text-[hsl(var(--destructive))]">
-                {error}
-              </div>
-            )}
-
-            <div className="space-y-2">
-              <Label htmlFor="ix-name">名称 *</Label>
-              <Input
-                id="ix-name"
-                required
-                value={form.name}
-                onChange={(e) => patch({ name: e.target.value })}
-                placeholder="如「华东 IX」"
-              />
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="ix-domain">域名 *</Label>
-              <Input
-                id="ix-domain"
-                required
-                value={form.domain}
-                onChange={(e) => patch({ domain: e.target.value })}
-                placeholder="如 relay.example.cn"
-              />
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="ix-remark">备注</Label>
-              <Input
-                id="ix-remark"
-                value={form.remark}
-                onChange={(e) => patch({ remark: e.target.value })}
-                placeholder="可选"
-              />
-            </div>
-          </div>
-
-          <DialogFooter>
-            <DialogClose asChild>
-              <Button type="button" variant="outline">
-                取消
-              </Button>
-            </DialogClose>
-            <Button type="submit" disabled={submitting}>
-              {submitting ? "保存中…" : "保存"}
-            </Button>
-          </DialogFooter>
-        </form>
-      </DialogContent>
-    </Dialog>
-  );
-}
-
 // ── 主页面 ──────────────────────────────────────────────────────
 
 export default function DomainsPage() {
@@ -1256,30 +1120,16 @@ export default function DomainsPage() {
   const [deletingDomain, setDeletingDomain] = useState<CFDomain | null>(null);
   const [deleting, setDeleting] = useState(false);
 
-  // IX 域名状态
-  const [ixDomains, setIxDomains] = useState<IXDomain[]>([]);
-  const [ixLoading, setIxLoading] = useState(true);
-
-  // IX Dialog 状态
-  const [ixFormOpen, setIxFormOpen] = useState(false);
-  const [ixEditing, setIxEditing] = useState<IXDomain | null>(null);
-  const [ixDeleteOpen, setIxDeleteOpen] = useState(false);
-  const [ixDeleting, setIxDeleting] = useState<IXDomain | null>(null);
-  const [ixDeleteLoading, setIxDeleteLoading] = useState(false);
-
   const fetchDomains = useCallback(() => {
     setLoading(true);
-    setIxLoading(true);
     setError(null);
     Promise.all([
       cfApi.listDomains(),
       api.get<NodesResponse>("/nodes"),
-      ixApi.list(),
     ])
-      .then(([domainsRes, nodesRes, ixRes]) => {
+      .then(([domainsRes, nodesRes]) => {
         setDomains(domainsRes.domains ?? []);
         setNodes(nodesRes.nodes ?? []);
-        setIxDomains(ixRes.ix_domains ?? []);
       })
       .catch((err) => {
         if (err instanceof AuthError) {
@@ -1291,7 +1141,6 @@ export default function DomainsPage() {
       })
       .finally(() => {
         setLoading(false);
-        setIxLoading(false);
       });
   }, [navigate]);
 
@@ -1317,27 +1166,6 @@ export default function DomainsPage() {
       toast.error(err instanceof Error ? err.message : "删除失败");
     } finally {
       setDeleting(false);
-    }
-  }
-
-  async function handleIxDelete() {
-    if (!ixDeleting) return;
-    setIxDeleteLoading(true);
-    try {
-      await ixApi.del(ixDeleting.id);
-      toast.success(`已删除 IX 域名 ${ixDeleting.name}`);
-      setIxDeleteOpen(false);
-      setIxDeleting(null);
-      fetchDomains();
-    } catch (err) {
-      if (err instanceof AuthError) {
-        clearToken();
-        navigate({ to: "/panel/login" });
-        return;
-      }
-      toast.error(err instanceof Error ? err.message : "删除失败");
-    } finally {
-      setIxDeleteLoading(false);
     }
   }
 
@@ -1389,99 +1217,6 @@ export default function DomainsPage() {
           <IconPlus className="mr-1 h-4 w-4" />
           添加域名
         </Button>
-      </div>
-
-      {/* IX 中转域名区块 */}
-      <div className="mb-8 space-y-4">
-        <div className="flex items-center justify-between">
-          <h2 className="text-base font-semibold text-[hsl(var(--foreground))]">
-            IX 中转域名
-          </h2>
-          <Button
-            size="sm"
-            onClick={() => {
-              setIxEditing(null);
-              setIxFormOpen(true);
-            }}
-          >
-            <IconPlus className="mr-1 h-3.5 w-3.5" />
-            添加 IX 域名
-          </Button>
-        </div>
-
-        <div className="overflow-x-auto rounded-md border border-[hsl(var(--border))]">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead className="px-4">名称</TableHead>
-                <TableHead className="px-4">域名</TableHead>
-                <TableHead className="px-4">备注</TableHead>
-                <TableHead className="w-24 px-4">操作</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {ixLoading ? (
-                Array.from({ length: 2 }).map((_, i) => (
-                  <TableRow key={i}>
-                    {Array.from({ length: 4 }).map((_, j) => (
-                      <TableCell key={j} className="px-4 py-3">
-                        <div className="h-4 w-full max-w-[120px] animate-pulse rounded bg-[hsl(var(--muted))]" />
-                      </TableCell>
-                    ))}
-                  </TableRow>
-                ))
-              ) : ixDomains.length === 0 ? (
-                <TableRow>
-                  <TableCell
-                    colSpan={4}
-                    className="h-24 text-center text-[hsl(var(--muted-foreground))]"
-                  >
-                    暂无 IX 中转域名，点击右上角添加
-                  </TableCell>
-                </TableRow>
-              ) : (
-                ixDomains.map((d) => (
-                  <TableRow key={d.id}>
-                    <TableCell className="px-4 font-medium text-[hsl(var(--foreground))]">
-                      {d.name}
-                    </TableCell>
-                    <TableCell className="px-4 font-mono text-sm text-[hsl(var(--muted-foreground))]">
-                      {d.domain}
-                    </TableCell>
-                    <TableCell className="px-4 text-sm text-[hsl(var(--muted-foreground))]">
-                      {d.remark || "—"}
-                    </TableCell>
-                    <TableCell className="px-4">
-                      <div className="flex gap-1">
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => {
-                            setIxEditing(d);
-                            setIxFormOpen(true);
-                          }}
-                        >
-                          <IconEdit className="h-3.5 w-3.5" />
-                        </Button>
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          className="text-[hsl(var(--destructive))] hover:text-[hsl(var(--destructive))]"
-                          onClick={() => {
-                            setIxDeleting(d);
-                            setIxDeleteOpen(true);
-                          }}
-                        >
-                          <IconTrash className="h-3.5 w-3.5" />
-                        </Button>
-                      </div>
-                    </TableCell>
-                  </TableRow>
-                ))
-              )}
-            </TableBody>
-          </Table>
-        </div>
       </div>
 
       {/* CF 域名列表 */}
@@ -1539,39 +1274,6 @@ export default function DomainsPage() {
         onConfirm={handleDelete}
       />
 
-      {/* IX 域名表单 Dialog */}
-      <IXDomainFormDialog
-        open={ixFormOpen}
-        onOpenChange={(v) => {
-          setIxFormOpen(v);
-          if (!v) setIxEditing(null);
-        }}
-        editing={ixEditing}
-        onSuccess={fetchDomains}
-      />
-
-      {/* 删除 IX 域名确认 */}
-      <ConfirmDialog
-        open={ixDeleteOpen}
-        onOpenChange={(open) => {
-          setIxDeleteOpen(open);
-          if (!open) setIxDeleting(null);
-        }}
-        title="删除 IX 域名"
-        description={
-          <>
-            确定要删除 IX 域名{" "}
-            <span className="font-semibold text-[hsl(var(--foreground))]">
-              {ixDeleting?.name}
-            </span>{" "}
-            吗？此操作不可撤销。
-          </>
-        }
-        confirmLabel="删除"
-        variant="destructive"
-        loading={ixDeleteLoading}
-        onConfirm={handleIxDelete}
-      />
     </div>
   );
 }

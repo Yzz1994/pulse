@@ -71,8 +71,6 @@ import type {
   NodeDomain,
   SyncNodeDomainsRequest,
   SyncNodeDomainsResponse,
-  IXDomain,
-  IXDomainsResponse,
 } from "./types";
 
 export const cfApi = {
@@ -107,15 +105,6 @@ export const cfApi = {
   /** 删除 DNS 记录 */
   deleteRecord: (domainId: string, recordId: string) =>
     api.del(`/cf-domains/${domainId}/records/${recordId}`),
-};
-
-// ── IX Domain API ───────────────────────────────────────────────
-
-export const ixApi = {
-  list: () => api.get<IXDomainsResponse>("/ix-domains"),
-  create: (body: Omit<IXDomain, "id">) => api.post<IXDomain>("/ix-domains", body),
-  update: (id: string, body: Omit<IXDomain, "id">) => api.put<IXDomain>(`/ix-domains/${id}`, body),
-  del: (id: string) => api.del(`/ix-domains/${id}`),
 };
 
 // ── Node Domain API ─────────────────────────────────────────────

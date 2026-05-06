@@ -1078,7 +1078,6 @@ func Run() error {
 	serverapi.RegisterCFDomainAPI(protectedV1, db.CFDomainStore())
 	serverapi.RegisterUserGroupAPI(protectedV1, db.UserGroupStore(), userStore, inboundStore, panelHandler.ApplyNodes)
 	serverapi.RegisterNodeDomainAPI(protectedV1, db.NodeDomainStore(), db.CFDomainStore(), store)
-	serverapi.RegisterIXDomainAPI(protectedV1, db.IXDomainStore())
 	serverapi.RegisterUpdateAPI(protectedV1, settingsStore)
 	serverapi.RegisterGeoIPAPI(protectedV1, settingsStore, store, geoipDB)
 	serverapi.RegisterIPSentinelAPI(protectedV1, db.IPSentinelStore(), nodeAPI, geoipDB, store)
@@ -1127,8 +1126,6 @@ func Run() error {
 	mux.Handle("/v1/user-groups/", authManager.Middleware(protectedV1))
 	mux.Handle("/v1/node-domains", authManager.Middleware(protectedV1))
 	mux.Handle("/v1/node-domains/", authManager.Middleware(protectedV1))
-	mux.Handle("/v1/ix-domains", authManager.Middleware(protectedV1))
-	mux.Handle("/v1/ix-domains/", authManager.Middleware(protectedV1))
 	mux.Handle("/v1/ip-sentinel/", authManager.Middleware(protectedV1))
 
 	// Public portal API (no admin auth, uses sub_token)

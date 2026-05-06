@@ -24,7 +24,6 @@ type Querier interface {
 	DeleteCFDomainByID(ctx context.Context, id string) (pgconn.CommandTag, error)
 	DeleteGroupUserInbounds(ctx context.Context, arg DeleteGroupUserInboundsParams) error
 	DeleteHostByID(ctx context.Context, id string) (pgconn.CommandTag, error)
-	DeleteIXDomainByID(ctx context.Context, id string) (pgconn.CommandTag, error)
 	DeleteInboundByID(ctx context.Context, id string) (pgconn.CommandTag, error)
 	DeleteNodeByID(ctx context.Context, id string) (pgconn.CommandTag, error)
 	// ─── node_check_results ───────────────────────────────────────────────────────
@@ -54,7 +53,6 @@ type Querier interface {
 	GetCFDomainByID(ctx context.Context, id string) (GetCFDomainByIDRow, error)
 	GetHostByID(ctx context.Context, id string) (Host, error)
 	GetIPSentinelConfig(ctx context.Context, nodeID string) (IpSentinelConfig, error)
-	GetIXDomainByID(ctx context.Context, id string) (IxDomain, error)
 	GetInboundByID(ctx context.Context, id string) (Inbound, error)
 	GetNodeByID(ctx context.Context, id string) (Node, error)
 	GetOrderByID(ctx context.Context, id string) (Order, error)
@@ -98,7 +96,6 @@ type Querier interface {
 	ListHosts(ctx context.Context) ([]Host, error)
 	ListHostsByInbound(ctx context.Context, inboundID string) ([]Host, error)
 	ListIPSentinelRuns(ctx context.Context, nodeID string) ([]IpSentinelRun, error)
-	ListIXDomains(ctx context.Context) ([]IxDomain, error)
 	ListInbounds(ctx context.Context) ([]Inbound, error)
 	ListInboundsByNode(ctx context.Context, nodeID string) ([]Inbound, error)
 	ListLatestTracerouteSnapshots(ctx context.Context) ([]TracerouteSnapshot, error)
@@ -148,7 +145,6 @@ type Querier interface {
 	// ─── Hosts ────────────────────────────────────────────────────────────────────
 	UpsertHost(ctx context.Context, arg UpsertHostParams) error
 	UpsertIPSentinelConfig(ctx context.Context, arg UpsertIPSentinelConfigParams) error
-	UpsertIXDomain(ctx context.Context, arg UpsertIXDomainParams) error
 	// ─── Inbounds ─────────────────────────────────────────────────────────────────
 	UpsertInbound(ctx context.Context, arg UpsertInboundParams) error
 	// ─── Nodes ────────────────────────────────────────────────────────────────────

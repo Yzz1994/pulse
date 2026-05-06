@@ -436,18 +436,6 @@ export interface UpdateCFDNSRecordRequest {
   proxied: boolean;
 }
 
-// ── IX Domain types ──────────────────────────────────────────────
-
-export interface IXDomain {
-  id: string;
-  name: string;   // 显示名称，如 "华东 IX"
-  domain: string; // 绑定域名，如 relay.example.cn
-  remark: string;
-}
-
-export interface IXDomainsResponse {
-  ix_domains: IXDomain[];
-}
 
 // ── Node Domain types ────────────────────────────────────────────
 

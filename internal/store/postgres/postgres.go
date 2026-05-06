@@ -215,10 +215,6 @@ func (db *DB) NodeDomainStore() *NodeDomainStore {
 	return &NodeDomainStore{db: db.conn}
 }
 
-// IXDomainStore 返回 IX 中转域名 Store 实例。
-func (db *DB) IXDomainStore() *IXDomainStore {
-	return &IXDomainStore{db: db.conn}
-}
 
 // AnnouncementStore 返回公告 Store 实例。
 func (db *DB) AnnouncementStore() *AnnouncementStore {
@@ -527,13 +523,6 @@ func (db *DB) init() error {
 		`CREATE INDEX IF NOT EXISTS idx_orders_email ON orders(email)`,
 		`CREATE INDEX IF NOT EXISTS idx_orders_stripe_session_id ON orders(stripe_session_id)`,
 		`CREATE INDEX IF NOT EXISTS idx_orders_stripe_subscription_id ON orders(stripe_subscription_id)`,
-		// ix_domains：国内中转域名配置
-		`CREATE TABLE IF NOT EXISTS ix_domains (
-			id     TEXT PRIMARY KEY,
-			name   TEXT NOT NULL DEFAULT '',
-			domain TEXT NOT NULL DEFAULT '',
-			remark TEXT NOT NULL DEFAULT ''
-		)`,
 		// cf_domains：Cloudflare 域名配置
 		`CREATE TABLE IF NOT EXISTS cf_domains (
 			id        TEXT PRIMARY KEY,
