@@ -745,7 +745,7 @@ function NodeDetailDialog({ node, onClose }: { node: Node; onClose: () => void }
   );
 }
 
-function NodeCard({ node, metrics, prevMetrics, traceroute }: { node: Node; metrics?: NodeMetrics; prevMetrics?: NodeMetrics; traceroute?: TracerouteSnapshotItem[] }) {
+function NodeCard({ node, metrics, prevMetrics }: { node: Node; metrics?: NodeMetrics; prevMetrics?: NodeMetrics }) {
   const hasSpeed = metrics && (metrics.upload_speed > 0 || metrics.download_speed > 0);
   const [dialogOpen, setDialogOpen] = useState(false);
   const closeDialog = useCallback(() => setDialogOpen(false), []);
@@ -758,7 +758,7 @@ function NodeCard({ node, metrics, prevMetrics, traceroute }: { node: Node; metr
       <CardHeader className="pb-3">
         <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
           {/* Status dot + name */}
-          <div className="flex items-center gap-2.5">
+          <div className="flex items-center gap-2.5 min-w-0">
             <span
               className={`inline-block h-2.5 w-2.5 shrink-0 rounded-full ${
                 (() => {
@@ -785,7 +785,7 @@ function NodeCard({ node, metrics, prevMetrics, traceroute }: { node: Node; metr
           </div>
 
           {/* 实时网速 + 详情按钮 */}
-          <div className="ml-auto flex items-center gap-3">
+          <div className="ml-auto flex items-center gap-3 shrink-0">
             {hasSpeed && (
               <div className="flex items-center gap-1.5 text-xs tabular-nums">
                 <span style={speedStyle(metrics!.download_speed, prevMetrics?.download_speed ?? metrics!.download_speed)}>
@@ -797,17 +797,16 @@ function NodeCard({ node, metrics, prevMetrics, traceroute }: { node: Node; metr
                 </span>
               </div>
             )}
-            {hasDetail && (
-              <button
-                onClick={() => setDialogOpen(true)}
-                className="flex items-center gap-1 rounded-md border border-[hsl(var(--border))] px-2 py-0.5 text-xs text-[hsl(var(--muted-foreground))] hover:border-[hsl(var(--ring))] hover:text-[hsl(var(--foreground))] transition-colors"
-              >
-                详情
-                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" className="h-3 w-3">
-                  <polyline points="9 18 15 12 9 6" />
-                </svg>
-              </button>
-            )}
+            <button
+              onClick={() => hasDetail && setDialogOpen(true)}
+              disabled={!hasDetail}
+              className="flex items-center gap-1 rounded-md border border-[hsl(var(--border))] px-2 py-0.5 text-xs transition-colors disabled:cursor-default disabled:opacity-30 text-[hsl(var(--muted-foreground))] hover:enabled:border-[hsl(var(--ring))] hover:enabled:text-[hsl(var(--foreground))]"
+            >
+              详情
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" className="h-3 w-3">
+                <polyline points="9 18 15 12 9 6" />
+              </svg>
+            </button>
           </div>
         </div>
       </CardHeader>
@@ -816,25 +815,6 @@ function NodeCard({ node, metrics, prevMetrics, traceroute }: { node: Node; metr
         {/* ── Uptime bars ── */}
         <UptimeBars bars={node.uptime_bars} />
 
-        {/* ── Latency sparkline ── */}
-        {node.latency && node.latency.length > 0 && (
-          <LatencySparkline samples={node.latency} />
-        )}
-
-
-        {/* ── Traceroute snapshots：最新回程 + 最新去程 ── */}
-        {traceroute && traceroute.length > 0 && (() => {
-          const inbound  = traceroute.find((s) => s.direction === "inbound");
-          const outbound = traceroute.find((s) => s.direction === "outbound");
-          const items = [inbound, outbound].filter(Boolean) as TracerouteSnapshotItem[];
-          if (!items.length) return null;
-          return (
-            <div className="space-y-2">
-              <div className="text-[11px] font-medium text-zinc-400">路由追踪</div>
-              {items.map((item) => <TracerouteRecord key={item.id} item={item} />)}
-            </div>
-          );
-        })()}
       </CardContent>
     </Card>
     </>
@@ -1044,7 +1024,7 @@ export default function StatPage() {
             {/* ── Node Cards ── */}
             <div className="grid grid-cols-2 gap-3">
               {data.nodes.map((node) => (
-                <NodeCard key={node.id} node={node} metrics={metricsMap.get(node.id)} prevMetrics={prevMetricsMap.get(node.id)} traceroute={node.traceroutes} />
+                <NodeCard key={node.id} node={node} metrics={metricsMap.get(node.id)} prevMetrics={prevMetricsMap.get(node.id)} />
               ))}
             </div>
           </div>
