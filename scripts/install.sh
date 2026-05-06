@@ -159,11 +159,35 @@ force=0
 reset_password=0
 component=""
 version="latest"
+server_url=""
+node_id=""
+cert_b64=""
+_next_is_server=0
+_next_is_node_id=0
+_next_is_cert=0
 for _arg in "$@"; do
+  if [ "$_next_is_server" = "1" ]; then
+    server_url="$_arg"
+    _next_is_server=0
+    continue
+  fi
+  if [ "$_next_is_node_id" = "1" ]; then
+    node_id="$_arg"
+    _next_is_node_id=0
+    continue
+  fi
+  if [ "$_next_is_cert" = "1" ]; then
+    cert_b64="$_arg"
+    _next_is_cert=0
+    continue
+  fi
   case "$_arg" in
     --force|-f) force=1 ;;
     --reset-password) reset_password=1 ;;
     -h|--help) usage; exit 0 ;;
+    --server) _next_is_server=1 ;;
+    --node-id) _next_is_node_id=1 ;;
+    --cert) _next_is_cert=1 ;;
     server|node)
       component="$_arg"
       ;;
@@ -309,7 +333,13 @@ else
     run_as_root install -m 0644 "${package_dir}/etc/pulse/pulse-node.env.example" "$env_target"
   fi
   cert_target="${etc_dir}/server_client_cert.pem"
-  prompt_node_client_cert_pem "$cert_target" "$force"
+  if [ -n "$cert_b64" ]; then
+    # --cert 参数直接写入证书（来自控制面板生成的安装命令）
+    run_as_root mkdir -p "$(dirname "$cert_target")"
+    printf "%s" "$cert_b64" | base64 -d | run_as_root tee "$cert_target" > /dev/null
+  else
+    prompt_node_client_cert_pem "$cert_target" "$force"
+  fi
   # 无论新装还是更新，都确保 env 中记录证书路径
   set_env_file_value "$env_target" "PULSE_NODE_TLS_CLIENT_CERT_FILE" "$cert_target"
   if [ "${PULSE_NODE_ADDR+x}" = "x" ]; then
@@ -368,8 +398,23 @@ else
   _ip="$(ip -4 addr show scope global 2>/dev/null | awk '/inet/{gsub(/\/.*/, "", $2); print $2; exit}' \
         || hostname -I 2>/dev/null | awk '{print $1}' \
         || echo "<your-ip>")"
+  _node_base_url="https://${_ip}:${_port}"
   echo ""
   echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-  echo "  节点地址: https://${_ip}:${_port}"
+  echo "  节点地址: ${_node_base_url}"
   echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+  # 若由控制面板生成的命令提供了 server_url 和 node_id，则自动注册节点地址
+  if [ -n "$server_url" ] && [ -n "$node_id" ]; then
+    echo ""
+    echo "正在向控制面板注册节点地址..."
+    _register_url="${server_url%/}/v1/node-register"
+    _register_body="{\"node_id\":\"${node_id}\",\"base_url\":\"${_node_base_url}\"}"
+    if curl -fsSL -X POST "$_register_url" \
+        -H "Content-Type: application/json" \
+        -d "$_register_body" > /dev/null 2>&1; then
+      echo "注册成功，节点已与控制面板连接。"
+    else
+      echo "注册请求失败，请在控制面板手动填写节点地址: ${_node_base_url}" >&2
+    fi
+  fi
 fi

@@ -212,14 +212,14 @@ function NodeFormDialog({ open, onOpenChange, node, onSubmit, submitting }: Node
   }, [open, node]);
 
   const isEdit = !!node;
-  const canSubmit = name.trim() !== "" && baseUrl.trim() !== "";
+  const canSubmit = name.trim() !== "" && (!isEdit || baseUrl.trim() !== "");
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!canSubmit || submitting) return;
     await onSubmit({
       name: name.trim(),
-      base_url: baseUrl.trim(),
+      ...(isEdit ? { base_url: baseUrl.trim() } : {}),
       expire_at: expireAt || null,
       panel_url: panelURL.trim(),
       remark: remark.trim(),
@@ -237,7 +237,7 @@ function NodeFormDialog({ open, onOpenChange, node, onSubmit, submitting }: Node
           <DialogHeader>
             <DialogTitle>{isEdit ? "编辑节点" : "添加节点"}</DialogTitle>
             <DialogDescription>
-              {isEdit ? "修改节点的名称和地址。" : "输入新节点的名称和连接地址。"}
+              {isEdit ? "修改节点的名称和地址。" : "添加后将生成安装命令，在节点机器上运行即可自动连接。"}
             </DialogDescription>
           </DialogHeader>
 
@@ -253,16 +253,18 @@ function NodeFormDialog({ open, onOpenChange, node, onSubmit, submitting }: Node
                 autoFocus
               />
             </div>
-            <div className="space-y-2">
-              <Label htmlFor="node-url">地址</Label>
-              <Input
-                id="node-url"
-                value={baseUrl}
-                onChange={(e) => setBaseUrl(e.target.value)}
-                placeholder="http://ip:8081"
-                required
-              />
-            </div>
+            {isEdit && (
+              <div className="space-y-2">
+                <Label htmlFor="node-url">地址</Label>
+                <Input
+                  id="node-url"
+                  value={baseUrl}
+                  onChange={(e) => setBaseUrl(e.target.value)}
+                  placeholder="https://ip:8081"
+                  required
+                />
+              </div>
+            )}
             <div className="space-y-2">
               <Label htmlFor="node-expire">到期日期</Label>
               <Input
@@ -351,6 +353,112 @@ function NodeFormDialog({ open, onOpenChange, node, onSubmit, submitting }: Node
             </Button>
           </DialogFooter>
         </form>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+// ── Install Command Dialog ───────────────────────────────────────
+
+function InstallCmdDialog({
+  node,
+  open,
+  onClose,
+}: {
+  node: Node | null;
+  open: boolean;
+  onClose: () => void;
+}) {
+  const [certB64, setCertB64] = useState<string | null>(null);
+  const [copied, setCopied] = useState(false);
+  const [registered, setRegistered] = useState(false);
+  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  useEffect(() => {
+    if (!open || !node) return;
+    setCertB64(null);
+    setRegistered(!!node.base_url);
+    api.get<{ cert_b64: string }>("/node-setup/cert")
+      .then((r) => setCertB64(r.cert_b64))
+      .catch(() => {});
+  }, [open, node]);
+
+  useEffect(() => {
+    if (!open || !node || registered) return;
+    pollRef.current = setInterval(() => {
+      api.get<Node>(`/nodes/${node.id}`)
+        .then((n) => { if (n.base_url) setRegistered(true); })
+        .catch(() => {});
+    }, 3000);
+    return () => { if (pollRef.current) clearInterval(pollRef.current); };
+  }, [open, node, registered]);
+
+  const origin = typeof window !== "undefined" ? window.location.origin : "";
+  const installCmd = node && certB64
+    ? [
+        "bash <(curl -fsSL https://raw.githubusercontent.com/0xUnixIO/pulse/main/scripts/install.sh) node \\",
+        `  --server ${origin} \\`,
+        `  --node-id ${node.id} \\`,
+        `  --cert ${certB64}`,
+      ].join("\n")
+    : "正在获取安装信息…";
+
+  const handleCopy = () => {
+    if (!node || !certB64) return;
+    navigator.clipboard.writeText(installCmd);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={(o) => { if (!o) onClose(); }}>
+      <DialogContent className="sm:max-w-2xl">
+        <DialogHeader>
+          <DialogTitle>安装命令</DialogTitle>
+          <DialogDescription>
+            在目标节点机器上以 root 权限运行以下命令，节点将自动安装并连接到控制面板。
+          </DialogDescription>
+        </DialogHeader>
+        <div className="space-y-3">
+          <ScrollArea className="h-36 rounded-md border bg-[hsl(var(--muted))]">
+            <pre className="whitespace-pre-wrap break-all p-3 text-xs font-mono">{installCmd}</pre>
+          </ScrollArea>
+          <button
+            onClick={handleCopy}
+            disabled={!certB64}
+            className="inline-flex items-center gap-1.5 rounded-md border border-[hsl(var(--border))] bg-transparent px-3 py-1.5 text-xs font-medium transition-colors hover:bg-[hsl(var(--accent))] disabled:opacity-50"
+          >
+            {copied ? (
+              <>
+                <svg xmlns="http://www.w3.org/2000/svg" className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" /></svg>
+                已复制
+              </>
+            ) : (
+              <>
+                <svg xmlns="http://www.w3.org/2000/svg" className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><rect x="9" y="9" width="13" height="13" rx="2" ry="2" /><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" /></svg>
+                复制命令
+              </>
+            )}
+          </button>
+        </div>
+        <DialogFooter>
+          <div className="flex w-full items-center justify-between">
+            <div className="flex items-center gap-2 text-sm">
+              {registered ? (
+                <>
+                  <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 text-emerald-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" /></svg>
+                  <span className="text-emerald-500">节点已就绪</span>
+                </>
+              ) : (
+                <>
+                  <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 animate-spin text-[hsl(var(--muted-foreground))]" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" /><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" /></svg>
+                  <span className="text-[hsl(var(--muted-foreground))]">等待节点上线…</span>
+                </>
+              )}
+            </div>
+            <Button onClick={onClose}>完成</Button>
+          </div>
+        </DialogFooter>
       </DialogContent>
     </Dialog>
   );
@@ -1609,6 +1717,10 @@ export default function NodesPage() {
   const [editingNode, setEditingNode] = useState<Node | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
+  // Install command dialog (post-create)
+  const [installNode, setInstallNode] = useState<Node | null>(null);
+  const [installOpen, setInstallOpen] = useState(false);
+
   // Delete dialog state
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [deletingNode, setDeletingNode] = useState<Node | null>(null);
@@ -1796,12 +1908,16 @@ export default function NodesPage() {
     try {
       if (editingNode) {
         await api.put<Node>(`/nodes/${editingNode.id}`, data);
+        setFormOpen(false);
+        setEditingNode(null);
+        fetchNodes();
       } else {
-        await api.post<Node>("/nodes", data);
+        const created = await api.post<Node>("/nodes", data);
+        setFormOpen(false);
+        setInstallNode(created);
+        setInstallOpen(true);
+        fetchNodes();
       }
-      setFormOpen(false);
-      setEditingNode(null);
-      fetchNodes();
     } catch (err) {
       if (!handleAuthError(err)) {
         throw err;
@@ -2036,6 +2152,13 @@ export default function NodesPage() {
         node={editingNode}
         onSubmit={handleSubmit}
         submitting={submitting}
+      />
+
+      {/* ── Install command dialog (post-create) ───────────────── */}
+      <InstallCmdDialog
+        node={installNode}
+        open={installOpen}
+        onClose={() => { setInstallOpen(false); setInstallNode(null); fetchNodes(); }}
       />
 
       {/* ── Delete confirmation dialog ──────────────────────────── */}

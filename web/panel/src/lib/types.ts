@@ -177,12 +177,13 @@ export interface NodesResponse {
 
 export interface CreateNodeRequest {
   name: string;
-  base_url: string;
+  base_url?: string;
   expire_at?: string | null;
   panel_url?: string;
   remark?: string;
   ip_override?: string;
   disabled?: boolean;
+  is_landing?: boolean;
   tls_mode?: string;
 }
 

@@ -128,8 +128,8 @@ func (a *API) handleNodes(w http.ResponseWriter, r *http.Request) {
 			writeJSON(w, http.StatusBadRequest, map[string]any{"error": "invalid json body"})
 			return
 		}
-		if req.Name == "" || req.BaseURL == "" {
-			writeJSON(w, http.StatusBadRequest, map[string]any{"error": "name and base_url are required"})
+		if req.Name == "" {
+			writeJSON(w, http.StatusBadRequest, map[string]any{"error": "name is required"})
 			return
 		}
 		if strings.TrimSpace(req.ID) == "" {
