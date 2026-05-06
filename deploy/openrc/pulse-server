@@ -1,0 +1,23 @@
+#!/sbin/openrc-run
+
+name="pulse-server"
+description="Pulse Server"
+command="/usr/local/bin/pulse-server"
+command_background=true
+pidfile="/run/${RC_SVCNAME}.pid"
+directory="/var/lib/pulse"
+output_log="/var/log/${RC_SVCNAME}.log"
+error_log="/var/log/${RC_SVCNAME}.log"
+
+depend() {
+	need net
+	after firewall
+}
+
+start_pre() {
+	if [ -f /etc/pulse/pulse-server.env ]; then
+		set -a
+		. /etc/pulse/pulse-server.env
+		set +a
+	fi
+}

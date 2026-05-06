@@ -1,0 +1,7 @@
+#!/bin/sh
+# 若暂存区有 .sql 文件变动，自动重新生成 sqlc 代码
+if git diff --cached --name-only | grep -q '\.sql$'; then
+  echo "→ .sql 文件已变更，运行 sqlc generate..."
+  sqlc generate || { echo "sqlc generate 失败，请检查 SQL 语法"; exit 1; }
+  git add internal/store/postgres/sqlcgen/
+fi

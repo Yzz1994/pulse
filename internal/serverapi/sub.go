@@ -1,0 +1,129 @@
+package serverapi
+
+import (
+	"encoding/base64"
+	"fmt"
+	"log"
+	"net"
+	"net/http"
+	"strings"
+
+	"pulse/internal/inbounds"
+	"pulse/internal/subscription"
+	"pulse/internal/users"
+)
+
+type subAPI struct {
+	users    users.Store
+	inbounds inbounds.InboundStore
+}
+
+// RegisterSubAPI 注册公开订阅端点，无需认证。
+// GET /sub/{token}  — 返回订阅内容（供客户端拉取）
+// GET /user/{token} — 用户自助页（由 panel handler 注册，此处不重复注册）
+func RegisterSubAPI(mux *http.ServeMux, userStore users.Store, ibStore inbounds.InboundStore) {
+	a := &subAPI{users: userStore, inbounds: ibStore}
+	mux.HandleFunc("/sub/", a.handleSub)
+}
+
+func (a *subAPI) handleSub(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.NotFound(w, r)
+		return
+	}
+
+	// 从路径提取 token：/sub/{token}
+	userID := strings.TrimPrefix(r.URL.Path, "/sub/")
+	userID = strings.TrimSuffix(userID, "/")
+	if userID == "" {
+		http.NotFound(w, r)
+		return
+	}
+
+	user, err := a.users.GetUserBySubToken(userID)
+	if err != nil {
+		http.NotFound(w, r)
+		return
+	}
+
+	// 异步记录订阅访问日志（无论用户状态如何，均记录）
+	go func() {
+		ip := realIP(r)
+		ua := r.Header.Get("User-Agent")
+		if err := a.users.LogSubAccess(user.ID, ip, ua); err != nil {
+			log.Printf("sub access log: %v", err)
+		}
+	}()
+
+	// 非活跃用户（disabled / expired / limited / on_hold）返回空订阅。
+	// 仍携带 Subscription-Userinfo header，让客户端能展示流量/到期信息。
+	if !user.EffectiveEnabled() {
+		w.Header().Set("Subscription-Userinfo", buildUserinfo(user))
+		w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(base64.StdEncoding.EncodeToString(nil)))
+		return
+	}
+
+	// 收集该用户所有节点的全部订阅链接（跳过已禁用节点）
+	accesses, err := a.users.ListActiveUserInboundsByUser(user.ID)
+	if err != nil {
+		http.Error(w, "internal error", http.StatusInternalServerError)
+		return
+	}
+
+	// 构建用户排除的 host 集合
+	excludedIDs, _ := a.users.ListHostExclusionsByUser(user.ID)
+	excluded := make(map[string]bool, len(excludedIDs))
+	for _, id := range excludedIDs {
+		excluded[id] = true
+	}
+
+	links := subscription.BuildLinks(accesses, a.inbounds, user, excluded)
+
+	// Subscription-Userinfo header（客户端如 v2rayN 用于显示流量信息）
+	w.Header().Set("Subscription-Userinfo", buildUserinfo(user))
+	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+	w.Header().Set("Profile-Update-Interval", "12") // 建议客户端每 12 小时更新
+	if next := nextTrafficResetAt(user.DataLimitResetStrategy, user.CreatedAt, user.LastTrafficResetAt); next != nil {
+		w.Header().Set("Profile-Next-Renewal", next.UTC().Format("2006-01-02T15:04:05Z"))
+	}
+
+	// base64 编码，换行分隔（标准订阅格式）
+	body := base64.StdEncoding.EncodeToString([]byte(strings.Join(links, "\n")))
+	w.WriteHeader(http.StatusOK)
+	_, _ = w.Write([]byte(body))
+}
+
+// realIP 从请求中提取客户端真实 IP（优先读 X-Real-IP / X-Forwarded-For）。
+func realIP(r *http.Request) string {
+	if ip := r.Header.Get("X-Real-IP"); ip != "" {
+		return ip
+	}
+	if fwd := r.Header.Get("X-Forwarded-For"); fwd != "" {
+		if idx := strings.IndexByte(fwd, ','); idx >= 0 {
+			fwd = fwd[:idx]
+		}
+		return strings.TrimSpace(fwd)
+	}
+	host, _, err := net.SplitHostPort(r.RemoteAddr)
+	if err != nil {
+		return r.RemoteAddr
+	}
+	return host
+}
+
+// buildUserinfo 生成 Subscription-Userinfo header 值。
+func buildUserinfo(u users.User) string {
+	parts := []string{
+		fmt.Sprintf("upload=%d", u.UploadBytes),
+		fmt.Sprintf("download=%d", u.DownloadBytes),
+	}
+	if u.TrafficLimit > 0 {
+		parts = append(parts, fmt.Sprintf("total=%d", u.TrafficLimit))
+	}
+	if u.ExpireAt != nil && !u.ExpireAt.IsZero() {
+		parts = append(parts, fmt.Sprintf("expire=%d", u.ExpireAt.Unix()))
+	}
+	return strings.Join(parts, "; ")
+}
