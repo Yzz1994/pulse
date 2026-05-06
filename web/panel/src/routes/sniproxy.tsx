@@ -9,6 +9,14 @@ import {
   Button,
   Input,
 } from "@/components/ui";
+import {
+  Table,
+  TableHeader,
+  TableBody,
+  TableRow,
+  TableHead,
+  TableCell,
+} from "@/components/ui";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { api, AuthError } from "@/lib/api";
 import { clearToken } from "@/lib/auth";
@@ -111,6 +119,13 @@ function serializeProxyRules(rules: ProxyRule[]): string {
   return rules.map((r) => `${r.domain} ${r.backend}`).join("\n");
 }
 
+// mode 本地化映射
+const modeLabel: Record<SNIRoute["mode"], string> = {
+  terminating: "TLS 终止",
+  "http-reverse": "HTTP 反代",
+  transparent: "透传",
+};
+
 // ── HTTP 反代规则编辑器 ───────────────────────────────────────────
 
 interface HTTPReverseRulesProps {
@@ -168,9 +183,11 @@ function HTTPReverseRules({ node, onNodeUpdated }: HTTPReverseRulesProps) {
   };
 
   return (
-    <div>
-      <div className="mb-1.5 flex items-center justify-between">
-        <span className="text-xs font-semibold">HTTP 反代规则</span>
+    <div className="space-y-2">
+      <div className="flex items-center justify-between">
+        <p className="text-xs font-semibold uppercase tracking-wide text-[hsl(var(--muted-foreground))]">
+          HTTP 反代规则
+        </p>
         {dirty && (
           <Button
             size="sm"
@@ -183,63 +200,63 @@ function HTTPReverseRules({ node, onNodeUpdated }: HTTPReverseRulesProps) {
         )}
       </div>
 
-      <div className="rounded border text-xs">
-        {rules.length > 0 && (
-          <table className="w-full">
-            <thead className="bg-[hsl(var(--muted))] text-left">
-              <tr>
-                <th className="px-2 py-1">域名</th>
-                <th className="px-2 py-1">后端</th>
-                <th className="w-8 px-2 py-1" />
-              </tr>
-            </thead>
-            <tbody>
+      {rules.length > 0 && (
+        <div className="rounded-md border">
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead className="text-xs">域名</TableHead>
+                <TableHead className="text-xs">后端</TableHead>
+                <TableHead className="w-10 text-xs" />
+              </TableRow>
+            </TableHeader>
+            <TableBody>
               {rules.map((r, i) => (
-                <tr key={i} className="border-t">
-                  <td className="px-2 py-1 font-mono">{r.domain}</td>
-                  <td className="px-2 py-1 font-mono">{r.backend}</td>
-                  <td className="px-2 py-1">
-                    <button
-                      className="text-[hsl(var(--muted-foreground))] hover:text-[hsl(var(--destructive))]"
+                <TableRow key={i}>
+                  <TableCell className="py-1.5 font-mono text-xs">{r.domain}</TableCell>
+                  <TableCell className="py-1.5 font-mono text-xs">{r.backend}</TableCell>
+                  <TableCell className="py-1.5">
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-6 w-6 text-[hsl(var(--muted-foreground))] hover:text-[hsl(var(--destructive))]"
                       onClick={() => removeRule(i)}
                     >
                       ✕
-                    </button>
-                  </td>
-                </tr>
+                    </Button>
+                  </TableCell>
+                </TableRow>
               ))}
-            </tbody>
-          </table>
-        )}
-
-        <div
-          className={`flex items-center gap-2 p-2 ${rules.length > 0 ? "border-t" : ""}`}
-        >
-          <Input
-            className="h-7 flex-1 font-mono text-xs"
-            placeholder="panel.example.com"
-            value={addDomain}
-            onChange={(e) => setAddDomain(e.target.value)}
-            onKeyDown={(e) => e.key === "Enter" && addBackend && addRule()}
-          />
-          <span className="shrink-0 text-[hsl(var(--muted-foreground))]">→</span>
-          <Input
-            className="h-7 flex-1 font-mono text-xs"
-            placeholder="1.2.3.4:8080"
-            value={addBackend}
-            onChange={(e) => setAddBackend(e.target.value)}
-            onKeyDown={(e) => e.key === "Enter" && addDomain && addRule()}
-          />
-          <Button
-            variant="outline"
-            size="sm"
-            className="h-7 shrink-0 px-2 text-xs"
-            onClick={addRule}
-            disabled={!addDomain.trim() || !addBackend.trim()}
-          >
-            添加
-          </Button>
+            </TableBody>
+          </Table>
         </div>
+      )}
+
+      <div className="flex items-center gap-2">
+        <Input
+          className="h-7 flex-1 font-mono text-xs"
+          placeholder="panel.example.com"
+          value={addDomain}
+          onChange={(e) => setAddDomain(e.target.value)}
+          onKeyDown={(e) => e.key === "Enter" && addBackend && addRule()}
+        />
+        <span className="shrink-0 text-[hsl(var(--muted-foreground))]">→</span>
+        <Input
+          className="h-7 flex-1 font-mono text-xs"
+          placeholder="1.2.3.4:8080"
+          value={addBackend}
+          onChange={(e) => setAddBackend(e.target.value)}
+          onKeyDown={(e) => e.key === "Enter" && addDomain && addRule()}
+        />
+        <Button
+          variant="outline"
+          size="sm"
+          className="h-7 shrink-0 px-2 text-xs"
+          onClick={addRule}
+          disabled={!addDomain.trim() || !addBackend.trim()}
+        >
+          添加
+        </Button>
       </div>
     </div>
   );
@@ -362,45 +379,61 @@ export default function SNIProxyPage() {
                 </Button>
               </div>
             </CardHeader>
-            <CardContent className="space-y-3">
+            <CardContent className="space-y-4">
               {row?.error && (
-                <div className="rounded border border-[hsl(var(--destructive))] p-2 text-xs text-[hsl(var(--destructive))]">
+                <div className="rounded-md border border-[hsl(var(--destructive)/0.3)] bg-[hsl(var(--destructive)/0.1)] px-3 py-2 text-xs text-[hsl(var(--destructive))]">
                   {row.error}
                 </div>
               )}
               {row?.resp?.status.last_error && (
-                <div className="rounded border border-yellow-500 p-2 text-xs">
+                <div className="rounded-md border border-yellow-500/30 bg-yellow-500/10 px-3 py-2 text-xs text-yellow-600 dark:text-yellow-400">
                   <span className="font-semibold">LastError：</span>
                   <span className="font-mono">{row.resp.status.last_error}</span>
                 </div>
               )}
               {row?.resp && (
                 <>
-                  <div className="flex gap-6 text-xs text-[hsl(var(--muted-foreground))]">
-                    <span>路由 {row.resp.status.route_count} 条</span>
-                    <span>证书 {row.resp.status.cert_domains} 张</span>
+                  <div className="flex flex-wrap items-center gap-3">
+                    <span className="inline-flex items-center gap-1 rounded-full bg-[hsl(var(--muted))] px-2 py-0.5 text-xs text-[hsl(var(--muted-foreground))]">
+                      路由 {row.resp.status.route_count} 条
+                    </span>
+                    <span className="inline-flex items-center gap-1 rounded-full bg-[hsl(var(--muted))] px-2 py-0.5 text-xs text-[hsl(var(--muted-foreground))]">
+                      证书 {row.resp.status.cert_domains} 张
+                    </span>
                     {row.resp.status.storage_path && (
-                      <span className="font-mono">📁 {row.resp.status.storage_path}</span>
+                      <span className="inline-flex items-center gap-1 text-xs font-mono text-[hsl(var(--muted-foreground))]">
+                        <svg
+                          xmlns="http://www.w3.org/2000/svg"
+                          viewBox="0 0 16 16"
+                          fill="currentColor"
+                          className="h-4 w-4 shrink-0"
+                        >
+                          <path d="M2 3.5A1.5 1.5 0 0 1 3.5 2h3.879a1.5 1.5 0 0 1 1.06.44l.622.621A1.5 1.5 0 0 0 10.12 3.5H12.5A1.5 1.5 0 0 1 14 5v1H2V3.5ZM2 7.5h12v5A1.5 1.5 0 0 1 12.5 14h-9A1.5 1.5 0 0 1 2 12.5v-5Z" />
+                        </svg>
+                        {row.resp.status.storage_path}
+                      </span>
                     )}
                   </div>
 
                   {row.resp.status.routes && row.resp.status.routes.length > 0 && (
-                    <div>
-                      <div className="mb-1 text-xs font-semibold">路由表</div>
-                      <ScrollArea className="max-h-48 rounded border">
-                        <table className="w-full text-xs">
-                          <thead className="bg-[hsl(var(--muted))] text-left">
-                            <tr>
-                              <th className="px-2 py-1">SNI</th>
-                              <th className="px-2 py-1">模式</th>
-                              <th className="px-2 py-1">后端</th>
-                            </tr>
-                          </thead>
-                          <tbody>
+                    <div className="space-y-1.5">
+                      <p className="text-xs font-semibold uppercase tracking-wide text-[hsl(var(--muted-foreground))]">
+                        路由表
+                      </p>
+                      <ScrollArea className="max-h-48 rounded-md border">
+                        <Table>
+                          <TableHeader>
+                            <TableRow>
+                              <TableHead className="text-xs">SNI</TableHead>
+                              <TableHead className="text-xs">模式</TableHead>
+                              <TableHead className="text-xs">后端</TableHead>
+                            </TableRow>
+                          </TableHeader>
+                          <TableBody>
                             {row.resp.status.routes.map((r, i) => (
-                              <tr key={i} className="border-t">
-                                <td className="px-2 py-1 font-mono">{r.sni}</td>
-                                <td className="px-2 py-1">
+                              <TableRow key={i}>
+                                <TableCell className="py-1.5 font-mono text-xs">{r.sni}</TableCell>
+                                <TableCell className="py-1.5">
                                   <Badge
                                     variant={
                                       r.mode === "terminating"
@@ -409,47 +442,57 @@ export default function SNIProxyPage() {
                                           ? "outline"
                                           : "secondary"
                                     }
+                                    className="text-xs"
                                   >
-                                    {r.mode}
+                                    {modeLabel[r.mode] ?? r.mode}
                                   </Badge>
-                                </td>
-                                <td className="px-2 py-1 font-mono">{r.backend}</td>
-                              </tr>
+                                </TableCell>
+                                <TableCell className="py-1.5 font-mono text-xs">{r.backend}</TableCell>
+                              </TableRow>
                             ))}
-                          </tbody>
-                        </table>
+                          </TableBody>
+                        </Table>
                       </ScrollArea>
                     </div>
                   )}
 
                   {row.resp.status.certs && row.resp.status.certs.length > 0 && (
-                    <div>
-                      <div className="mb-1 text-xs font-semibold">证书</div>
-                      <ScrollArea className="max-h-48 rounded border">
-                        <table className="w-full text-xs">
-                          <thead className="bg-[hsl(var(--muted))] text-left">
-                            <tr>
-                              <th className="px-2 py-1">域名</th>
-                              <th className="px-2 py-1">状态</th>
-                              <th className="px-2 py-1">到期</th>
-                              <th className="px-2 py-1">签发者</th>
-                            </tr>
-                          </thead>
-                          <tbody>
+                    <div className="space-y-1.5">
+                      <p className="text-xs font-semibold uppercase tracking-wide text-[hsl(var(--muted-foreground))]">
+                        证书
+                      </p>
+                      <ScrollArea className="max-h-48 rounded-md border">
+                        <Table>
+                          <TableHeader>
+                            <TableRow>
+                              <TableHead className="text-xs">域名</TableHead>
+                              <TableHead className="text-xs">状态</TableHead>
+                              <TableHead className="text-xs">到期</TableHead>
+                              <TableHead className="text-xs">签发者</TableHead>
+                            </TableRow>
+                          </TableHeader>
+                          <TableBody>
                             {row.resp.status.certs.map((c, i) => {
                               const days = daysRemaining(c.not_after);
                               const expiringSoon = days !== null && days < 30;
                               return (
-                                <tr key={i} className="border-t">
-                                  <td className="px-2 py-1 font-mono">{c.domain}</td>
-                                  <td className="px-2 py-1">
+                                <TableRow key={i}>
+                                  <TableCell className="py-1.5 font-mono text-xs">{c.domain}</TableCell>
+                                  <TableCell className="py-1.5">
                                     {c.ready ? (
-                                      <Badge variant="default">就绪</Badge>
+                                      <Badge
+                                        variant="outline"
+                                        className="border-green-500/40 text-xs text-green-600 dark:text-green-400"
+                                      >
+                                        就绪
+                                      </Badge>
                                     ) : (
-                                      <Badge variant="destructive">未就绪</Badge>
+                                      <Badge variant="destructive" className="text-xs">
+                                        未就绪
+                                      </Badge>
                                     )}
-                                  </td>
-                                  <td className="px-2 py-1">
+                                  </TableCell>
+                                  <TableCell className="py-1.5 text-xs">
                                     {fmtDate(c.not_after)}
                                     {days !== null && (
                                       <span
@@ -462,15 +505,15 @@ export default function SNIProxyPage() {
                                         ({days}d)
                                       </span>
                                     )}
-                                  </td>
-                                  <td className="px-2 py-1 text-[hsl(var(--muted-foreground))]">
+                                  </TableCell>
+                                  <TableCell className="py-1.5 text-xs text-[hsl(var(--muted-foreground))]">
                                     {c.issuer ?? "—"}
-                                  </td>
-                                </tr>
+                                  </TableCell>
+                                </TableRow>
                               );
                             })}
-                          </tbody>
-                        </table>
+                          </TableBody>
+                        </Table>
                       </ScrollArea>
                     </div>
                   )}
