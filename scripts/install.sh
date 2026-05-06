@@ -4,41 +4,46 @@ set -eu
 usage() {
   cat <<'EOF'
 用法:
-  install.sh server|node [version] [--reset-password]
+  install.sh server|node [version] [选项]
+
+选项（node 专用）:
+  --server <URL>     控制面板地址，安装完成后自动注册节点地址（由控制面板生成时自动填入）
+  --node-id <ID>     节点 ID（由控制面板生成时自动填入）
+  --cert <BASE64>    server 客户端证书 base64，跳过交互式粘贴（由控制面板生成时自动填入）
+
+选项（server 专用）:
+  --reset-password   生成随机新密码并重启服务
 
 环境变量:
   PULSE_INSTALL_BIN   二进制安装目录，默认 /usr/local/bin
   PULSE_INSTALL_ETC   配置安装目录，默认 /etc/pulse
-  PULSE_INSTALL_SHARE 共享资源目录，默认 /usr/local/share/pulse
   PULSE_INSTALL_LIB   systemd 安装目录，默认 /etc/systemd/system
   PULSE_INSTALL_INITD OpenRC 安装目录，默认 /etc/init.d
   PULSE_STATE_DIR     工作目录，默认 /var/lib/pulse
-  PULSE_ADMIN_USERNAME server 安装时写入管理员用户名，默认 admin
-  PULSE_ADMIN_PASSWORD server 安装时写入管理员密码，不指定则随机生成
-  PULSE_SERVER_ADDR    server 监听地址，不指定则随机端口（格式 :端口）
-PULSE_SERVER_NODE_CLIENT_CERT_FILE server 访问节点时使用的客户端证书路径
-  PULSE_SERVER_NODE_CLIENT_KEY_FILE  server 访问节点时使用的客户端私钥路径
-  PULSE_NODE_TLS_CERT_FILE           node 服务端证书路径
-  PULSE_NODE_TLS_KEY_FILE            node 服务端私钥路径
-  PULSE_NODE_ADDR              node 监听地址，默认 :8081（格式 :端口）
-  PULSE_NODE_PORT              node 监听端口，优先于 PULSE_NODE_ADDR（格式 纯数字）
-  PULSE_DISCOURSE_URL         Discourse 实例地址（可选，启用 Discourse SSO）
-  PULSE_DISCOURSE_SSO_SECRET  Discourse Connect Secret（与 URL 一起配置）
-  PULSE_DISCOURSE_ADMIN_USERS 允许登录的 Discourse 用户名，逗号分隔；空则信任所有
-  PULSE_DATABASE_URL          PostgreSQL 连接串（postgres://user:pass@host:5432/db?sslmode=disable）
-  PULSE_DATA_DIR              工作目录（geoip、上传文件等），默认 /var/lib/pulse
-  PULSE_STRIPE_SECRET_KEY     Stripe Secret Key（sk_live_xxx，配置后自动启用商店）
-  PULSE_STRIPE_WEBHOOK_SECRET Stripe Webhook Signing Secret（whsec_xxx）
+  PULSE_ADMIN_USERNAME server 安装时管理员用户名，默认 admin
+  PULSE_ADMIN_PASSWORD server 安装时管理员密码，不指定则随机生成
+  PULSE_SERVER_ADDR   server 监听地址，不指定则随机端口（格式 :端口）
+  PULSE_NODE_ADDR     node 监听地址，默认 :8081（格式 :端口）
+  PULSE_NODE_PORT     node 监听端口，优先于 PULSE_NODE_ADDR（纯数字）
+  PULSE_DATABASE_URL  PostgreSQL 连接串（postgres://user:pass@host:5432/db?sslmode=disable）
+  PULSE_DATA_DIR      工作目录（geoip、上传文件等），默认 /var/lib/pulse
 
 示例:
+  # 安装控制面板（server）
   curl -fsSL https://raw.githubusercontent.com/0xUnixIO/pulse/main/scripts/install.sh | sh -s -- server
 
-  # 重置密码（生成随机新密码并重启服务）
+  # 重置密码
   curl -fsSL https://raw.githubusercontent.com/0xUnixIO/pulse/main/scripts/install.sh | \
     sh -s -- server --reset-password
 
-  curl -fsSL https://raw.githubusercontent.com/0xUnixIO/pulse/main/scripts/install.sh | \
-    sh -s -- node
+  # 安装节点（推荐：从控制面板"添加节点"页面复制生成的命令，自动包含以下参数）
+  bash <(curl -fsSL https://raw.githubusercontent.com/0xUnixIO/pulse/main/scripts/install.sh) node \
+    --server https://<控制面板地址> \
+    --node-id <节点ID> \
+    --cert <证书BASE64>
+
+  # 手动安装节点（会交互式提示粘贴 server 客户端证书）
+  curl -fsSL https://raw.githubusercontent.com/0xUnixIO/pulse/main/scripts/install.sh | sh -s -- node
 
   # 指定 node 监听端口
   curl -fsSL https://raw.githubusercontent.com/0xUnixIO/pulse/main/scripts/install.sh | \
