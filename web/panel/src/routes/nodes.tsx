@@ -1534,6 +1534,369 @@ function TracerouteDialog({ node, open, onOpenChange }: {
   );
 }
 
+// ── IP Sentinel 类型 ─────────────────────────────────────────────
+
+interface NodeIPSentinelConfig {
+  region_code: string;
+  region_name: string;
+}
+
+interface IPDetectResult {
+  ip: string;
+  country: string;
+  country_code: string;
+  city: string;
+}
+
+interface IPSentinelRun {
+  id: string;
+  task_type: string;
+  triggered_by: string;
+  status: "pending" | "running" | "success" | "failed";
+  output: string[];
+  started_at: string;
+  finished_at: string | null;
+  result?: unknown;
+}
+
+interface SentinelSchedule {
+  interval_hours: number;
+  last_run_at: string | null;
+  next_run_at: string | null;
+}
+
+const REGION_PRESETS: { code: string; name: string }[] = [
+  { code: "US", name: "United States" },
+  { code: "JP", name: "Japan" },
+  { code: "SG", name: "Singapore" },
+  { code: "GB", name: "United Kingdom" },
+  { code: "DE", name: "Germany" },
+  { code: "FR", name: "France" },
+  { code: "HK", name: "Hong Kong" },
+  { code: "KR", name: "South Korea" },
+  { code: "AU", name: "Australia" },
+  { code: "CA", name: "Canada" },
+  { code: "TW", name: "Taiwan" },
+  { code: "NL", name: "Netherlands" },
+];
+
+function sentinelFormatTime(iso: string | null | undefined): string {
+  if (!iso) return "--";
+  try {
+    return new Date(iso).toLocaleString("zh-CN", { year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit" });
+  } catch { return iso; }
+}
+
+function sentinelDuration(startedAt: string, finishedAt: string | null): string {
+  if (!finishedAt) return "—";
+  try {
+    const ms = new Date(finishedAt).getTime() - new Date(startedAt).getTime();
+    return ms < 1000 ? `${ms}ms` : `${(ms / 1000).toFixed(1)}s`;
+  } catch { return "—"; }
+}
+
+function sentinelStatusClass(status: IPSentinelRun["status"] | undefined): string {
+  switch (status) {
+    case "pending": case "running": return "text-blue-600 bg-blue-500/10";
+    case "success": return "text-emerald-600 bg-emerald-500/10";
+    case "failed":  return "text-red-600 bg-red-500/10";
+    default:        return "text-[hsl(var(--muted-foreground))] bg-[hsl(var(--muted))]";
+  }
+}
+
+function sentinelStatusLabel(status: IPSentinelRun["status"] | undefined): string {
+  switch (status) {
+    case "pending": return "等待中";
+    case "running": return "运行中";
+    case "success": return "成功";
+    case "failed":  return "失败";
+    default:        return "--";
+  }
+}
+
+function sentinelTriggeredBy(v: string): string {
+  if (v === "auto" || v === "scheduler") return "自动";
+  if (v === "manual" || v === "user")    return "手动";
+  return v || "—";
+}
+
+function SentinelRunRow({ run }: { run: IPSentinelRun }) {
+  const [expanded, setExpanded] = useState(false);
+  return (
+    <>
+      <tr className="border-b border-[hsl(var(--border))] last:border-0 hover:bg-[hsl(var(--muted)/0.4)] cursor-pointer select-none" onClick={() => setExpanded(v => !v)}>
+        <td className="py-1.5 pl-3 pr-2 text-[11px] text-[hsl(var(--muted-foreground))] whitespace-nowrap">{sentinelFormatTime(run.started_at)}</td>
+        <td className="py-1.5 pr-2"><span className="inline-flex items-center rounded px-1.5 py-0.5 text-[10px] font-medium bg-[hsl(var(--muted))] text-[hsl(var(--muted-foreground))]">{sentinelTriggeredBy(run.triggered_by)}</span></td>
+        <td className="py-1.5 pr-2"><span className={`inline-flex items-center rounded px-1.5 py-0.5 text-[10px] font-medium ${sentinelStatusClass(run.status)}`}>{sentinelStatusLabel(run.status)}</span></td>
+        <td className="py-1.5 pr-3 text-right text-[11px] text-[hsl(var(--muted-foreground))]">{sentinelDuration(run.started_at, run.finished_at)}</td>
+      </tr>
+      {expanded && (
+        <tr className="border-b border-[hsl(var(--border))]">
+          <td colSpan={4} className="px-3 pb-2 pt-1">
+            <pre className="max-h-60 overflow-y-auto rounded bg-[hsl(var(--muted))] p-2.5 text-[10px] leading-relaxed font-mono whitespace-pre-wrap">
+              {run.output.length > 0 ? run.output.join("\n") : run.result ? JSON.stringify(run.result, null, 2) : "(无输出)"}
+            </pre>
+          </td>
+        </tr>
+      )}
+    </>
+  );
+}
+
+// ── IPSentinelDialog ──────────────────────────────────────────────
+
+function IPSentinelDialog({ nodeId, nodeName, open, onOpenChange }: {
+  nodeId: string;
+  nodeName: string;
+  open: boolean;
+  onOpenChange: (v: boolean) => void;
+}) {
+  const handleAuthError = useAuthErrorHandler();
+
+  const [config, setConfig] = useState<NodeIPSentinelConfig>({ region_code: "", region_name: "" });
+  const [draftCode, setDraftCode] = useState("");
+  const [draftName, setDraftName] = useState("");
+  const [detectResult, setDetectResult] = useState<IPDetectResult | null>(null);
+  const [runs, setRuns] = useState<IPSentinelRun[]>([]);
+  const [runsExpanded, setRunsExpanded] = useState(false);
+  const [detectLoading, setDetectLoading] = useState(false);
+  const [runLoading, setRunLoading] = useState(false);
+  const [configSaving, setConfigSaving] = useState(false);
+  const [loaded, setLoaded] = useState(false);
+
+  const pollTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const pollCountRef = useRef(0);
+
+  const fetchRuns = useCallback(async (): Promise<IPSentinelRun[]> => {
+    try {
+      const data = await api.get<{ runs: IPSentinelRun[] }>(`/nodes/${nodeId}/ip-sentinel/runs`);
+      const r = data.runs ?? [];
+      const latestDetect = r.find(x => x.task_type === "detect" && x.status === "success" && x.result);
+      setRuns(r);
+      if (latestDetect?.result) setDetectResult(latestDetect.result as IPDetectResult);
+      return r;
+    } catch { return []; }
+  }, [nodeId]);
+
+  useEffect(() => {
+    if (!open) return;
+    setLoaded(false);
+    Promise.all([
+      api.get<NodeIPSentinelConfig>(`/nodes/${nodeId}/ip-sentinel/config`).then(d => {
+        setConfig(d); setDraftCode(d.region_code ?? ""); setDraftName(d.region_name ?? "");
+      }).catch(() => {}),
+      fetchRuns(),
+    ]).finally(() => setLoaded(true));
+    return () => { if (pollTimerRef.current) clearTimeout(pollTimerRef.current); };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, nodeId]);
+
+  function schedulePoll() {
+    if (pollTimerRef.current) clearTimeout(pollTimerRef.current);
+    pollTimerRef.current = setTimeout(async () => {
+      pollCountRef.current += 1;
+      const r = await fetchRuns();
+      const latest = r[0];
+      if ((latest?.status === "pending" || latest?.status === "running") && pollCountRef.current < 100) schedulePoll();
+    }, 3000);
+  }
+
+  async function handleDetect() {
+    setDetectLoading(true);
+    try {
+      const result = await api.post<IPDetectResult>(`/nodes/${nodeId}/ip-sentinel/detect`, {});
+      setDetectResult(result);
+      toast(`检测完成：${result.ip}（${result.country} · ${result.city}）`, "success");
+      fetchRuns();
+    } catch (err) { if (!handleAuthError(err)) toast("检测失败", "error"); }
+    finally { setDetectLoading(false); }
+  }
+
+  async function handleRun() {
+    setRunLoading(true);
+    try {
+      await api.post(`/nodes/${nodeId}/ip-sentinel/run`, {});
+      toast("任务已提交，轮询结果中…", "success");
+      pollCountRef.current = 0;
+      schedulePoll();
+    } catch (err) { if (!handleAuthError(err)) toast("提交失败", "error"); }
+    finally { setRunLoading(false); }
+  }
+
+  async function handleSaveConfig() {
+    setConfigSaving(true);
+    try {
+      await api.put(`/nodes/${nodeId}/ip-sentinel/config`, { region_code: draftCode, region_name: draftName });
+      setConfig({ region_code: draftCode, region_name: draftName });
+      toast("地区设置已保存", "success");
+    } catch (err) { if (!handleAuthError(err)) toast("保存失败", "error"); }
+    finally { setConfigSaving(false); }
+  }
+
+  const isPreset = REGION_PRESETS.some(p => p.code === draftCode);
+  const latestRun = runs[0] ?? null;
+  const recentRuns = runs.slice(0, 5);
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-w-md">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2">
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" className="h-4 w-4 text-[hsl(var(--primary))]"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" /></svg>
+            IP Sentinel
+          </DialogTitle>
+          <DialogDescription>{nodeName}</DialogDescription>
+        </DialogHeader>
+
+        <div className="space-y-4">
+          {/* IP 检测结果 */}
+          <div className="flex items-center justify-between rounded-md border border-[hsl(var(--border))] px-3 py-2">
+            <div>
+              {detectResult ? (
+                <>
+                  <p className="font-mono text-sm font-medium">{detectResult.ip}</p>
+                  <p className="text-[11px] text-[hsl(var(--muted-foreground))]">{detectResult.country_code} · {detectResult.city}</p>
+                </>
+              ) : (
+                <p className="text-[12px] text-[hsl(var(--muted-foreground))]">未检测</p>
+              )}
+              {latestRun && (
+                <span className={`mt-1 inline-flex items-center rounded px-1.5 py-0.5 text-[10px] font-medium ${sentinelStatusClass(latestRun.status)}`}>
+                  {sentinelStatusLabel(latestRun.status)}
+                </span>
+              )}
+            </div>
+            <div className="flex gap-2">
+              <Button size="sm" variant="outline" className="h-7 text-xs px-2" disabled={detectLoading || !loaded} onClick={handleDetect}>
+                {detectLoading ? <svg className="h-3 w-3 animate-spin" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><path d="M21 12a9 9 0 1 1-6.219-8.56" stroke="currentColor" strokeWidth={2} strokeLinecap="round"/></svg> : "检测 IP"}
+              </Button>
+              <Button size="sm" variant="outline" className="h-7 text-xs px-2" disabled={runLoading || !loaded} onClick={handleRun}>
+                {runLoading ? <svg className="h-3 w-3 animate-spin" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><path d="M21 12a9 9 0 1 1-6.219-8.56" stroke="currentColor" strokeWidth={2} strokeLinecap="round"/></svg> : "立即执行"}
+              </Button>
+            </div>
+          </div>
+
+          {/* 地区配置 */}
+          <div className="space-y-2">
+            <Label className="text-xs text-[hsl(var(--muted-foreground))]">地区设置</Label>
+            <Select value={isPreset ? draftCode : undefined} onValueChange={v => { const p = REGION_PRESETS.find(x => x.code === v); if (p) { setDraftCode(p.code); setDraftName(p.name); } }}>
+              <SelectTrigger className="h-8 text-xs"><SelectValue placeholder="— 选择预设 —" /></SelectTrigger>
+              <SelectContent>
+                {REGION_PRESETS.map(p => <SelectItem key={p.code} value={p.code} className="text-xs">{p.code} — {p.name}</SelectItem>)}
+              </SelectContent>
+            </Select>
+            <div className="grid grid-cols-2 gap-2">
+              <Input placeholder="代码（如 US）" value={draftCode} onChange={e => setDraftCode(e.target.value.toUpperCase())} className="h-8 text-xs" />
+              <Input placeholder="名称（如 United States）" value={draftName} onChange={e => setDraftName(e.target.value)} className="h-8 text-xs" />
+            </div>
+            <div className="flex items-center justify-between">
+              <p className="text-[11px] text-[hsl(var(--muted-foreground))]">已保存：{config.region_code || "—"} {config.region_name}</p>
+              <Button size="sm" variant="outline" className="h-7 text-xs px-3" disabled={configSaving || !loaded} onClick={handleSaveConfig}>
+                {configSaving ? "保存中…" : "保存"}
+              </Button>
+            </div>
+          </div>
+
+          {/* 执行记录 */}
+          <div>
+            <button className="flex w-full items-center justify-between py-1 text-xs text-[hsl(var(--muted-foreground))] hover:text-[hsl(var(--foreground))] transition-colors" onClick={() => setRunsExpanded(v => !v)}>
+              <span className="font-medium">最近执行记录</span>
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" className={`h-3.5 w-3.5 transition-transform ${runsExpanded ? "rotate-180" : ""}`}><polyline points="6 9 12 15 18 9" /></svg>
+            </button>
+            {runsExpanded && (
+              <div className="mt-1.5 rounded-md border border-[hsl(var(--border))] overflow-hidden">
+                {recentRuns.length === 0 ? (
+                  <p className="py-3 text-center text-xs text-[hsl(var(--muted-foreground))]">暂无记录</p>
+                ) : (
+                  <table className="w-full text-sm">
+                    <thead><tr className="border-b border-[hsl(var(--border))] bg-[hsl(var(--muted))]">
+                      <th className="py-1.5 pl-3 pr-2 text-left text-[10px] font-medium text-[hsl(var(--muted-foreground))]">时间</th>
+                      <th className="py-1.5 pr-2 text-left text-[10px] font-medium text-[hsl(var(--muted-foreground))]">触发</th>
+                      <th className="py-1.5 pr-2 text-left text-[10px] font-medium text-[hsl(var(--muted-foreground))]">状态</th>
+                      <th className="py-1.5 pr-3 text-right text-[10px] font-medium text-[hsl(var(--muted-foreground))]">耗时</th>
+                    </tr></thead>
+                    <tbody>{recentRuns.map(run => <SentinelRunRow key={run.id} run={run} />)}</tbody>
+                  </table>
+                )}
+              </div>
+            )}
+          </div>
+        </div>
+
+        <DialogFooter>
+          <DialogClose asChild><Button variant="outline" size="sm">关闭</Button></DialogClose>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+// ── SentinelScheduleBar ───────────────────────────────────────────
+
+function SentinelScheduleBar() {
+  const handleAuthError = useAuthErrorHandler();
+  const [schedule, setSchedule] = useState<SentinelSchedule | null>(null);
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [runningAll, setRunningAll] = useState(false);
+
+  useEffect(() => {
+    api.get<SentinelSchedule>("/ip-sentinel/schedule")
+      .then(setSchedule)
+      .catch(() => {});
+  }, []);
+
+  async function handleSave() {
+    const hours = parseInt(draft, 10);
+    if (isNaN(hours) || hours < 1) { toast("请输入有效的小时数（≥1）", "error"); return; }
+    setSaving(true);
+    try {
+      const res = await api.put<{ ok: boolean; interval_hours: number }>("/ip-sentinel/schedule", { interval_hours: hours });
+      setSchedule(prev => prev ? { ...prev, interval_hours: res.interval_hours } : null);
+      setEditing(false);
+      toast(`执行间隔已更新为 ${res.interval_hours} 小时`, "success");
+    } catch (err) { if (!handleAuthError(err)) toast("保存失败", "error"); }
+    finally { setSaving(false); }
+  }
+
+  return (
+    <div className="mb-4 flex flex-wrap items-center gap-x-4 gap-y-1.5 rounded-lg border border-[hsl(var(--border))] bg-[hsl(var(--card))] px-4 py-2.5 text-xs">
+      <span className="flex items-center gap-1.5 text-[hsl(var(--muted-foreground))]">
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" className="h-3.5 w-3.5"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" /></svg>
+        Sentinel 调度
+      </span>
+      <div className="h-3 w-px bg-[hsl(var(--border))] hidden sm:block" />
+      <div className="flex items-center gap-1.5">
+        <span className="text-[hsl(var(--muted-foreground))]">间隔</span>
+        {editing ? (
+          <div className="flex items-center gap-1">
+            <Input type="number" min={1} value={draft} onChange={e => setDraft(e.target.value)} onKeyDown={e => { if (e.key === "Enter") handleSave(); if (e.key === "Escape") setEditing(false); }} className="h-6 w-16 text-xs" autoFocus />
+            <span className="text-[hsl(var(--muted-foreground))]">h</span>
+            <Button size="sm" className="h-6 text-xs px-2" disabled={saving} onClick={handleSave}>{saving ? "…" : "确定"}</Button>
+            <Button size="sm" variant="ghost" className="h-6 text-xs px-1" onClick={() => setEditing(false)}>取消</Button>
+          </div>
+        ) : (
+          <button className="flex items-center gap-0.5 font-medium hover:text-[hsl(var(--primary))] transition-colors" onClick={() => { setDraft(String(schedule?.interval_hours ?? "1")); setEditing(true); }}>
+            {schedule ? `${schedule.interval_hours}h` : "--"}
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" className="h-3 w-3 opacity-50"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+          </button>
+        )}
+      </div>
+      <span className="text-[hsl(var(--muted-foreground))]">上次：<span className="text-[hsl(var(--foreground))]">{sentinelFormatTime(schedule?.last_run_at)}</span></span>
+      <span className="text-[hsl(var(--muted-foreground))]">下次：<span className="text-[hsl(var(--foreground))]">{sentinelFormatTime(schedule?.next_run_at)}</span></span>
+      <Button size="sm" variant="outline" className="h-6 text-xs px-2 ml-auto" disabled={runningAll} onClick={async () => {
+        setRunningAll(true);
+        try { await api.post("/ip-sentinel/run-all", {}); toast("已触发全部节点执行", "success"); }
+        catch (err) { if (!handleAuthError(err)) toast("触发失败", "error"); }
+        finally { setRunningAll(false); }
+      }}>
+        {runningAll ? "触发中…" : "全部执行"}
+      </Button>
+    </div>
+  );
+}
+
 function speedStyle(cur: number, prev: number): React.CSSProperties {
   if (cur === 0) return { color: "hsl(var(--muted-foreground))" };
   if (cur > prev) return { color: "#10b981" }; // emerald-500
@@ -1548,6 +1911,7 @@ function countryFlag(code: string): string {
 
 function NodeCard({ node, status, runtime, metrics, onEdit, onDelete, onOpenDetail, onRestart, onSpeedtest, speedtestLoading, speedtestResult, onCheck, checkLoading, checkResult, prevMetrics, onUpdate, updateLoading, onManualUpdate, latestVersion, geoInfo }: NodeCardProps) {
   const [tracerouteOpen, setTracerouteOpen] = useState(false);
+  const [sentinelOpen, setSentinelOpen] = useState(false);
   const totalTraffic = node.upload_bytes + node.download_bytes;
 
   const statusBadge = (() => {
@@ -1596,6 +1960,9 @@ function NodeCard({ node, status, runtime, metrics, onEdit, onDelete, onOpenDeta
               </DropdownMenuItem>
               <DropdownMenuItem onClick={() => setTracerouteOpen(true)}>
                 路由追踪
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => setSentinelOpen(true)}>
+                IP Sentinel
               </DropdownMenuItem>
               <DropdownMenuItem onClick={() => onUpdate(node)} disabled={updateLoading}>
                 {updateLoading ? "更新中…" : "更新节点"}
@@ -1781,6 +2148,7 @@ function NodeCard({ node, status, runtime, metrics, onEdit, onDelete, onOpenDeta
     </Card>
 
     <TracerouteDialog node={node} open={tracerouteOpen} onOpenChange={setTracerouteOpen} />
+    <IPSentinelDialog nodeId={node.id} nodeName={node.name} open={sentinelOpen} onOpenChange={setSentinelOpen} />
     </>
   );
 }
@@ -2158,6 +2526,8 @@ export default function NodesPage() {
           添加节点
         </Button>
       </div>
+
+      <SentinelScheduleBar />
 
       {/* ── Loading skeleton ────────────────────────────────────── */}
       {loading && (

@@ -24,7 +24,6 @@ import StatPage from "./routes/stat";
 import AnnouncementsPage from "./routes/announcements";
 import TicketsPage from "./routes/tickets";
 import DomainsPage from "./routes/domains";
-import IPSentinelPage from "./routes/ip-sentinel";
 import UserGroupsPage from "./routes/user-groups";
 import TraceRoutePage from "./routes/traceroute";
 import LatencyPage from "./routes/latency";
@@ -164,13 +163,6 @@ const domainsRoute = createRoute({
   beforeLoad: requireAuth,
 });
 
-const ipSentinelRoute = createRoute({
-  getParentRoute: () => rootRoute,
-  path: "/panel/ip-sentinel",
-  component: IPSentinelPage,
-  beforeLoad: requireAuth,
-});
-
 const userGroupsRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/panel/user-groups",
@@ -255,7 +247,6 @@ const routeTree = rootRoute.addChildren([
   announcementsRoute,
   ticketsRoute,
   domainsRoute,
-  ipSentinelRoute,
   userGroupsRoute,
   tracerouteRoute,
   latencyRoute,

@@ -213,11 +213,10 @@ function AuditLogsTab() {
         e.source_port || "-",
         e.protocol || "-",
         e.destination || "-",
-        e.remote_ip || "-",
         e.route_tag || "-",
       ].join("\t")
     );
-    const text = ["时间\t用户\t源IP\t源端口\t协议\t目标地址\t真实IP\t路由出口", ...lines].join("\n");
+    const text = ["时间\t用户\t源IP\t源端口\t协议\t目标地址\t路由出口", ...lines].join("\n");
     try {
       await navigator.clipboard.writeText(text);
       toast(`${entries.length} 条记录已复制到剪贴板`, "success");
@@ -357,7 +356,6 @@ function AuditLogsTab() {
                   <TableHead>源端口</TableHead>
                   <TableHead>协议</TableHead>
                   <TableHead>目标地址</TableHead>
-                  <TableHead>真实 IP</TableHead>
                   <TableHead>路由出口</TableHead>
                 </TableRow>
               </TableHeader>
@@ -372,7 +370,6 @@ function AuditLogsTab() {
                     <TableCell className="font-mono text-sm">{entry.source_port || "-"}</TableCell>
                     <TableCell className="text-sm">{entry.protocol || "-"}</TableCell>
                     <TableCell className="font-mono text-sm min-w-64">{entry.destination || "-"}</TableCell>
-                    <TableCell className="font-mono text-sm">{entry.remote_ip || "-"}</TableCell>
                     <TableCell className="text-sm">{entry.route_tag || "-"}</TableCell>
                   </TableRow>
                 ))}

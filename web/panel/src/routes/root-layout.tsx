@@ -25,7 +25,6 @@ const navItems = [
   { to: "/panel/sniproxy", label: "NodeGate", icon: GlobeIcon },
   { to: "/panel/traceroute", label: "Traceroute", icon: TracerouteIcon },
   { to: "/panel/latency", label: "Latency", icon: LatencyIcon },
-  { to: "/panel/ip-sentinel", label: "Sentinel", icon: IPSentinelIcon },
   { to: "/panel/audit", label: "Audit Logs", icon: ShieldIcon },
   { to: "/panel/plans", label: "Plans", icon: TagIcon },
   { to: "/panel/announcements", label: "Announcements", icon: AnnouncementIcon },
@@ -363,24 +362,6 @@ function RouteRuleIcon(props: React.SVGProps<SVGSVGElement>) {
       <circle cx="6" cy="19" r="3" />
       <path d="M9 19h8.5a3.5 3.5 0 0 0 0-7h-11a3.5 3.5 0 0 1 0-7H15" />
       <circle cx="18" cy="5" r="3" />
-    </svg>
-  );
-}
-
-function IPSentinelIcon(props: React.SVGProps<SVGSVGElement>) {
-  return (
-    <svg
-      xmlns="http://www.w3.org/2000/svg"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth={2}
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      {...props}
-    >
-      <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
-      <path d="m9 12 2 2 4-4" />
     </svg>
   );
 }
