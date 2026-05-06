@@ -33,6 +33,7 @@ import {
   Popover,
   PopoverTrigger,
   PopoverContent,
+  DatePicker,
   toast,
 } from "@/components/ui";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -869,13 +870,12 @@ export default function UsersPage() {
 
             {/* Expire date */}
             <div className="grid gap-2">
-              <Label htmlFor="create-expire">到期时间</Label>
-              <Input
-                id="create-expire"
-                type="date"
+              <Label>到期时间</Label>
+              <DatePicker
                 value={createExpireAt}
-                onChange={(e) => setCreateExpireAt(e.target.value)}
-                className="text-[hsl(var(--foreground))]"
+                onChange={setCreateExpireAt}
+                placeholder="不限期"
+                fromDate={new Date()}
               />
             </div>
 
@@ -1027,13 +1027,11 @@ export default function UsersPage() {
 
             {/* Expire date */}
             <div className="grid gap-2">
-              <Label htmlFor="edit-expire">到期时间</Label>
-              <Input
-                id="edit-expire"
-                type="date"
+              <Label>到期时间</Label>
+              <DatePicker
                 value={editExpireAt}
-                onChange={(e) => setEditExpireAt(e.target.value)}
-                className="text-[hsl(var(--foreground))]"
+                onChange={setEditExpireAt}
+                placeholder="不限期"
               />
             </div>
 
@@ -1060,13 +1058,11 @@ export default function UsersPage() {
             {/* Last reset at */}
             {editResetStrategy !== "no_reset" && (
               <div className="grid gap-2">
-                <Label htmlFor="edit-last-reset">上次重置时间</Label>
-                <Input
-                  id="edit-last-reset"
-                  type="date"
+                <Label>上次重置时间</Label>
+                <DatePicker
                   value={editLastResetAt}
-                  onChange={(e) => setEditLastResetAt(e.target.value)}
-                  className="text-[hsl(var(--foreground))]"
+                  onChange={setEditLastResetAt}
+                  placeholder="选择日期"
                 />
                 {(() => {
                   const ref = editLastResetAt || (editingUser?.created_at ?? "");
@@ -1205,13 +1201,11 @@ export default function UsersPage() {
             {/* On Hold Expire At — only when status is on_hold */}
             {editStatus === "on_hold" && (
               <div className="grid gap-2">
-                <Label htmlFor="edit-on-hold-expire">保留到期时间</Label>
-                <Input
-                  id="edit-on-hold-expire"
-                  type="date"
+                <Label>保留到期时间</Label>
+                <DatePicker
                   value={editOnHoldExpireAt}
-                  onChange={(e) => setEditOnHoldExpireAt(e.target.value)}
-                  className="text-[hsl(var(--foreground))]"
+                  onChange={setEditOnHoldExpireAt}
+                  placeholder="选择日期"
                 />
               </div>
             )}

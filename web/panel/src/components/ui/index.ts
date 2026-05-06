@@ -79,3 +79,5 @@ export { ScrollArea, ScrollBar } from "./scroll-area";
 export { MultiSelect, type MultiSelectOption, SingleSelect, type SingleSelectOption } from "./multi-select";
 export { JsonViewer } from "./json-viewer";
 export { Sheet, SheetTrigger, SheetClose, SheetContent, SheetHeader, SheetTitle, SheetDescription } from "./sheet";
+export { Calendar, type CalendarProps } from "./calendar";
+export { DatePicker } from "./date-picker";
