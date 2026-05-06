@@ -44,7 +44,7 @@ import {
   toast,
 } from "@/components/ui";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { api, cfApi, nodeDomainApi, ixApi, AuthError } from "@/lib/api";
+import { api, cfApi, nodeDomainApi, AuthError } from "@/lib/api";
 import { hostSubName } from "@/lib/format";
 import { clearToken } from "@/lib/auth";
 import type {
@@ -64,7 +64,6 @@ import type {
   SSOutboundOptionsResponse,
   CFDomain,
   NodeDomain,
-  IXDomain,
   UserGroup,
   UserGroupsResponse,
 } from "@/lib/types";
@@ -842,102 +841,6 @@ function IconCloudPick({ className }: { className?: string }) {
   );
 }
 
-function IconRelay({ className }: { className?: string }) {
-  return (
-    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" className={className}>
-      <circle cx="6" cy="12" r="3" />
-      <circle cx="18" cy="12" r="3" />
-      <line x1="9" y1="12" x2="15" y2="12" />
-    </svg>
-  );
-}
-
-// ── IX Domain Picker Dialog ──────────────────────────────────────
-
-interface IXPickerDialogProps {
-  open: boolean;
-  onOpenChange: (open: boolean) => void;
-  onSelect: (domain: string) => void;
-  handleAuthError: (err: unknown) => boolean;
-}
-
-function IXPickerDialog({ open, onOpenChange, onSelect, handleAuthError }: IXPickerDialogProps) {
-  const navigate = useNavigate();
-  const [domains, setDomains] = useState<IXDomain[]>([]);
-  const [loading, setLoading] = useState(false);
-
-  useEffect(() => {
-    if (!open) return;
-    setLoading(true);
-    ixApi.list()
-      .then((res) => setDomains(res.ix_domains ?? []))
-      .catch((err) => {
-        if (!handleAuthError(err)) {
-          toast.error("加载 IX 域名列表失败");
-        }
-      })
-      .finally(() => setLoading(false));
-  }, [open, handleAuthError]);
-
-  return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-h-[80vh] overflow-y-auto sm:max-w-md">
-        <DialogHeader>
-          <DialogTitle>从 IX 域名选择</DialogTitle>
-          <DialogDescription>选择 IX 中转域名，自动填充地址和 SNI。</DialogDescription>
-        </DialogHeader>
-
-        {loading ? (
-          <div className="flex items-center justify-center py-8">
-            <IconLoader className="h-5 w-5 animate-spin text-[hsl(var(--muted-foreground))]" />
-          </div>
-        ) : domains.length === 0 ? (
-          <div className="py-4 text-center text-sm text-[hsl(var(--muted-foreground))]">
-            <p>暂无 IX 域名。</p>
-            <Button
-              type="button"
-              variant="link"
-              className="mt-2"
-              onClick={() => {
-                onOpenChange(false);
-                navigate({ to: "/panel/domains" });
-              }}
-            >
-              前往域名管理
-            </Button>
-          </div>
-        ) : (
-          <div className="space-y-1">
-            {domains.map((d) => (
-              <button
-                key={d.id}
-                type="button"
-                className="flex w-full flex-col rounded-md border border-[hsl(var(--border))] px-3 py-2.5 text-left text-sm hover:bg-[hsl(var(--accent))]"
-                onClick={() => {
-                  onSelect(d.domain);
-                  onOpenChange(false);
-                }}
-              >
-                <span className="font-medium">{d.name}</span>
-                <span className="font-mono text-xs text-[hsl(var(--muted-foreground))]">{d.domain}</span>
-                {d.remark && (
-                  <span className="mt-0.5 text-xs text-[hsl(var(--muted-foreground))]">{d.remark}</span>
-                )}
-              </button>
-            ))}
-          </div>
-        )}
-
-        <DialogFooter>
-          <DialogClose asChild>
-            <Button type="button" variant="outline">取消</Button>
-          </DialogClose>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
-  );
-}
-
 // ── CF Domain Picker Dialog ─────────────────────────────────────
 
 interface CFDomainPickerProps {
@@ -1127,7 +1030,6 @@ function HostFormDialog({
   const [autoGenApplying, setAutoGenApplying] = useState(false);
   const [geoLooking, setGeoLooking] = useState(false);
   const [pickerOpen, setPickerOpen] = useState(false);
-  const [ixPickerOpen, setIxPickerOpen] = useState(false);
   // 前置节点实时 sniproxy 启用状态：null=未查询/已清除，true=enabled，false=未启用
   const [relaySniproxyEnabled, setRelaySniproxyEnabled] = useState<boolean | null>(null);
 
@@ -1354,16 +1256,6 @@ function HostFormDialog({
                   onClick={handleAutoGen}
                 >
                   <IconWand className="h-4 w-4" />
-                </Button>
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="icon"
-                  className="shrink-0"
-                  title="从 IX 域名选择"
-                  onClick={() => setIxPickerOpen(true)}
-                >
-                  <IconRelay className="h-4 w-4" />
                 </Button>
               </div>
 
@@ -1773,15 +1665,6 @@ function HostFormDialog({
       }}
       handleAuthError={handleAuthError}
       nodeId={nodeId}
-    />
-    <IXPickerDialog
-      open={ixPickerOpen}
-      onOpenChange={setIxPickerOpen}
-      onSelect={(domain) => {
-        updateField("address", domain);
-        updateField("sni", domain);
-      }}
-      handleAuthError={handleAuthError}
     />
     </>
   );
