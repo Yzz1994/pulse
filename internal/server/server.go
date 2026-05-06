@@ -26,6 +26,7 @@ import (
 	"pulse/internal/idgen"
 	"pulse/internal/inbounds"
 	"pulse/internal/jobs"
+	"pulse/internal/nodehub"
 	"pulse/internal/nodes"
 	"pulse/internal/outbounds"
 	"pulse/internal/panel"
@@ -42,9 +43,6 @@ import (
 func Run() error {
 	cfg := config.Load()
 
-	if err := cert.EnsureSelfSignedKeyPair(cfg.ServerNodeClientCertFile, cfg.ServerNodeClientKeyFile, "pulse-server-node-client"); err != nil {
-		return err
-	}
 	db, err := pgStore.Open(cfg.DatabaseURL)
 	if err != nil {
 		return err
@@ -60,11 +58,11 @@ func Run() error {
 	routeRuleStore := db.RouteRuleStore()
 	settingsStore := db.SettingsStore()
 	geoipDB := geoip.NewDB(filepath.Join(cfg.DataDir, "geoip"))
-	authManager := auth.NewManager(cfg.AdminUsername, cfg.AdminPassword, db.SessionStore())
-	clientOptions := nodes.ClientOptions{
-		ClientCertFile: cfg.ServerNodeClientCertFile,
-		ClientKeyFile:  cfg.ServerNodeClientKeyFile,
-	}
+	authManager := auth.NewManager(db.SessionStore(), &adminStoreAdapter{userStore})
+
+	// usageBuf 接收来自 node 的主动 push usage 帧；SyncUsage job 优先从此 buffer
+	// drain 累计 delta。client-cleanup 完成后已彻底移除 HTTP fallback。
+	usageBuf := nodes.NewUsageBuffer()
 
 	// 启动调度器
 	applyOpts := jobs.ApplyOptions{
@@ -75,7 +73,7 @@ func Run() error {
 		Settings:       db.SettingsStore(),
 		PanelPort:      serverapi.ServerPort(),
 	}
-	nodeAPI := serverapi.NewWithUsers(store, userStore, inboundStore, outboundStore, clientOptions, applyOpts, settingsStore)
+	nodeAPI := serverapi.NewWithUsers(store, userStore, inboundStore, outboundStore, applyOpts, settingsStore)
 	nodeAPI.SetAccessLogStore(accessLogStore)
 	nodeAPI.SetAuditRuleStore(auditRuleStore)
 	scheduler := jobs.NewScheduler(nil)
@@ -83,7 +81,7 @@ func Run() error {
 		Name:     "sync-usage",
 		Interval: 30 * time.Second,
 		Fn: func(ctx context.Context) error {
-			_, err := jobs.SyncUsage(ctx, userStore, store, inboundStore, nodeAPI.Dial, applyOpts, outboundStore)
+			_, err := jobs.SyncUsageWith(ctx, userStore, store, inboundStore, nodeAPI.Dial, applyOpts, outboundStore, usageBuf)
 			return err
 		},
 	})
@@ -192,7 +190,7 @@ func Run() error {
 		Name:     "sample-latency",
 		Interval: 1 * time.Minute,
 		Fn: func(ctx context.Context) error {
-			return jobs.SampleLatency(ctx, store, clientOptions)
+			return jobs.SampleLatency(ctx, store, nodeAPI.Dial)
 		},
 	})
 
@@ -201,6 +199,17 @@ func Run() error {
 		Interval: 24 * time.Hour,
 		Fn: func(ctx context.Context) error {
 			return jobs.CleanupLatencySamples(ctx, store, 7)
+		},
+	})
+
+	scheduler.Add(jobs.Job{
+		Name:     "cleanup-enroll-tokens",
+		Interval: 1 * time.Hour,
+		Fn: func(ctx context.Context) error {
+			// 删除过期超过 24h 的 token，保留近期记录便于排查。
+			cutoff := time.Now().Add(-24 * time.Hour)
+			_, err := db.EnrollTokenStore().CleanupExpired(ctx, cutoff)
+			return err
 		},
 	})
 
@@ -216,6 +225,8 @@ func Run() error {
 			"role":    "control-plane",
 		})
 	})
+	// setup 端点（公开，无需认证）
+	serverapi.RegisterSetupAPI(mux, userStore)
 	mux.HandleFunc("/v1/auth/login", authManager.HandleLogin)
 	mux.Handle("/v1/auth/logout", authManager.Middleware(http.HandlerFunc(authManager.HandleLogout)))
 	mux.Handle("/v1/auth/me", authManager.Middleware(http.HandlerFunc(authManager.HandleMe)))
@@ -1033,6 +1044,16 @@ func Run() error {
 
 	panelHandler.RegisterPublicRoutes(mux)
 
+	// Node enrollment 端点（POST /v1/node-enroll）：节点首次接入时通过一次性 token
+	// 提交 CSR 换取由 Node CA 签发的客户端证书，用于后续 gRPC mTLS 长连接。
+	// 不走 admin 鉴权 —— token 本身即凭据。
+	nodeCA, err := cert.LoadOrCreateNodeCA(cfg.NodeCACertFile, cfg.NodeCAKeyFile)
+	if err != nil {
+		return fmt.Errorf("load/create node CA: %w", err)
+	}
+	serverapi.RegisterEnrollEndpoint(mux, nodeCA, db.EnrollTokenStore(), cfg.NodeGRPCURL)
+	serverapi.RegisterNodeEnrollTokenEndpoint(protectedV1, store, db.EnrollTokenStore(), nil)
+
 	protectedV1.HandleFunc("POST /v1/system/nodes/apply", func(w http.ResponseWriter, r *http.Request) {
 		allNodes, err := store.List()
 		if err != nil {
@@ -1064,12 +1085,14 @@ func Run() error {
 		return fmt.Errorf("init SPA: %w", err)
 	}
 
-	nodeAPI2 := serverapi.NewWithUsers(store, userStore, inboundStore, outboundStore, clientOptions, applyOpts, settingsStore)
+	nodeAPI2 := serverapi.NewWithUsers(store, userStore, inboundStore, outboundStore, applyOpts, settingsStore)
 	nodeAPI2.SetAccessLogStore(accessLogStore)
 	nodeAPI2.SetAuditRuleStore(auditRuleStore)
 	nodeAPI2.Register(protectedV1)
-	serverapi.RegisterUsersAPI(protectedV1, userStore, store, inboundStore, outboundStore, clientOptions, applyOpts, geoipDB)
-	serverapi.RegisterSystemAPIWithInbounds(protectedV1, userStore, store, inboundStore, clientOptions, applyOpts)
+	// 改密端点（需要认证）
+	serverapi.RegisterAuthCredentialsAPI(protectedV1, userStore, authManager.DeleteAllSessions)
+	serverapi.RegisterUsersAPI(protectedV1, userStore, store, inboundStore, outboundStore, applyOpts, geoipDB, db.PortalSessionStore())
+	serverapi.RegisterSystemAPIWithInbounds(protectedV1, userStore, store, inboundStore, applyOpts)
 	serverapi.RegisterInboundsAPI(protectedV1, inboundStore, userStore, store, outboundStore, nodeAPI.Dial, applyOpts, nodeAPI2.TriggerNodeSync)
 	serverapi.RegisterOutboundsAPI(protectedV1, outboundStore)
 	serverapi.RegisterRouteRulesAPI(protectedV1, routeRuleStore, store, userStore, inboundStore, outboundStore, nodeAPI.Dial, applyOpts)
@@ -1081,9 +1104,31 @@ func Run() error {
 	serverapi.RegisterUpdateAPI(protectedV1, settingsStore)
 	serverapi.RegisterGeoIPAPI(protectedV1, settingsStore, store, geoipDB)
 	serverapi.RegisterIPSentinelAPI(protectedV1, db.IPSentinelStore(), nodeAPI, geoipDB, store)
+
+	// 实例化 nodehub.Hub 并在后台启动 gRPC 监听（mTLS by NodeCA）。
+	// PushHandler 当前订阅 usage_push（node 主动推送的流量帧 → UsageBuffer）；
+	// hello / log / traceroute_hop 待 self-sync 与 sse-bridge todo 接入。
+	hubPushHandler := &nodehub.MultiPushHandler{
+		UsagePushHandler: func(nodeID string, seq uint64, body []byte) error {
+			var stats nodes.UsageStats
+			if len(body) > 0 {
+				if err := json.Unmarshal(body, &stats); err != nil {
+					log.Printf("nodehub: usage_push decode from %s seq=%d: %v", nodeID, seq, err)
+					return err
+				}
+			}
+			return usageBuf.Append(nodeID, seq, stats)
+		},
+	}
+	nodeHub := startNodeHub(context.Background(), cfg.NodeGRPCAddr, "pulse-grpc-server", []string{"localhost", "127.0.0.1"}, nodeCA, hubPushHandler)
+	if nodeHub != nil {
+		serverapi.RegisterNodeHubMetrics(protectedV1, nodeHub)
+		// 让 serverapi 的 clientFactory 优先用 hub 构造 Client。
+		nodeAPI.SetNodeHub(nodeHub)
+		nodeAPI2.SetNodeHub(nodeHub)
+	}
+	mux.Handle("/v1/system/nodehub/", authManager.Middleware(protectedV1))
 	mux.Handle("/v1/tools/", authManager.Middleware(protectedV1))
-	mux.Handle("/v1/node/settings", authManager.Middleware(protectedV1))
-	mux.Handle("/v1/node/settings.pem", authManager.Middleware(protectedV1))
 	mux.Handle("/v1/system/info", authManager.Middleware(protectedV1))
 	mux.Handle("/v1/system/db/stats", authManager.Middleware(protectedV1))
 	mux.Handle("/v1/system/db/cleanup", authManager.Middleware(protectedV1))
@@ -1130,12 +1175,13 @@ func Run() error {
 	mux.Handle("/v1/node-domains/", authManager.Middleware(protectedV1))
 	mux.Handle("/v1/ip-sentinel/", authManager.Middleware(protectedV1))
 
-	// Public portal API (no admin auth, uses sub_token)
-	serverapi.RegisterPortalAPI(mux, userStore, store, inboundStore, outboundStore, settingsStore, db.PlanStore(), annStore, ticketStore, uploadsDir)
+	mux.Handle("/v1/auth/credentials", authManager.Middleware(protectedV1))
 
-	// 节点自注册（公开）+ 安装证书查询（受保护）
-	serverapi.RegisterNodeRegisterAPI(mux, protectedV1, store, cfg.ServerNodeClientCertFile, nodeAPI2.EvictClient)
-	mux.Handle("/v1/node-setup/cert", authManager.Middleware(protectedV1))
+	// Public portal API (no admin auth, uses sub_token)
+	serverapi.RegisterPortalAPI(mux, userStore, store, inboundStore, outboundStore, settingsStore, db.PlanStore(), annStore, ticketStore, db.PortalSessionStore(), uploadsDir)
+
+	// 节点自注册（公开，仅用于节点上报 BaseURL；mTLS 客户端证书已由 enrollment 流程取代）
+	serverapi.RegisterNodeRegisterAPI(mux, store, nodeAPI2.EvictClient)
 
 	// SPA catch-all: must be registered last
 	mux.Handle("/", spaHandler)
@@ -1210,4 +1256,15 @@ func writeJSON(w http.ResponseWriter, status int, payload any) {
 	if err := json.NewEncoder(w).Encode(payload); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 	}
+}
+
+// adminStoreAdapter 将 users.Store 适配为 auth.AdminStore 接口。
+type adminStoreAdapter struct{ s users.Store }
+
+func (a *adminStoreAdapter) GetAdminUser() (string, string, string, bool) {
+	u, err := a.s.GetAdminUser()
+	if err != nil {
+		return "", "", "", false
+	}
+	return u.ID, u.Username, u.Password, true
 }

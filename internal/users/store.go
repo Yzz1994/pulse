@@ -54,6 +54,11 @@ type User struct {
 	// Secret 用户级 Trojan/AnyTLS/SS 密码，所有节点共用。
 	// SS 2022 通过 HMAC-SHA256 从 Secret 派生固定长度 PSK（节点配置和订阅链接派生逻辑一致）。
 	Secret string `json:"secret,omitempty"`
+	// Password 门户密码的 bcrypt hash，空表示无密码保护。
+	// 不对外 JSON 序列化，避免泄露。
+	Password string `json:"-"`
+	// IsAdmin 标记此用户为管理员，用于控制面登录鉴权。
+	IsAdmin bool `json:"is_admin"`
 }
 
 // UserInbound 用户对某个具体 inbound 的访问凭据（一条记录对应一个 (user_id, inbound_id) 对）。
@@ -91,6 +96,16 @@ type Store interface {
 	// SetCredentials 设置用户级全局凭证（UUID 用于 VLESS，Secret 用于 Trojan/AnyTLS/SS）。
 	// 所有节点的 xray 配置将使用这两个值，实现跨节点密码统一。
 	SetCredentials(userID, uuid, secret string) error
+	// SetPassword 设置门户密码（bcrypt hash），传空字符串表示清除密码。
+	SetPassword(userID, hash string) error
+	// GetPasswordBySubToken 根据 sub_token 返回用户 ID 和门户密码 hash，供登录验证使用。
+	GetPasswordBySubToken(subToken string) (userID string, hash string, err error)
+	// GetAdminUser 返回第一个 is_admin=true 的用户，没找到返回 ErrUserNotFound。
+	GetAdminUser() (User, error)
+	// SetIsAdmin 设置指定用户的管理员标记。
+	SetIsAdmin(userID string, isAdmin bool) error
+	// UpdateUsername 只更新用户名，不影响其他字段。
+	UpdateUsername(userID, username string) error
 
 	// UserInbound CRUD（每个用户在每个 inbound 上只有一条凭据记录）
 	UpsertUserInbound(inbound UserInbound) (UserInbound, error)

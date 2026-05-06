@@ -234,6 +234,10 @@ func (db *DB) AuditRuleStore() *AuditRuleStore {
 	return &AuditRuleStore{db: db.conn}
 }
 
+func (db *DB) PortalSessionStore() *PortalSessionStore {
+	return &PortalSessionStore{db: db.conn}
+}
+
 // DBStats 数据库文件、性能及各表行数指标。
 type DBStats struct {
 	FileSizeBytes int64            `json:"file_size_bytes"`
@@ -699,6 +703,25 @@ func (db *DB) init() error {
 			enabled    BOOLEAN NOT NULL DEFAULT TRUE,
 			created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 		)`,
+		`ALTER TABLE users ADD COLUMN IF NOT EXISTS password TEXT NOT NULL DEFAULT ''`,
+		`ALTER TABLE users ADD COLUMN IF NOT EXISTS is_admin BOOLEAN NOT NULL DEFAULT FALSE`,
+		`CREATE UNIQUE INDEX IF NOT EXISTS users_one_admin ON users(is_admin) WHERE is_admin = TRUE`,
+		// portal_sessions：用户门户密码登录 session
+		`CREATE TABLE IF NOT EXISTS portal_sessions (
+			token      TEXT PRIMARY KEY,
+			user_id    TEXT NOT NULL,
+			expires_at TIMESTAMPTZ NOT NULL
+		)`,
+		`ALTER TABLE portal_sessions ADD COLUMN IF NOT EXISTS expires_at TIMESTAMPTZ`,
+		// enroll_tokens：节点 enrollment 一次性令牌
+		`CREATE TABLE IF NOT EXISTS enroll_tokens (
+			token        TEXT PRIMARY KEY,
+			node_id      TEXT NOT NULL,
+			expires_at   TIMESTAMPTZ NOT NULL,
+			consumed_at  TIMESTAMPTZ,
+			created_at   TIMESTAMPTZ NOT NULL DEFAULT NOW()
+		)`,
+		`CREATE INDEX IF NOT EXISTS idx_enroll_tokens_expires ON enroll_tokens(expires_at)`,
 	}
 
 	for _, stmt := range stmts {

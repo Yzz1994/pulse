@@ -2,11 +2,8 @@ package nodeapi
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"net"
-	"net/http"
-	"strconv"
 	"strings"
 	"syscall"
 	"time"
@@ -31,106 +28,109 @@ const (
 	tracerouteTotalLimit = 120 * time.Second
 )
 
-func (a *API) handleTraceroute(w http.ResponseWriter, r *http.Request) {
-	host := strings.TrimSpace(r.URL.Query().Get("host"))
-	if host == "" {
-		writeJSON(w, http.StatusBadRequest, map[string]any{"error": "host 参数不能为空"})
-		return
-	}
-	if strings.ContainsAny(host, " ;|&`$(){}[]<>\\'\"") {
-		writeJSON(w, http.StatusBadRequest, map[string]any{"error": "host 包含非法字符"})
-		return
-	}
-
-	method := r.URL.Query().Get("method")
-	if method != "tcp" {
-		method = "icmp"
-	}
-
-	port := 80
-	if p := r.URL.Query().Get("port"); p != "" {
-		if v, err := strconv.Atoi(p); err == nil && v > 0 && v <= 65535 {
-			port = v
-		}
-	}
-
-	flusher, ok := w.(http.Flusher)
-	if !ok {
-		writeJSON(w, http.StatusInternalServerError, map[string]any{"error": "streaming not supported"})
-		return
-	}
-
-	w.Header().Set("Content-Type", "text/event-stream")
-	w.Header().Set("Cache-Control", "no-cache")
-	w.Header().Set("X-Accel-Buffering", "no")
-
-	// 解析目标 IP
-	addrs, err := net.DefaultResolver.LookupHost(r.Context(), host)
-	if err != nil || len(addrs) == 0 {
-		sendSSEError(w, flusher, fmt.Sprintf("DNS 解析失败: %v", err))
-		return
-	}
-	destIP := net.ParseIP(addrs[0])
-	isIPv6 := destIP.To4() == nil
-
-	ctx, cancel := context.WithTimeout(r.Context(), tracerouteTotalLimit)
-	defer cancel()
-
-	hopCh := make(chan TracerouteHop, tracerouteMaxHops)
-	doneCh := make(chan error, 1)
-
-	go func() {
-		var e error
-		if method == "tcp" {
-			if isIPv6 {
-				e = traceTCPv6(ctx, destIP, port, hopCh)
-			} else {
-				e = traceTCPv4(ctx, destIP.To4(), port, hopCh)
-			}
-		} else {
-			if isIPv6 {
-				e = traceICMPv6(ctx, destIP, hopCh)
-			} else {
-				e = traceICMPv4(ctx, destIP.To4(), hopCh)
-			}
-		}
-		doneCh <- e
-	}()
-
-	for {
-		select {
-		case hop, ok := <-hopCh:
-			if !ok {
-				hopCh = nil
-				continue
-			}
-			b, _ := json.Marshal(hop)
-			fmt.Fprintf(w, "data: %s\n\n", b)
-			flusher.Flush()
-		case err := <-doneCh:
-			// 排空剩余 hop
-			for len(hopCh) > 0 {
-				hop := <-hopCh
-				b, _ := json.Marshal(hop)
-				fmt.Fprintf(w, "data: %s\n\n", b)
-			}
-			if err != nil {
-				sendSSEError(w, flusher, err.Error())
-			} else {
-				fmt.Fprintf(w, "event: done\ndata: {}\n\n")
-				flusher.Flush()
-			}
-			return
-		case <-r.Context().Done():
-			return
-		}
-	}
+// TracerouteRequest 是 traceroute 调用的输入参数。
+type TracerouteRequest struct {
+	Host   string `json:"host"`
+	Method string `json:"method"` // "icmp" | "tcp"；其他值视为 "icmp"
+	Port   int    `json:"port"`   // 仅 tcp 模式有效；<=0 时默认 80
 }
 
-func sendSSEError(w http.ResponseWriter, f http.Flusher, msg string) {
-	b, _ := json.Marshal(map[string]string{"error": msg})
-	fmt.Fprintf(w, "event: error\ndata: %s\n\n", b)
-	f.Flush()
+// TracerouteEvent 是 TracerouteHops 通道中流出的一帧。
+// Hop != nil 表示一跳；Err != "" 表示发生错误（之后通道随即关闭）。
+type TracerouteEvent struct {
+	Hop *TracerouteHop
+	Err string
+}
+
+// TracerouteHops 启动一次 traceroute，将每跳与终态（错误/完成）通过 channel 投递。
+// 通道在追踪结束（reach 或超时）或 ctx 取消后关闭。
+func (a *API) TracerouteHops(ctx context.Context, req TracerouteRequest) <-chan TracerouteEvent {
+	out := make(chan TracerouteEvent, tracerouteMaxHops+2)
+	go func() {
+		defer close(out)
+		host := strings.TrimSpace(req.Host)
+		if host == "" {
+			out <- TracerouteEvent{Err: "host 参数不能为空"}
+			return
+		}
+		if strings.ContainsAny(host, " ;|&`$(){}[]<>\\'\"") {
+			out <- TracerouteEvent{Err: "host 包含非法字符"}
+			return
+		}
+		method := req.Method
+		if method != "tcp" {
+			method = "icmp"
+		}
+		port := req.Port
+		if port <= 0 || port > 65535 {
+			port = 80
+		}
+
+		addrs, err := net.DefaultResolver.LookupHost(ctx, host)
+		if err != nil || len(addrs) == 0 {
+			out <- TracerouteEvent{Err: fmt.Sprintf("DNS 解析失败: %v", err)}
+			return
+		}
+		destIP := net.ParseIP(addrs[0])
+		isIPv6 := destIP.To4() == nil
+
+		runCtx, cancel := context.WithTimeout(ctx, tracerouteTotalLimit)
+		defer cancel()
+
+		hopCh := make(chan TracerouteHop, tracerouteMaxHops)
+		doneCh := make(chan error, 1)
+		go func() {
+			var e error
+			if method == "tcp" {
+				if isIPv6 {
+					e = traceTCPv6(runCtx, destIP, port, hopCh)
+				} else {
+					e = traceTCPv4(runCtx, destIP.To4(), port, hopCh)
+				}
+			} else {
+				if isIPv6 {
+					e = traceICMPv6(runCtx, destIP, hopCh)
+				} else {
+					e = traceICMPv4(runCtx, destIP.To4(), hopCh)
+				}
+			}
+			doneCh <- e
+		}()
+
+		for {
+			select {
+			case hop, ok := <-hopCh:
+				if !ok {
+					hopCh = nil
+					continue
+				}
+				h := hop
+				select {
+				case out <- TracerouteEvent{Hop: &h}:
+				case <-ctx.Done():
+					return
+				}
+			case e := <-doneCh:
+				// 排空剩余 hop
+				for len(hopCh) > 0 {
+					hop := <-hopCh
+					h := hop
+					select {
+					case out <- TracerouteEvent{Hop: &h}:
+					case <-ctx.Done():
+						return
+					}
+				}
+				if e != nil {
+					out <- TracerouteEvent{Err: e.Error()}
+				}
+				return
+			case <-ctx.Done():
+				return
+			}
+		}
+	}()
+	return out
 }
 
 // ── ICMP traceroute ──────────────────────────────────────────────

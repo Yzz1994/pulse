@@ -8,6 +8,7 @@ import {
 import { isAuthenticated } from "./lib/auth";
 import RootLayout from "./routes/root-layout";
 import LoginPage from "./routes/login";
+import SetupPage from "./routes/setup";
 import DashboardPage from "./routes/dashboard";
 import UsersPage from "./routes/users";
 import NodesPage from "./routes/nodes";
@@ -37,6 +38,18 @@ function requireAuth() {
   }
 }
 
+/* ── Setup status helper ──────────────────────────────────────── */
+
+async function fetchSetupStatus(): Promise<boolean> {
+  try {
+    const res = await fetch("/v1/auth/setup-status");
+    const data = await res.json();
+    return Boolean(data.needs_setup);
+  } catch {
+    return false;
+  }
+}
+
 /* ── Root ─────────────────────────────────────────────────────── */
 
 const rootRoute = createRootRoute({
@@ -46,15 +59,36 @@ const rootRoute = createRootRoute({
   ),
 });
 
+/* ── Setup (standalone, no sidebar) ───────────────────────────── */
+
+const setupRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/panel/setup",
+  component: SetupPage,
+  beforeLoad: async () => {
+    const needsSetup = await fetchSetupStatus();
+    // 若已有管理员，不需要 setup，跳转到 login
+    if (!needsSetup) {
+      throw redirect({ to: "/panel/login" });
+    }
+  },
+});
+
 /* ── Login (standalone, no sidebar) ───────────────────────────── */
 
 const loginRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/panel/login",
   component: LoginPage,
-  beforeLoad: () => {
+  beforeLoad: async () => {
+    // 若已登录，直接进 dashboard
     if (isAuthenticated()) {
       throw redirect({ to: "/panel/dashboard" });
+    }
+    // 若尚未初始化，跳转到 setup
+    const needsSetup = await fetchSetupStatus();
+    if (needsSetup) {
+      throw redirect({ to: "/panel/setup" });
     }
   },
 });
@@ -234,6 +268,7 @@ const statRoute = createRoute({
 const routeTree = rootRoute.addChildren([
   indexRoute,
   panelIndexRoute,
+  setupRoute,
   loginRoute,
   dashboardRoute,
   usersRoute,

@@ -1,32 +1,75 @@
 package nodes
 
 import (
-	"bytes"
 	"context"
-	"crypto/tls"
-	"crypto/x509"
 	"encoding/json"
-	"encoding/pem"
+	"errors"
 	"fmt"
 	"io"
-	"net"
-	"net/http"
-	"net/url"
 	"strings"
 	"time"
 
 	"pulse/internal/ipsentinel"
 )
 
-type Client struct {
-	baseURL    string
-	httpClient *http.Client
-	initErr    error
+// ErrNodeOffline 表示目标节点当前没有活跃 gRPC 长连接（hub 不知道该节点）。
+// 与 nodehub.ErrNodeOffline 等价但属于 nodes 包，调用方（jobs 等）只依赖 nodes。
+var ErrNodeOffline = errors.New("nodes: node offline")
+
+// ErrHubNotConfigured 表示 Client 未注入 hub。生产环境不应触发——
+// server.Run 启动时会通过 SetNodeHub 注入。仅用于偏执检查与单测。
+var ErrHubNotConfigured = errors.New("nodes: hub not configured")
+
+// HubCaller 抽象 nodehub.Hub.Call，便于测试时注入 mock。
+// 生产环境由 *nodehub.Hub 实现。
+type HubCaller interface {
+	Call(ctx context.Context, nodeID, method string, body any) (json.RawMessage, error)
 }
 
-type ClientOptions struct {
-	ClientCertFile string
-	ClientKeyFile  string
+// HubStream 是 hub 流式调用返回的最小接口。生产实现由 nodehub 注册，
+// 测试可以注入 mock。
+type HubStream interface {
+	Frames() <-chan HubStreamFrame
+	Done() <-chan struct{}
+	Err() error
+	Close()
+}
+
+// HubStreamFrame 与 nodehub.StreamFrame 字段对齐。
+type HubStreamFrame struct {
+	Event string
+	Body  json.RawMessage
+}
+
+// HubStreamFunc 是 nodehub.Hub.CallStream 的适配函数签名。
+// 由 nodehub 包通过 RegisterHubStreamCaller 注入，避免 nodes 包反向 import nodehub。
+type HubStreamFunc func(ctx context.Context, hub any, nodeID, method string, body any) (HubStream, error)
+
+var hubStreamFn HubStreamFunc
+
+// RegisterHubStreamCaller 由 nodehub 包在 init 中调用，注册"如何用任意 hub 对象
+// 发起一次流式调用"的适配函数。未注册时，LogsStream/TracerouteStream 会返回错误。
+func RegisterHubStreamCaller(fn HubStreamFunc) { hubStreamFn = fn }
+
+// hubOfflineErrSentinels 由各包注册的"节点离线"sentinel 错误集合。
+// callHub 用 errors.Is 探测它（生产中由 nodehub.ErrNodeOffline 提供）。
+// 单独引出一个变量，让 nodes 包不直接 import nodehub。
+var hubOfflineErrSentinels []error
+
+// RegisterHubOfflineError 由 nodehub 包在 init 中调用注册其 ErrNodeOffline，
+// 让 nodes.callHub 能识别 hub 层的离线错误。
+// 不调用也不会报错——直接对比错误字符串作为兜底（见 mapHubErr）。
+func RegisterHubOfflineError(err error) {
+	if err != nil {
+		hubOfflineErrSentinels = append(hubOfflineErrSentinels, err)
+	}
+}
+
+// Client 是控制面到节点的 RPC 客户端，所有调用经由 hub gRPC 长连接路由。
+// 通过 NewClientWithHub 构造；hub == nil 的实例所有方法都会返回 ErrHubNotConfigured。
+type Client struct {
+	nodeID string
+	hub    HubCaller
 }
 
 type RuntimeInfo struct {
@@ -90,167 +133,48 @@ type ConfigRequest struct {
 // UserChangeRequest 描述向节点热增或热删单个用户所需的凭证信息。
 type UserChangeRequest struct {
 	InboundTag string `json:"inbound_tag"`
-	Protocol   string `json:"protocol"`            // "vless" | "trojan" | "shadowsocks" | "anytls"
-	Email      string `json:"email"`               // username@@@tag
-	UUID       string `json:"uuid,omitempty"`      // vless
-	Password   string `json:"password,omitempty"`  // trojan / anytls
-	Flow       string `json:"flow,omitempty"`      // vless+reality: "xtls-rprx-vision"
+	Protocol   string `json:"protocol"`           // "vless" | "trojan" | "shadowsocks" | "anytls"
+	Email      string `json:"email"`              // username@@@tag
+	UUID       string `json:"uuid,omitempty"`     // vless
+	Password   string `json:"password,omitempty"` // trojan / anytls
+	Flow       string `json:"flow,omitempty"`     // vless+reality: "xtls-rprx-vision"
 }
 
-func NewClient(node Node, options ClientOptions) *Client {
-	httpClient, err := buildHTTPClient(node, options)
-	return &Client{
-		baseURL:    strings.TrimRight(node.BaseURL, "/"),
-		httpClient: httpClient,
-		initErr:    err,
-	}
-}
-
-func NewClientWithHTTPClient(baseURL string, httpClient *http.Client) *Client {
-	return &Client{
-		baseURL:    strings.TrimRight(baseURL, "/"),
-		httpClient: httpClient,
-	}
-}
-
-// InitErr 返回客户端初始化时的错误（如 TLS 握手失败）。nil 表示可正常使用。
-func (c *Client) InitErr() error { return c.initErr }
-
-func buildHTTPClient(node Node, options ClientOptions) (*http.Client, error) {
-	httpClient := &http.Client{
-		Timeout: 5 * time.Second,
-	}
-	if !strings.HasPrefix(strings.TrimSpace(node.BaseURL), "https://") {
-		return httpClient, nil
-	}
-
-	transport := http.DefaultTransport.(*http.Transport).Clone()
-	tlsConfig := &tls.Config{
-		MinVersion: tls.VersionTLS12,
-	}
-	var clientPair *tls.Certificate
-	if options.ClientCertFile != "" || options.ClientKeyFile != "" {
-		if options.ClientCertFile == "" || options.ClientKeyFile == "" {
-			return nil, fmt.Errorf("client cert file and key file must be configured together")
-		}
-		pair, err := tls.LoadX509KeyPair(options.ClientCertFile, options.ClientKeyFile)
-		if err != nil {
-			return nil, fmt.Errorf("load client key pair: %w", err)
-		}
-		clientPair = &pair
-		tlsConfig.Certificates = []tls.Certificate{pair}
-	}
-	serverCert, err := fetchServerCertificatePEM(node.BaseURL, clientPair)
-	if err != nil {
-		return nil, err
-	}
-	roots := x509.NewCertPool()
-	if !roots.AppendCertsFromPEM([]byte(serverCert)) {
-		return nil, fmt.Errorf("parse node certificate")
-	}
-	tlsConfig.InsecureSkipVerify = true
-	tlsConfig.VerifyConnection = func(cs tls.ConnectionState) error {
-		if len(cs.PeerCertificates) == 0 {
-			return fmt.Errorf("node tls handshake did not present a certificate")
-		}
-		opts := x509.VerifyOptions{
-			Roots:         roots,
-			Intermediates: x509.NewCertPool(),
-		}
-		for _, cert := range cs.PeerCertificates[1:] {
-			opts.Intermediates.AddCert(cert)
-		}
-		_, err := cs.PeerCertificates[0].Verify(opts)
-		if err != nil {
-			return fmt.Errorf("verify node certificate: %w", err)
-		}
-		return nil
-	}
-	transport.TLSClientConfig = tlsConfig
-	httpClient.Transport = transport
-	return httpClient, nil
-}
-
-func fetchServerCertificatePEM(rawURL string, clientPair *tls.Certificate) (string, error) {
-	parsed, err := url.Parse(rawURL)
-	if err != nil {
-		return "", fmt.Errorf("parse node url: %w", err)
-	}
-	address := parsed.Host
-	if _, _, err := net.SplitHostPort(address); err != nil {
-		address = net.JoinHostPort(parsed.Hostname(), "443")
-	}
-	tlsConfig := &tls.Config{
-		InsecureSkipVerify: true,
-		MinVersion:         tls.VersionTLS12,
-	}
-	if clientPair != nil {
-		tlsConfig.Certificates = []tls.Certificate{*clientPair}
-	}
-
-	conn, err := tls.Dial("tcp", address, tlsConfig)
-	if err != nil {
-		return "", fmt.Errorf("dial node tls: %w", err)
-	}
-	defer conn.Close()
-
-	state := conn.ConnectionState()
-	if len(state.PeerCertificates) == 0 {
-		return "", fmt.Errorf("node did not present a certificate")
-	}
-	pemBytes := pemEncodeCertificate(state.PeerCertificates[0].Raw)
-	return string(pemBytes), nil
-}
-
-func pemEncodeCertificate(raw []byte) []byte {
-	return pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: raw})
+// NewClientWithHub 构造一个绑定到 gRPC long-connection hub 的 Client。
+// nodeID 是节点逻辑 ID（与 hub 注册时一致）。hub 必须非 nil；否则后续方法
+// 都会返回 ErrHubNotConfigured。
+func NewClientWithHub(nodeID string, hub HubCaller) *Client {
+	return &Client{nodeID: nodeID, hub: hub}
 }
 
 func (c *Client) Runtime(ctx context.Context) (RuntimeInfo, error) {
 	var out RuntimeInfo
-	err := c.do(ctx, http.MethodGet, "/v1/node/runtime", nil, &out)
+	err := c.callHub(ctx, "Runtime", nil, &out)
 	return out, err
 }
 
 func (c *Client) Status(ctx context.Context) (Status, error) {
 	var out Status
-	err := c.do(ctx, http.MethodGet, "/v1/node/runtime/status", nil, &out)
+	err := c.callHub(ctx, "Status", nil, &out)
 	return out, err
 }
 
 func (c *Client) Logs(ctx context.Context) (LogsResponse, error) {
 	var out LogsResponse
-	err := c.do(ctx, http.MethodGet, "/v1/node/runtime/logs", nil, &out)
+	err := c.callHub(ctx, "Logs", nil, &out)
 	return out, err
 }
 
 func (c *Client) AccessLogs(ctx context.Context) (AccessLogsResponse, error) {
 	var out AccessLogsResponse
-	err := c.do(ctx, http.MethodGet, "/v1/node/runtime/accesslogs", nil, &out)
+	err := c.callHub(ctx, "AccessLogs", nil, &out)
 	return out, err
 }
 
-// LogsStream 打开节点的 SSE 日志流，返回 response body（调用方负责 Close）。
-// 使用无超时的 HTTP 客户端，由 ctx 控制生命周期。
+// LogsStream 打开节点日志流，返回 SSE 字节流（调用方负责 Close）。
+// 由 hub.CallStream + sseAdapter 提供。
 func (c *Client) LogsStream(ctx context.Context) (io.ReadCloser, error) {
-	if c.initErr != nil {
-		return nil, fmt.Errorf("configure node client: %w", c.initErr)
-	}
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.baseURL+"/v1/node/runtime/logs/stream", nil)
-	if err != nil {
-		return nil, fmt.Errorf("build request: %w", err)
-	}
-	// 流式请求不能有超时，复用 transport 但去掉 Timeout
-	sc := &http.Client{Transport: c.httpClient.Transport}
-	resp, err := sc.Do(req)
-	if err != nil {
-		return nil, fmt.Errorf("request node: %w", err)
-	}
-	if resp.StatusCode >= 400 {
-		resp.Body.Close()
-		return nil, fmt.Errorf("node returned %d", resp.StatusCode)
-	}
-	return resp.Body, nil
+	return c.openStream(ctx, "LogsStream", nil)
 }
 
 type ConfigResponse struct {
@@ -259,52 +183,53 @@ type ConfigResponse struct {
 
 func (c *Client) Config(ctx context.Context) (ConfigResponse, error) {
 	var out ConfigResponse
-	err := c.do(ctx, http.MethodGet, "/v1/node/runtime/config", nil, &out)
+	err := c.callHub(ctx, "Config", nil, &out)
 	return out, err
 }
 
+// Usage 拉取节点流量快照。生产环境推荐通过 UsageBuffer.Drain 消费 node 主动
+// push 的 delta（参见 nodeagent.UsagePusher 与 nodes.UsageBuffer），此方法
+// 仍可作为按需查询使用（panel /v1/nodes/{id}/runtime/usage 等）。
+// reset 转发给节点端 DoUsage(reset)。
 func (c *Client) Usage(ctx context.Context, reset bool) (UsageStats, error) {
-	path := "/v1/node/runtime/usage"
-	if reset {
-		path += "?reset=true"
-	}
 	var out UsageStats
-	err := c.do(ctx, http.MethodGet, path, nil, &out)
+	body := map[string]bool{"reset": reset}
+	err := c.callHub(ctx, "Usage", body, &out)
 	return out, err
 }
 
 func (c *Client) Start(ctx context.Context, req ConfigRequest) (Status, error) {
 	var out Status
-	err := c.do(ctx, http.MethodPost, "/v1/node/runtime/start", req, &out)
+	err := c.callHub(ctx, "Start", req, &out)
 	return out, err
 }
 
 func (c *Client) Stop(ctx context.Context) (Status, error) {
 	var out Status
-	err := c.do(ctx, http.MethodPost, "/v1/node/runtime/stop", nil, &out)
+	err := c.callHub(ctx, "Stop", nil, &out)
 	return out, err
 }
 
 func (c *Client) Restart(ctx context.Context, req ConfigRequest) (Status, error) {
 	var out Status
-	err := c.do(ctx, http.MethodPost, "/v1/node/runtime/restart", req, &out)
+	err := c.callHub(ctx, "Restart", req, &out)
 	return out, err
 }
 
 // AddUser 向节点正在运行的 inbound 热增单个用户，无需重启核心。
 func (c *Client) AddUser(ctx context.Context, req UserChangeRequest) error {
-	return c.do(ctx, http.MethodPost, "/v1/node/runtime/users/add", req, nil)
+	return c.callHub(ctx, "AddUser", req, nil)
 }
 
 // RemoveUser 从节点正在运行的 inbound 热删单个用户。
 func (c *Client) RemoveUser(ctx context.Context, inboundTag, email string) error {
-	return c.do(ctx, http.MethodPost, "/v1/node/runtime/users/remove",
-		map[string]string{"inbound_tag": inboundTag, "email": email}, nil)
+	body := map[string]string{"inbound_tag": inboundTag, "email": email}
+	return c.callHub(ctx, "RemoveUser", body, nil)
 }
 
 func (c *Client) Update(ctx context.Context) (map[string]any, error) {
 	var out map[string]any
-	err := c.do(ctx, http.MethodPost, "/v1/node/update", nil, &out)
+	err := c.callHub(ctx, "Update", nil, &out)
 	return out, err
 }
 
@@ -316,8 +241,8 @@ type CertPaths struct {
 
 func (c *Client) EnsureCert(ctx context.Context, domain, cfToken string) (CertPaths, error) {
 	var out CertPaths
-	// DNS-01 申请证书需等待 DNS 传播，远超默认 5s client timeout，必须用 doLong。
-	err := c.doLong(ctx, http.MethodPost, "/v1/node/cert/ensure", map[string]string{"domain": domain, "cf_token": cfToken}, &out)
+	body := map[string]string{"domain": domain, "cf_token": cfToken}
+	err := c.callHub(ctx, "EnsureCert", body, &out)
 	return out, err
 }
 
@@ -342,19 +267,17 @@ type SpeedTestResponse struct {
 	UpBps   int64 `json:"up_bps"`
 }
 
-// SpeedTest 向节点发起测速请求（下载 + 上传各 10MB，总超时约 60s）。
-// 使用无 Client.Timeout 的 http.Client，由 ctx 控制超时。
+// SpeedTest 向节点发起测速请求（由 ctx 控制超时）。
 func (c *Client) SpeedTest(ctx context.Context) (SpeedTestResponse, error) {
 	var out SpeedTestResponse
-	err := c.doLong(ctx, http.MethodGet, "/v1/node/speedtest", nil, &out)
+	err := c.callHub(ctx, "SpeedTest", nil, &out)
 	return out, err
 }
 
-// CheckUnlock 向节点发起解锁检测请求，节点并发检测各服务并返回结果。
-// 使用无 Client.Timeout 的 http.Client，由 ctx 控制超时。
+// CheckUnlock 向节点发起解锁检测请求。
 func (c *Client) CheckUnlock(ctx context.Context) (CheckUnlockResponse, error) {
 	var out CheckUnlockResponse
-	err := c.doLong(ctx, http.MethodGet, "/v1/node/check", nil, &out)
+	err := c.callHub(ctx, "CheckUnlock", nil, &out)
 	return out, err
 }
 
@@ -376,9 +299,9 @@ type TracerouteResult struct {
 
 // TracerouteRequest 路由追踪请求参数。
 type TracerouteRequest struct {
-	Host   string // 目标地址
-	Method string // "icmp" 或 "tcp"
-	Port   int    // TCP 模式下的目标端口（默认 80）
+	Host   string `json:"host"`   // 目标地址
+	Method string `json:"method"` // "icmp" 或 "tcp"
+	Port   int    `json:"port"`   // TCP 模式下的目标端口（默认 80）
 }
 
 // LatencyProbeResult 节点三网延迟探测结果（ms），nil 表示超时/不可达。
@@ -390,33 +313,14 @@ type LatencyProbeResult struct {
 
 // ProbeLatency 触发节点对上海三网目标的 TCP 延迟探测。
 func (c *Client) ProbeLatency(ctx context.Context) (LatencyProbeResult, error) {
-	var result LatencyProbeResult
-	err := c.do(ctx, http.MethodGet, "/v1/node/latency/probe", nil, &result)
-	return result, err
+	var out LatencyProbeResult
+	err := c.callHub(ctx, "ProbeLatency", nil, &out)
+	return out, err
 }
 
-// TracerouteStream 向节点发起路由追踪 SSE 请求，返回 response body（调用方负责 Close）。
-// 使用无超时的 HTTP 客户端，由 ctx 控制生命周期。
+// TracerouteStream 向节点发起路由追踪 SSE 请求。
 func (c *Client) TracerouteStream(ctx context.Context, req TracerouteRequest) (io.ReadCloser, error) {
-	if c.initErr != nil {
-		return nil, fmt.Errorf("configure node client: %w", c.initErr)
-	}
-	path := fmt.Sprintf("/v1/node/traceroute?host=%s&method=%s&port=%d",
-		req.Host, req.Method, req.Port)
-	r, err := http.NewRequestWithContext(ctx, http.MethodGet, c.baseURL+path, nil)
-	if err != nil {
-		return nil, fmt.Errorf("build request: %w", err)
-	}
-	sc := &http.Client{Transport: c.httpClient.Transport}
-	resp, err := sc.Do(r)
-	if err != nil {
-		return nil, fmt.Errorf("request node: %w", err)
-	}
-	if resp.StatusCode >= 400 {
-		resp.Body.Close()
-		return nil, fmt.Errorf("node returned %d", resp.StatusCode)
-	}
-	return resp.Body, nil
+	return c.openStream(ctx, "TracerouteStream", req)
 }
 
 // SNIProxyRoute 对应节点 sniproxy.Route（这里用独立类型避免 nodes 依赖 sniproxy 包）。
@@ -441,157 +345,99 @@ type SNIProxySyncRequest struct {
 }
 
 // SyncSNIProxy 把内置 SNI 代理的完整配置推送给节点，节点端热更新。
-// 空的 Routes 或空的 Listen 会让节点停止代理。
 func (c *Client) SyncSNIProxy(ctx context.Context, req SNIProxySyncRequest) error {
-	return c.do(ctx, http.MethodPost, "/v1/node/sniproxy/sync", req, nil)
+	return c.callHub(ctx, "SyncSNIProxy", req, nil)
 }
 
 // SNIProxyStatus 查询节点当前 SNI 代理运行状态。
-// 返回结构是原样 JSON，由调用方按 nodeapi 定义解读（字段结构允许演进）。
 func (c *Client) SNIProxyStatus(ctx context.Context) (map[string]any, error) {
 	var out map[string]any
-	err := c.do(ctx, http.MethodGet, "/v1/node/sniproxy/status", nil, &out)
+	err := c.callHub(ctx, "SNIProxyStatus", nil, &out)
 	return out, err
 }
 
 // IPSentinelDetect 触发节点同步 IP 检测。
 func (c *Client) IPSentinelDetect(ctx context.Context) (ipsentinel.DetectResult, error) {
 	var out ipsentinel.DetectResult
-	err := c.do(ctx, http.MethodPost, "/v1/node/ip-sentinel/detect", nil, &out)
+	err := c.callHub(ctx, "IPSentinelDetect", nil, &out)
 	return out, err
 }
 
 // IPSentinelDetectGoogle 从节点实际访问 Google，检测 Google 对该 IP 的地区判断。
 func (c *Client) IPSentinelDetectGoogle(ctx context.Context) (ipsentinel.GoogleDetectResult, error) {
 	var out ipsentinel.GoogleDetectResult
-	err := c.do(ctx, http.MethodPost, "/v1/node/ip-sentinel/detect-google", nil, &out)
+	err := c.callHub(ctx, "IPSentinelDetectGoogle", nil, &out)
 	return out, err
 }
 
 // IPSentinelRun 触发节点运行 IP Sentinel 任务（google/trust/auto），异步执行。
 func (c *Client) IPSentinelRun(ctx context.Context, taskType string) error {
-	return c.do(ctx, http.MethodPost, "/v1/node/ip-sentinel/run", map[string]string{"type": taskType}, nil)
+	body := map[string]string{"type": taskType}
+	return c.callHub(ctx, "IPSentinelRun", body, nil)
 }
 
 // IPSentinelStatus 获取节点 IP Sentinel 任务状态。
 func (c *Client) IPSentinelStatus(ctx context.Context) (ipsentinel.NodeStatus, error) {
 	var out ipsentinel.NodeStatus
-	err := c.do(ctx, http.MethodGet, "/v1/node/ip-sentinel/status", nil, &out)
+	err := c.callHub(ctx, "IPSentinelStatus", nil, &out)
 	return out, err
 }
 
 // IPSentinelGetConfig 获取节点当前 IP Sentinel 配置。
 func (c *Client) IPSentinelGetConfig(ctx context.Context) (ipsentinel.Config, error) {
 	var out ipsentinel.Config
-	err := c.do(ctx, http.MethodGet, "/v1/node/ip-sentinel/config", nil, &out)
+	err := c.callHub(ctx, "IPSentinelGetConfig", nil, &out)
 	return out, err
 }
 
 // IPSentinelSetConfig 设置节点 IP Sentinel 配置。
 func (c *Client) IPSentinelSetConfig(ctx context.Context, cfg ipsentinel.Config) error {
-	return c.do(ctx, http.MethodPut, "/v1/node/ip-sentinel/config", cfg, nil)
+	return c.callHub(ctx, "IPSentinelSetConfig", cfg, nil)
 }
 
-func (c *Client) do(ctx context.Context, method, path string, body any, out any) error {
-	if c.initErr != nil {
-		return fmt.Errorf("configure node client: %w", c.initErr)
+func (c *Client) callHub(ctx context.Context, method string, body any, out any) error {
+	if c.hub == nil {
+		return ErrHubNotConfigured
 	}
-	var bodyReader *bytes.Reader
-	if body == nil {
-		bodyReader = bytes.NewReader(nil)
-	} else {
-		payload, err := json.Marshal(body)
-		if err != nil {
-			return fmt.Errorf("marshal request: %w", err)
-		}
-		bodyReader = bytes.NewReader(payload)
-	}
-
-	req, err := http.NewRequestWithContext(ctx, method, c.baseURL+path, bodyReader)
+	raw, err := c.hub.Call(ctx, c.nodeID, method, body)
 	if err != nil {
-		return fmt.Errorf("build request: %w", err)
+		return mapHubErr(err)
 	}
-	if body != nil {
-		req.Header.Set("Content-Type", "application/json")
-	}
-
-	resp, err := c.httpClient.Do(req)
-	if err != nil {
-		return fmt.Errorf("request node: %w", err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode >= 400 {
-		var apiErr struct {
-			Error string `json:"error"`
-		}
-		_ = json.NewDecoder(resp.Body).Decode(&apiErr)
-		if apiErr.Error == "" {
-			apiErr.Error = resp.Status
-		}
-		return fmt.Errorf("node api error: %s", apiErr.Error)
-	}
-
-	if out == nil {
+	if out == nil || len(raw) == 0 {
 		return nil
 	}
-
-	if err := json.NewDecoder(resp.Body).Decode(out); err != nil {
+	if err := json.Unmarshal(raw, out); err != nil {
 		return fmt.Errorf("decode response: %w", err)
 	}
 	return nil
 }
 
-// doLong is like do but uses an http.Client without Timeout,
-// relying solely on ctx for deadline control. Use for long-running
-// requests like speedtest that exceed the default 5s client timeout.
-func (c *Client) doLong(ctx context.Context, method, path string, body any, out any) error {
-	if c.initErr != nil {
-		return fmt.Errorf("configure node client: %w", c.initErr)
+func (c *Client) openStream(ctx context.Context, method string, body any) (io.ReadCloser, error) {
+	if c.hub == nil {
+		return nil, ErrHubNotConfigured
 	}
-	var bodyReader *bytes.Reader
-	if body == nil {
-		bodyReader = bytes.NewReader(nil)
-	} else {
-		payload, err := json.Marshal(body)
-		if err != nil {
-			return fmt.Errorf("marshal request: %w", err)
-		}
-		bodyReader = bytes.NewReader(payload)
+	if hubStreamFn == nil {
+		return nil, fmt.Errorf("nodes.Client.%s: hub stream caller not registered", method)
 	}
-
-	req, err := http.NewRequestWithContext(ctx, method, c.baseURL+path, bodyReader)
+	stream, err := hubStreamFn(ctx, c.hub, c.nodeID, method, body)
 	if err != nil {
-		return fmt.Errorf("build request: %w", err)
+		return nil, mapHubErr(err)
 	}
-	if body != nil {
-		req.Header.Set("Content-Type", "application/json")
-	}
+	return newSSEAdapter(stream), nil
+}
 
-	longClient := &http.Client{Transport: c.httpClient.Transport}
-	resp, err := longClient.Do(req)
-	if err != nil {
-		return fmt.Errorf("request node: %w", err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode >= 400 {
-		var apiErr struct {
-			Error string `json:"error"`
-		}
-		_ = json.NewDecoder(resp.Body).Decode(&apiErr)
-		if apiErr.Error == "" {
-			apiErr.Error = resp.Status
-		}
-		return fmt.Errorf("node api error: %s", apiErr.Error)
-	}
-
-	if out == nil {
+// mapHubErr 把 nodehub 层的错误转换成 nodes 包的错误（特别是离线 sentinel）。
+func mapHubErr(err error) error {
+	if err == nil {
 		return nil
 	}
-
-	if err := json.NewDecoder(resp.Body).Decode(out); err != nil {
-		return fmt.Errorf("decode response: %w", err)
+	for _, sent := range hubOfflineErrSentinels {
+		if errors.Is(err, sent) {
+			return ErrNodeOffline
+		}
 	}
-	return nil
+	if strings.Contains(err.Error(), "node offline") {
+		return ErrNodeOffline
+	}
+	return err
 }

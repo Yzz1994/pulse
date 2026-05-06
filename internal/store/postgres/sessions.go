@@ -32,3 +32,8 @@ func (s *SessionStore) GetUsername(token string) (string, bool) {
 func (s *SessionStore) Delete(token string) error {
 	return sqlcgen.New(s.db).DeleteSession(context.Background(), token)
 }
+
+func (s *SessionStore) DeleteAll() error {
+	_, err := s.db.Exec(context.Background(), `DELETE FROM sessions`)
+	return err
+}

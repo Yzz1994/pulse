@@ -1,20 +1,22 @@
+// Package node 是 pulse-node 进程入口。Run() 加载配置、初始化 xray manager
+// 与 sniproxy manager，构造 nodeagent.APIDispatcher，然后阻塞运行 gRPC 客户端：
+// 节点主动连接控制面 nodehub，处理下发的 method 调用并主动推送 usage / log /
+// traceroute_hop 等事件。节点不再监听任何 HTTP 端口。
 package node
 
 import (
 	"context"
-	"crypto/tls"
-	"crypto/x509"
-	"encoding/json"
-	"fmt"
+	"errors"
 	"log"
-	"net/http"
 	"os"
+	"os/signal"
 	"path/filepath"
+	"syscall"
 	"time"
 
-	"pulse/internal/cert"
 	"pulse/internal/config"
 	"pulse/internal/ipsentinel"
+	"pulse/internal/nodeagent"
 	"pulse/internal/nodeapi"
 	"pulse/internal/sniproxy"
 	"pulse/internal/xray"
@@ -22,49 +24,47 @@ import (
 
 // xrayConfigPath 根据配置计算 xray 快照文件路径。
 func xrayConfigPath(cfg config.Config) string {
-	if cfg.NodeTLSKeyFile != "" {
-		return filepath.Join(filepath.Dir(cfg.NodeTLSKeyFile), "xray_last.json")
-	}
-	return "./xray_last.json"
+	return filepath.Join(stateDir(cfg), "xray_last.json")
 }
 
 // sniproxyStatePath 根据配置计算 sniproxy 持久化文件路径。
 func sniproxyStatePath(cfg config.Config) string {
-	if cfg.NodeTLSKeyFile != "" {
-		return filepath.Join(filepath.Dir(cfg.NodeTLSKeyFile), "sniproxy_state.json")
+	return filepath.Join(stateDir(cfg), "sniproxy_state.json")
+}
+
+// stateDir 返回节点持久化目录：优先使用 enroll 写入的 cert 所在目录，否则
+// 退回到 DataDir，再退回到当前目录。
+func stateDir(cfg config.Config) string {
+	if cfg.NodeClientKey != "" {
+		return filepath.Dir(cfg.NodeClientKey)
 	}
-	return "./sniproxy_state.json"
+	if cfg.DataDir != "" {
+		return cfg.DataDir
+	}
+	return "."
 }
 
 func Run() error {
 	cfg := config.Load()
 
+	if cfg.NodeID == "" {
+		return errors.New("PULSE_NODE_ID is required (run `pulse-node enroll ...` first)")
+	}
+	serverAddr := cfg.NodeServerAddr
+	if serverAddr == "" {
+		return errors.New("PULSE_NODE_SERVER_ADDR is required (host:port of control-plane gRPC)")
+	}
+
+	if err := os.MkdirAll(stateDir(cfg), 0o700); err != nil {
+		return err
+	}
+
 	xrManager := xray.NewManager(xrayConfigPath(cfg))
 
 	xrInfo := xrManager.RuntimeInfo(context.Background())
-
-	mux := http.NewServeMux()
-	mux.HandleFunc("/healthz", func(w http.ResponseWriter, r *http.Request) {
-		xi := xrManager.RuntimeInfo(r.Context())
-		status := "ok"
-		if !xi.Available {
-			status = "degraded"
-		}
-		writeJSON(w, http.StatusOK, map[string]any{
-			"service": "pulse-node",
-			"status":  status,
-			"role":    "node-plane",
-		})
-	})
-	mux.HandleFunc("/v1/node/info", func(w http.ResponseWriter, r *http.Request) {
-		xi := xrManager.RuntimeInfo(r.Context())
-		writeJSON(w, http.StatusOK, map[string]any{
-			"name":        "pulse-node",
-			"description": "pulse node runtime",
-			"addr":        cfg.NodeAddr,
-			"xray":        xi,
-		})
-	})
+	if xrInfo.Available {
+		log.Printf("pulse-node xray: %s %s", xrInfo.Module, xrInfo.Version)
+	}
 
 	sniMgr := sniproxy.NewManager(sniproxyStatePath(cfg))
 	if err := sniMgr.Restore(); err != nil {
@@ -73,28 +73,12 @@ func Run() error {
 		log.Printf("pulse-node sniproxy restored: listen=%s routes=%d", restored.Listen, len(restored.Routes))
 	}
 
-	nodeapi.New(xrManager).WithSNIManager(sniMgr).Register(mux)
-	ipsentinel.NewNodeHandler(cfg.DataDir).Register(mux)
+	api := nodeapi.New(xrManager).WithSNIManager(sniMgr)
 
-	tlsConfig, err := buildTLSConfig(cfg)
-	if err != nil {
-		return err
-	}
+	ipsentinelHandler := ipsentinel.NewNodeHandler(cfg.DataDir)
 
-	srv := &http.Server{
-		Addr:              cfg.NodeAddr,
-		Handler:           mux,
-		TLSConfig:         tlsConfig,
-		ReadHeaderTimeout: 5 * time.Second,
-		WriteTimeout:      30 * time.Second, // 节点无 SSE，限制慢客户端占用
-		IdleTimeout:       120 * time.Second,
-	}
+	dispatcher := nodeagent.NewAPIDispatcher(api, ipsentinelHandler)
 
-	if xrInfo.Available {
-		log.Printf("pulse-node xray: %s %s", xrInfo.Module, xrInfo.Version)
-	}
-
-	// 进程重启后自动恢复：若磁盘上有上次的配置则直接启动
 	if saved := xrManager.SavedConfig(); saved != "" {
 		log.Printf("pulse-node restoring xray from saved config")
 		if err := xrManager.Start(saved); err != nil {
@@ -104,54 +88,35 @@ func Run() error {
 		}
 	}
 
-	log.Printf("pulse-node listening on %s", cfg.NodeAddr)
-	err = srv.ListenAndServeTLS("", "")
-	if err == nil || err == http.ErrServerClosed {
-		return shutdown(srv)
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+
+	usagePusher := nodeagent.NewUsagePusher(api, 30*time.Second)
+
+	agentCfg := nodeagent.Config{
+		NodeID:        cfg.NodeID,
+		ServerAddr:    serverAddr,
+		CertFile:      cfg.NodeClientCert,
+		KeyFile:       cfg.NodeClientKey,
+		CAFile:        cfg.NodeServerCAFile,
+		ServerName:    cfg.NodeServerName,
+		Dispatcher:    dispatcher,
+		HelloProvider: nodeagent.DefaultHelloProvider(cfg.NodeID, nodeagent.ConfigHasher(api)),
+		OnConnected: func(ctx context.Context, sender nodeagent.Sender) {
+			dispatcher.SetSender(sender)
+			usagePusher.SetSender(sender)
+			go func() {
+				if err := usagePusher.Run(ctx); err != nil && !errors.Is(err, context.Canceled) {
+					log.Printf("pulse-node usage pusher exited: %v", err)
+				}
+			}()
+		},
 	}
 
-	return err
-}
+	log.Printf("pulse-node connecting to grpc hub: node_id=%s server=%s", cfg.NodeID, serverAddr)
 
-func buildTLSConfig(cfg config.Config) (*tls.Config, error) {
-	if err := cert.EnsureSelfSignedKeyPair(cfg.NodeTLSCertFile, cfg.NodeTLSKeyFile, "pulse-node"); err != nil {
-		return nil, err
+	if err := nodeagent.Run(ctx, agentCfg); err != nil && !errors.Is(err, context.Canceled) {
+		return err
 	}
-	if cfg.NodeTLSClientCertFile == "" {
-		return nil, fmt.Errorf("PULSE_NODE_TLS_CLIENT_CERT_FILE is required")
-	}
-
-	certPair, err := tls.LoadX509KeyPair(cfg.NodeTLSCertFile, cfg.NodeTLSKeyFile)
-	if err != nil {
-		return nil, err
-	}
-	clientPEM, err := os.ReadFile(cfg.NodeTLSClientCertFile)
-	if err != nil {
-		return nil, err
-	}
-	clientPool := x509.NewCertPool()
-	if !clientPool.AppendCertsFromPEM(clientPEM) {
-		return nil, fmt.Errorf("parse client certificate")
-	}
-
-	return &tls.Config{
-		MinVersion:   tls.VersionTLS12,
-		Certificates: []tls.Certificate{certPair},
-		ClientCAs:    clientPool,
-		ClientAuth:   tls.RequireAndVerifyClientCert,
-	}, nil
-}
-
-func shutdown(srv *http.Server) error {
-	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
-	defer cancel()
-	return srv.Shutdown(ctx)
-}
-
-func writeJSON(w http.ResponseWriter, status int, payload any) {
-	w.Header().Set("Content-Type", "application/json; charset=utf-8")
-	w.WriteHeader(status)
-	if err := json.NewEncoder(w).Encode(payload); err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-	}
+	return nil
 }

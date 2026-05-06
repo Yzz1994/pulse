@@ -3,6 +3,7 @@ package ipsentinel
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -96,6 +97,61 @@ func (h *NodeHandler) Register(mux *http.ServeMux) {
 	mux.HandleFunc("GET /v1/node/ip-sentinel/status", h.handleStatus)
 	mux.HandleFunc("GET /v1/node/ip-sentinel/config", h.handleGetConfig)
 	mux.HandleFunc("PUT /v1/node/ip-sentinel/config", h.handleSetConfig)
+}
+
+// Dispatch 提供给 nodeagent.APIDispatcher 复用的非 HTTP 入口。
+// method 取值：IPSentinelDetect / IPSentinelDetectGoogle / IPSentinelRun /
+// IPSentinelStatus / IPSentinelGetConfig / IPSentinelSetConfig。
+// 未识别 method 返回 (nil, error)。
+func (h *NodeHandler) Dispatch(ctx context.Context, method string, body []byte) (any, error) {
+	switch method {
+	case "IPSentinelDetect":
+		return Detect(ctx)
+	case "IPSentinelDetectGoogle":
+		cfg, err := h.loadConfig()
+		if err != nil {
+			cfg = Config{ValidURLSuffix: "com"}
+		}
+		return DetectGoogle(ctx, cfg)
+	case "IPSentinelRun":
+		var req struct {
+			Type     string `json:"type"`
+			TaskType string `json:"task_type"`
+		}
+		if len(body) > 0 {
+			_ = json.Unmarshal(body, &req)
+		}
+		taskType := req.Type
+		if taskType == "" {
+			taskType = req.TaskType
+		}
+		if taskType == "" {
+			taskType = "auto"
+		}
+		cfg, err := h.loadConfig()
+		if err != nil {
+			return nil, err
+		}
+		if h.runner.IsRunning() {
+			return map[string]any{"ok": false, "running": true, "message": "已有任务正在运行"}, nil
+		}
+		go h.runner.Run(h.ctx, cfg, taskType)
+		return map[string]any{"ok": true, "running": true}, nil
+	case "IPSentinelStatus":
+		return NodeStatus{Running: h.runner.IsRunning(), Last: h.runner.GetLastResult()}, nil
+	case "IPSentinelGetConfig":
+		return h.loadConfig()
+	case "IPSentinelSetConfig":
+		var cfg Config
+		if err := json.Unmarshal(body, &cfg); err != nil {
+			return nil, err
+		}
+		if err := h.saveConfig(cfg); err != nil {
+			return nil, err
+		}
+		return map[string]any{"ok": true}, nil
+	}
+	return nil, fmt.Errorf("ipsentinel: unknown method %q", method)
 }
 
 func (h *NodeHandler) handleDetect(w http.ResponseWriter, r *http.Request) {

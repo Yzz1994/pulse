@@ -58,7 +58,16 @@ type SyncUsageResult struct {
 //  1. 并发拉取各节点流量（网络 IO，不持锁）
 //  2. 批量更新 DB（持锁，纯 DB 操作，快速）
 //  3. 对状态变化的节点重新下发配置（网络 IO，不持锁）
+//
+// 兼容老调用方：未传 buffer 时纯走按需 hub 拉取。
 func SyncUsage(ctx context.Context, store users.Store, nodeStore nodes.Store, ibStore inbounds.InboundStore, dial NodeDialer, applyOpts ApplyOptions, outboundStore outbounds.Store) (SyncUsageResult, error) {
+	return SyncUsageWith(ctx, store, nodeStore, ibStore, dial, applyOpts, outboundStore, nil)
+}
+
+// SyncUsageWith 与 SyncUsage 相同，但额外接受 *nodes.UsageBuffer：
+// 优先消费来自 node 主动 push 的 usage delta；只有 buffer 中没有该节点数据时
+// 才回退到 c.Usage(ctx, true) 的按需 hub 拉取（兼容尚未 push 过的节点和测试）。
+func SyncUsageWith(ctx context.Context, store users.Store, nodeStore nodes.Store, ibStore inbounds.InboundStore, dial NodeDialer, applyOpts ApplyOptions, outboundStore outbounds.Store, usageBuf *nodes.UsageBuffer) (SyncUsageResult, error) {
 	allNodes, err := nodeStore.List()
 	if err != nil {
 		return SyncUsageResult{}, err
@@ -69,6 +78,12 @@ func SyncUsage(ctx context.Context, store users.Store, nodeStore nodes.Store, ib
 		if !n.Disabled {
 			nodesList = append(nodesList, n)
 		}
+	}
+
+	// 优先 drain push buffer：所有有 push 数据的节点直接用 buffer 中的累计 delta。
+	var drained map[string]nodes.UsageStats
+	if usageBuf != nil {
+		drained = usageBuf.DrainAll()
 	}
 
 	result := SyncUsageResult{Errors: make([]string, 0)}
@@ -93,6 +108,12 @@ func SyncUsage(ctx context.Context, store users.Store, nodeStore nodes.Store, ib
 				fetched[idx] = nodeFetch{node: n, dialErr: err}
 				return
 			}
+			// 优先走 push buffer：节点已 push 过 → 直接用聚合 delta。
+			if u, ok := drained[n.ID]; ok {
+				fetched[idx] = nodeFetch{node: n, client: c, usage: u}
+				return
+			}
+			// fallback：节点尚未 push 过，按需拉取。
 			u, err := c.Usage(ctx, true)
 			fetched[idx] = nodeFetch{node: n, client: c, usage: u, usageErr: err}
 		}(i, node)

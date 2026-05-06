@@ -99,6 +99,52 @@ func (s *MemoryStore) SetCredentials(userID, uuid, secret string) error {
 	return nil
 }
 
+func (s *MemoryStore) SetPassword(userID, hash string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	u, ok := s.users[userID]
+	if !ok {
+		return ErrUserNotFound
+	}
+	u.Password = hash
+	s.users[userID] = u
+	return nil
+}
+
+func (s *MemoryStore) GetPasswordBySubToken(subToken string) (string, string, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	for _, u := range s.users {
+		if u.SubToken == subToken {
+			return u.ID, u.Password, nil
+		}
+	}
+	return "", "", ErrUserNotFound
+}
+
+func (s *MemoryStore) GetAdminUser() (User, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	for _, u := range s.users {
+		if u.IsAdmin {
+			return u, nil
+		}
+	}
+	return User{}, ErrUserNotFound
+}
+
+func (s *MemoryStore) SetIsAdmin(userID string, isAdmin bool) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	u, ok := s.users[userID]
+	if !ok {
+		return ErrUserNotFound
+	}
+	u.IsAdmin = isAdmin
+	s.users[userID] = u
+	return nil
+}
+
 func (s *MemoryStore) GetUsersByIDs(ids []string) (map[string]User, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
@@ -307,6 +353,18 @@ func (s *MemoryStore) UpsertGroupUserInbound(acc UserInbound) (UserInbound, erro
 
 func (s *MemoryStore) ListUserGroupsByUser(userID string) ([]string, error) {
 	return []string{}, nil
+}
+
+func (s *MemoryStore) UpdateUsername(userID, username string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	u, ok := s.users[userID]
+	if !ok {
+		return ErrUserNotFound
+	}
+	u.Username = username
+	s.users[userID] = u
+	return nil
 }
 
 // ─── 辅助函数 ─────────────────────────────────────────────────────────────────

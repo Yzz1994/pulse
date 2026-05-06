@@ -3,18 +3,18 @@ package serverapi
 import (
 	"context"
 	"crypto/rand"
-	"regexp"
 	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"log"
 	"net/http"
+	"regexp"
 	"strconv"
 	"strings"
 	"time"
 
-
+	"golang.org/x/crypto/bcrypt"
 	"pulse/internal/geoip"
 	"pulse/internal/idgen"
 	"pulse/internal/inbounds"
@@ -26,13 +26,14 @@ import (
 )
 
 type userAPI struct {
-	users              users.Store
-	nodes              nodes.Store
-	inboundStore       inbounds.InboundStore
-	outboundStore      outbounds.Store
-	base               *API
-	applyOpts          jobs.ApplyOptions
-	geoDB              *geoip.DB    // 可为 nil，nil 时跳过地理位置查询
+	users         users.Store
+	nodes         nodes.Store
+	inboundStore  inbounds.InboundStore
+	outboundStore outbounds.Store
+	base          *API
+	applyOpts     jobs.ApplyOptions
+	geoDB         *geoip.DB          // 可为 nil，nil 时跳过地理位置查询
+	sessions      PortalSessionStore // 可为 nil，nil 时跳过 session 失效
 }
 
 type createUserRequest struct {
@@ -57,6 +58,8 @@ type updateUserRequest struct {
 	LastTrafficResetAt     *time.Time `json:"last_traffic_reset_at,omitempty"`
 	ClearLastTrafficReset  bool       `json:"clear_last_traffic_reset_at,omitempty"`
 	InboundIDs             *[]string  `json:"inbound_ids,omitempty"`
+	// Password 非 nil 时更新门户密码：空字符串清除密码，非空字符串设置新密码。
+	Password *string `json:"password,omitempty"`
 }
 
 // createAccessRequest 添加用户到 inbound 的请求（只需指定 inbound ID）。
@@ -290,6 +293,31 @@ func (a *userAPI) handleUpdateUser(w http.ResponseWriter, r *http.Request, userI
 	if err != nil {
 		internalError(w, r, err)
 		return
+	}
+
+	// 门户密码更新（UpsertUser 成功后再改密码，避免主更新失败但密码已改）
+	if req.Password != nil {
+		var hash string
+		if *req.Password != "" {
+			if len(*req.Password) > 72 {
+				writeJSON(w, http.StatusBadRequest, map[string]any{"error": "password too long"})
+				return
+			}
+			h, hErr := bcrypt.GenerateFromPassword([]byte(*req.Password), 12)
+			if hErr != nil {
+				internalError(w, r, hErr)
+				return
+			}
+			hash = string(h)
+		}
+		if err := a.users.SetPassword(userID, hash); err != nil {
+			internalError(w, r, err)
+			return
+		}
+		// 密码变更（包括清除）时使所有门户 session 失效
+		if a.sessions != nil {
+			_ = a.sessions.DeleteByUserID(userID)
+		}
 	}
 	// Sync inbound associations if provided
 	if req.InboundIDs != nil {

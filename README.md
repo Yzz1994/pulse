@@ -1,10 +1,12 @@
 # Pulse
 
-分布式边缘节点编排与管理平台。单仓双进制：`pulse-server`（控制面）和 `pulse-node`（节点面），通过 mTLS 加密通信。
+分布式边缘节点编排与管理平台。单仓双进制：`pulse-server`（控制面）和 `pulse-node`（节点面）。
+节点通过一次性 enroll token 取得 mTLS 证书后，主动连控制面 gRPC（`:8082`）建立长连接，
+所有控制指令、流量上报、日志尾随、self-sync 均复用这条流。
 
 ## 功能特性
 
-- **多节点编排** — 控制面统一纳管任意数量的边缘节点，支持 RPC 热推送配置变更
+- **多节点编排** — 控制面通过 mTLS gRPC 长连接统一纳管任意数量的边缘节点，配置变更走 push 模型秒级生效
 - **资源配额与访问控制** — 流量配额、有效期、多状态机（active / disabled / limited / expired / on_hold）、按入站维度配置流量倍率
 - **客户端配置分发** — 自动生成标准化配置端点，兼容主流客户端
 - **NodeGate（内置网关）** — 节点进程内置 TLS 终止、ACME 自动证书（支持 Cloudflare DNS-01）与 HTTP 反向代理，无需额外部署 Nginx/Caddy
@@ -26,7 +28,8 @@ curl -fsSL https://raw.githubusercontent.com/0xUnixIO/pulse/main/scripts/install
 
 **安装 node：**
 
-在控制面板「节点」页面点击「添加节点」，填写节点名称后会自动生成安装命令，复制到节点机器上运行即可，无需手动配置证书。
+在控制面板「节点」页面点击「添加节点」，填写节点名称后会生成包含一次性 enroll token 的完整
+安装命令，复制到节点机器上运行即可。节点不监听任何端口，启动后会自动连接控制面 gRPC（默认 `:8082`）。
 
 完整安装步骤、环境变量配置、NodeGate 设置详见 [INSTALL.md](INSTALL.md)。
 

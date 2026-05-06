@@ -1,6 +1,8 @@
 package serverapi
 
 import (
+	"crypto/rand"
+	"encoding/hex"
 	"encoding/json"
 	"io"
 	"net/http"
@@ -9,6 +11,7 @@ import (
 	"strings"
 	"time"
 
+	"golang.org/x/crypto/bcrypt"
 	"pulse/internal/announcements"
 	"pulse/internal/idgen"
 	"pulse/internal/inbounds"
@@ -19,43 +22,69 @@ import (
 	"pulse/internal/users"
 )
 
+const portalCookieName = "pulse_portal_token"
+
 // SettingsGetter reads settings from the store.
 type SettingsGetter interface {
 	GetSetting(key string) (string, bool)
+}
+
+// PortalSessionStore 管理用户门户 session。
+type PortalSessionStore interface {
+	Create(token, userID string, expiresAt time.Time) error
+	GetUserID(token string) (string, bool)
+	Delete(token string) error
+	DeleteByUserID(userID string) error
 }
 
 type portalAPI struct {
 	users         users.Store
 	nodes         nodes.Store
 	inbounds      inbounds.InboundStore
-	outbounds     outbounds.Store      // may be nil
+	outbounds     outbounds.Store     // may be nil
 	settings      SettingsGetter
-	plans         plans.Store          // may be nil
-	announcements announcements.Store  // may be nil
-	tickets       tickets.Store        // may be nil
-	uploadsDir    string               // 图片上传目录
+	plans         plans.Store         // may be nil
+	announcements announcements.Store // may be nil
+	tickets       tickets.Store       // may be nil
+	sessions      PortalSessionStore
+	uploadsDir    string
 }
 
 // RegisterPortalAPI registers public user-portal endpoints (no admin auth).
-// uploadsDir 是工单图片的存储目录。
-func RegisterPortalAPI(mux *http.ServeMux, us users.Store, ns nodes.Store, ibs inbounds.InboundStore, obs outbounds.Store, settings SettingsGetter, planStore plans.Store, annStore announcements.Store, ticketStore tickets.Store, uploadsDir string) {
-	a := &portalAPI{users: us, nodes: ns, inbounds: ibs, outbounds: obs, settings: settings, plans: planStore, announcements: annStore, tickets: ticketStore, uploadsDir: uploadsDir}
+func RegisterPortalAPI(mux *http.ServeMux, us users.Store, ns nodes.Store, ibs inbounds.InboundStore, obs outbounds.Store, settings SettingsGetter, planStore plans.Store, annStore announcements.Store, ticketStore tickets.Store, sesStore PortalSessionStore, uploadsDir string) {
+	a := &portalAPI{users: us, nodes: ns, inbounds: ibs, outbounds: obs, settings: settings, plans: planStore, announcements: annStore, tickets: ticketStore, sessions: sesStore, uploadsDir: uploadsDir}
 	mux.HandleFunc("GET /v1/portal/", a.handlePortal)
 	mux.HandleFunc("POST /v1/portal/", a.handlePortalPost)
+}
+
+// portalAuth 从 Cookie 验证门户 session，返回用户 ID。
+// 用户无密码时直接返回 subToken 对应用户的 ID（允许无 session 访问）。
+func (a *portalAPI) portalAuth(r *http.Request, subToken string) (userID string, ok bool) {
+	expectedUserID, hash, err := a.users.GetPasswordBySubToken(subToken)
+	if err != nil {
+		return "", false
+	}
+	if hash == "" {
+		return expectedUserID, true
+	}
+	// 有密码，验证 session cookie 并确认归属
+	cookie, err := r.Cookie(portalCookieName)
+	if err != nil {
+		return "", false
+	}
+	uid, exists := a.sessions.GetUserID(cookie.Value)
+	if !exists || uid != expectedUserID {
+		return "", false
+	}
+	return uid, true
 }
 
 func (a *portalAPI) handlePortal(w http.ResponseWriter, r *http.Request) {
 	path := strings.TrimPrefix(r.URL.Path, "/v1/portal/")
 	parts := strings.SplitN(path, "/", 2)
-	token := parts[0]
-	if token == "" {
+	subToken := parts[0]
+	if subToken == "" {
 		writeJSON(w, http.StatusBadRequest, map[string]any{"error": "sub_token is required"})
-		return
-	}
-
-	user, err := a.users.GetUserBySubToken(token)
-	if err != nil {
-		writeJSON(w, http.StatusNotFound, map[string]any{"error": "user not found"})
 		return
 	}
 
@@ -64,7 +93,24 @@ func (a *portalAPI) handlePortal(w http.ResponseWriter, r *http.Request) {
 		subPath = parts[1]
 	}
 
-	// 处理 tickets 前缀的子路径
+	// auth 子路由无需已登录
+	if subPath == "auth-status" {
+		a.handlePortalAuthStatus(w, r, subToken)
+		return
+	}
+
+	userID, authed := a.portalAuth(r, subToken)
+	if !authed {
+		writeJSON(w, http.StatusUnauthorized, map[string]any{"error": "unauthorized", "requires_password": true})
+		return
+	}
+
+	user, err := a.users.GetUser(userID)
+	if err != nil {
+		writeJSON(w, http.StatusNotFound, map[string]any{"error": "user not found"})
+		return
+	}
+
 	if subPath == "tickets" || strings.HasPrefix(subPath, "tickets/") {
 		a.handlePortalTicketsGET(w, r, user, strings.TrimPrefix(subPath, "tickets"))
 		return
@@ -86,24 +132,43 @@ func (a *portalAPI) handlePortal(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-// handlePortalPost 处理 POST 请求（工单创建/回复/图片上传）。
+// handlePortalPost 处理 POST 请求。
 func (a *portalAPI) handlePortalPost(w http.ResponseWriter, r *http.Request) {
 	path := strings.TrimPrefix(r.URL.Path, "/v1/portal/")
 	parts := strings.SplitN(path, "/", 2)
-	token := parts[0]
-	if token == "" {
+	subToken := parts[0]
+	if subToken == "" {
 		writeJSON(w, http.StatusBadRequest, map[string]any{"error": "sub_token is required"})
 		return
 	}
-	user, err := a.users.GetUserBySubToken(token)
-	if err != nil {
-		writeJSON(w, http.StatusNotFound, map[string]any{"error": "user not found"})
-		return
-	}
+
 	subPath := ""
 	if len(parts) == 2 {
 		subPath = parts[1]
 	}
+
+	// 登录 / 登出无需已登录
+	switch subPath {
+	case "auth":
+		a.handlePortalLogin(w, r, subToken)
+		return
+	case "logout":
+		a.handlePortalLogout(w, r)
+		return
+	}
+
+	userID, authed := a.portalAuth(r, subToken)
+	if !authed {
+		writeJSON(w, http.StatusUnauthorized, map[string]any{"error": "unauthorized", "requires_password": true})
+		return
+	}
+
+	user, err := a.users.GetUser(userID)
+	if err != nil {
+		writeJSON(w, http.StatusNotFound, map[string]any{"error": "user not found"})
+		return
+	}
+
 	if subPath == "tickets" || strings.HasPrefix(subPath, "tickets/") {
 		a.handlePortalTicketsPOST(w, r, user, strings.TrimPrefix(subPath, "tickets"))
 		return
@@ -114,6 +179,96 @@ func (a *portalAPI) handlePortalPost(w http.ResponseWriter, r *http.Request) {
 	default:
 		writeJSON(w, http.StatusNotFound, map[string]any{"error": "route not found"})
 	}
+}
+
+// handlePortalAuthStatus 返回该 sub_token 是否需要密码，以及当前是否已认证。
+func (a *portalAPI) handlePortalAuthStatus(w http.ResponseWriter, r *http.Request, subToken string) {
+	expectedUserID, hash, err := a.users.GetPasswordBySubToken(subToken)
+	if err != nil {
+		writeJSON(w, http.StatusNotFound, map[string]any{"error": "user not found"})
+		return
+	}
+	requiresPassword := hash != ""
+	authed := false
+	if requiresPassword {
+		if cookie, cErr := r.Cookie(portalCookieName); cErr == nil {
+			uid, exists := a.sessions.GetUserID(cookie.Value)
+			authed = exists && uid == expectedUserID
+		}
+	} else {
+		authed = true
+	}
+	writeJSON(w, http.StatusOK, map[string]any{
+		"requires_password": requiresPassword,
+		"authenticated":     authed,
+	})
+}
+
+func (a *portalAPI) handlePortalLogin(w http.ResponseWriter, r *http.Request, subToken string) {
+	var req struct {
+		Password string `json:"password"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]any{"error": "invalid json"})
+		return
+	}
+	if len(req.Password) > 72 {
+		writeJSON(w, http.StatusBadRequest, map[string]any{"error": "password too long"})
+		return
+	}
+
+	userID, hash, err := a.users.GetPasswordBySubToken(subToken)
+	if err != nil {
+		writeJSON(w, http.StatusNotFound, map[string]any{"error": "user not found"})
+		return
+	}
+	if hash == "" {
+		writeJSON(w, http.StatusBadRequest, map[string]any{"error": "no password set"})
+		return
+	}
+	if err := bcrypt.CompareHashAndPassword([]byte(hash), []byte(req.Password)); err != nil {
+		writeJSON(w, http.StatusUnauthorized, map[string]any{"error": "invalid password"})
+		return
+	}
+
+	buf := make([]byte, 32)
+	if _, err := rand.Read(buf); err != nil {
+		internalError(w, r, err)
+		return
+	}
+	sessionToken := hex.EncodeToString(buf)
+	expiresAt := time.Now().Add(7 * 24 * time.Hour)
+	if err := a.sessions.Create(sessionToken, userID, expiresAt); err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]any{"error": "create session failed"})
+		return
+	}
+
+	http.SetCookie(w, &http.Cookie{
+		Name:     portalCookieName,
+		Value:    sessionToken,
+		Path:     "/",
+		MaxAge:   86400 * 7, // 7 天
+		HttpOnly: true,
+		Secure:   true,
+		SameSite: http.SameSiteLaxMode,
+	})
+	writeJSON(w, http.StatusOK, map[string]any{"ok": true})
+}
+
+func (a *portalAPI) handlePortalLogout(w http.ResponseWriter, r *http.Request) {
+	if cookie, err := r.Cookie(portalCookieName); err == nil {
+		_ = a.sessions.Delete(cookie.Value)
+	}
+	http.SetCookie(w, &http.Cookie{
+		Name:     portalCookieName,
+		Value:    "",
+		Path:     "/",
+		MaxAge:   -1,
+		HttpOnly: true,
+		Secure:   true,
+		SameSite: http.SameSiteLaxMode,
+	})
+	writeJSON(w, http.StatusOK, map[string]any{"ok": true})
 }
 
 func (a *portalAPI) handlePortalInfo(w http.ResponseWriter, r *http.Request, user users.User) {

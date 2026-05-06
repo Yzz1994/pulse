@@ -1,19 +1,20 @@
 package serverapi
 
 import (
-	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"net/http"
-	"os"
 	"strings"
 
 	"pulse/internal/nodes"
 )
 
-// RegisterNodeRegisterAPI 注册节点自注册接口（公开，无鉴权）和节点安装证书接口（受保护）。
-// publicMux: 直接挂载，无需认证；protectedMux: 挂载后由外层 auth.Middleware 保护。
-func RegisterNodeRegisterAPI(publicMux, protectedMux *http.ServeMux, store nodes.Store, certFile string, evictClient func(string)) {
+// RegisterNodeRegisterAPI 注册节点自注册接口（公开，无鉴权）。节点启动时
+// 通过它把自身 BaseURL 上报给控制面，控制面 evict 节点 client 缓存。
+//
+// 历史上还提供过 /v1/node-setup/cert 用于分发服务端 mTLS 客户端证书；现已
+// 改为 enrollment 流程，该接口已删除。
+func RegisterNodeRegisterAPI(publicMux *http.ServeMux, store nodes.Store, evictClient func(string)) {
 	publicMux.HandleFunc("POST /v1/node-register", func(w http.ResponseWriter, r *http.Request) {
 		var req struct {
 			NodeID  string `json:"node_id"`
@@ -43,16 +44,5 @@ func RegisterNodeRegisterAPI(publicMux, protectedMux *http.ServeMux, store nodes
 		}
 		evictClient(req.NodeID)
 		writeJSON(w, http.StatusOK, map[string]any{"ok": true})
-	})
-
-	protectedMux.HandleFunc("GET /v1/node-setup/cert", func(w http.ResponseWriter, r *http.Request) {
-		data, err := os.ReadFile(certFile)
-		if err != nil {
-			writeJSON(w, http.StatusInternalServerError, map[string]any{"error": "cert not available"})
-			return
-		}
-		writeJSON(w, http.StatusOK, map[string]any{
-			"cert_b64": base64.StdEncoding.EncodeToString(data),
-		})
 	})
 }

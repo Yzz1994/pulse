@@ -7,26 +7,29 @@ usage() {
   install.sh server|node [version] [选项]
 
 选项（node 专用）:
-  --server <URL>     控制面板地址，安装完成后自动注册节点地址（由控制面板生成时自动填入）
-  --node-id <ID>     节点 ID（由控制面板生成时自动填入）
-  --cert <BASE64>    server 客户端证书 base64，跳过交互式粘贴（由控制面板生成时自动填入）
+  --server <URL>      控制面板地址（由控制面板生成时自动填入）
+  --node-id <ID>      节点 ID（由控制面板生成时自动填入）
+  --token <TOKEN>     一次性 enroll token（由控制面板生成时自动填入）
+  --token-file <PATH> 从文件读取 token，'-' 表示 stdin（与 --token 二选一）
+  --insecure          enroll 时跳过控制面 TLS 校验（默认开启，首次 enroll 必需；
+                      TODO: 待实现 --server-fingerprint 后改为默认关闭）
+  --cert <BASE64>     [已废弃] 旧的 server 客户端证书 base64，仅向后兼容（会被忽略）
 
 选项（server 专用）:
-  --reset-password   生成随机新密码并重启服务
+  --reset-password    生成随机新密码并重启服务
 
 环境变量:
-  PULSE_INSTALL_BIN   二进制安装目录，默认 /usr/local/bin
-  PULSE_INSTALL_ETC   配置安装目录，默认 /etc/pulse
-  PULSE_INSTALL_LIB   systemd 安装目录，默认 /etc/systemd/system
-  PULSE_INSTALL_INITD OpenRC 安装目录，默认 /etc/init.d
-  PULSE_STATE_DIR     工作目录，默认 /var/lib/pulse
-  PULSE_ADMIN_USERNAME server 安装时管理员用户名，默认 admin
-  PULSE_ADMIN_PASSWORD server 安装时管理员密码，不指定则随机生成
-  PULSE_SERVER_ADDR   server 监听地址，不指定则随机端口（格式 :端口）
-  PULSE_NODE_ADDR     node 监听地址，默认 :8081（格式 :端口）
-  PULSE_NODE_PORT     node 监听端口，优先于 PULSE_NODE_ADDR（纯数字）
-  PULSE_DATABASE_URL  PostgreSQL 连接串（postgres://user:pass@host:5432/db?sslmode=disable）
-  PULSE_DATA_DIR      工作目录（geoip、上传文件等），默认 /var/lib/pulse
+  PULSE_INSTALL_BIN     二进制安装目录，默认 /usr/local/bin
+  PULSE_INSTALL_ETC     配置安装目录，默认 /etc/pulse
+  PULSE_INSTALL_LIB     systemd 安装目录，默认 /etc/systemd/system
+  PULSE_INSTALL_INITD   OpenRC 安装目录，默认 /etc/init.d
+  PULSE_STATE_DIR       工作目录，默认 /var/lib/pulse
+  PULSE_ADMIN_USERNAME  server 安装时管理员用户名，默认 admin
+  PULSE_ADMIN_PASSWORD  server 安装时管理员密码，不指定则随机生成
+  PULSE_SERVER_ADDR     server 监听地址，不指定则随机端口（格式 :端口）
+  PULSE_DATABASE_URL    PostgreSQL 连接串（postgres://user:pass@host:5432/db?sslmode=disable）
+  PULSE_DATA_DIR        工作目录（geoip、上传文件等），默认 /var/lib/pulse
+  PULSE_INSTALL_DRY_RUN 设为 1 时跳过下载、特权操作和 enroll 调用（仅用于本地 sanity check）
 
 示例:
   # 安装控制面板（server）
@@ -36,18 +39,16 @@ usage() {
   curl -fsSL https://raw.githubusercontent.com/0xUnixIO/pulse/main/scripts/install.sh | \
     sh -s -- server --reset-password
 
-  # 安装节点（推荐：从控制面板"添加节点"页面复制生成的命令，自动包含以下参数）
+  # 安装节点（推荐：从控制面板"添加节点"页面复制生成的命令）
   bash <(curl -fsSL https://raw.githubusercontent.com/0xUnixIO/pulse/main/scripts/install.sh) node \
     --server https://<控制面板地址> \
     --node-id <节点ID> \
-    --cert <证书BASE64>
+    --token <ENROLL_TOKEN>
 
-  # 手动安装节点（会交互式提示粘贴 server 客户端证书）
-  curl -fsSL https://raw.githubusercontent.com/0xUnixIO/pulse/main/scripts/install.sh | sh -s -- node
+  # 从 stdin 传 token（避免命令行参数泄露到 shell history）
+  echo "$ENROLL_TOKEN" | bash <(curl -fsSL https://raw.githubusercontent.com/0xUnixIO/pulse/main/scripts/install.sh) node \
+    --server https://<控制面板地址> --node-id <节点ID> --token-file -
 
-  # 指定 node 监听端口
-  curl -fsSL https://raw.githubusercontent.com/0xUnixIO/pulse/main/scripts/install.sh | \
-    PULSE_NODE_PORT='9090' sh -s -- node
 EOF
 }
 
@@ -56,36 +57,11 @@ tty_available() {
 }
 
 prompt_node_client_cert_pem() {
-  target_file="$1"
-  force="${2:-0}"
-
-  # 更新场景：证书已存在且未强制，直接跳过
-  if [ -f "$target_file" ] && [ "$force" != "1" ]; then
-    return
-  fi
-
-  if ! tty_available; then
-    echo "无法交互输入证书，请确保在终端中运行安装脚本" >&2
-    exit 1
-  fi
-
-  cert_tmp="$(mktemp)"
-  printf "请粘贴 node 需要信任的 server 客户端证书 PEM 内容。\n" > /dev/tty
-  printf "粘贴完成后，按两次回车（输入空行）确认。\n" > /dev/tty
-  : > "$cert_tmp"
-  while IFS= read -r line < /dev/tty; do
-    [ -z "$line" ] && break
-    printf "%s\n" "$line" >> "$cert_tmp"
-  done
-  if [ ! -s "$cert_tmp" ]; then
-    rm -f "$cert_tmp"
-    echo "证书内容为空，安装终止" >&2
-    exit 1
-  fi
-
-  run_as_root mkdir -p "$(dirname "$target_file")"
-  run_as_root install -m 0644 "$cert_tmp" "$target_file"
-  rm -f "$cert_tmp"
+  # Deprecated stub: pre-pasted client cert flow has been replaced by
+  # `pulse-node enroll`. Kept only to avoid breaking older copies of the
+  # script that may still source/call this function.
+  echo "[deprecated] prompt_node_client_cert_pem 已废弃，新流程请使用 'pulse-node enroll'。" >&2
+  return 0
 }
 
 random_password() {
@@ -108,6 +84,10 @@ need_cmd() {
 }
 
 run_as_root() {
+  if [ "${PULSE_INSTALL_DRY_RUN:-0}" = "1" ]; then
+    echo "[dry-run] run_as_root: $*" >&2
+    return 0
+  fi
   if [ "$(id -u)" -eq 0 ]; then
     "$@"
     return
@@ -166,10 +146,15 @@ component=""
 version="latest"
 server_url=""
 node_id=""
+token=""
+token_file=""
 cert_b64=""
+insecure=1
 _next_is_server=0
 _next_is_node_id=0
 _next_is_cert=0
+_next_is_token=0
+_next_is_token_file=0
 for _arg in "$@"; do
   if [ "$_next_is_server" = "1" ]; then
     server_url="$_arg"
@@ -186,6 +171,16 @@ for _arg in "$@"; do
     _next_is_cert=0
     continue
   fi
+  if [ "$_next_is_token" = "1" ]; then
+    token="$_arg"
+    _next_is_token=0
+    continue
+  fi
+  if [ "$_next_is_token_file" = "1" ]; then
+    token_file="$_arg"
+    _next_is_token_file=0
+    continue
+  fi
   case "$_arg" in
     --force|-f) force=1 ;;
     --reset-password) reset_password=1 ;;
@@ -193,6 +188,10 @@ for _arg in "$@"; do
     --server) _next_is_server=1 ;;
     --node-id) _next_is_node_id=1 ;;
     --cert) _next_is_cert=1 ;;
+    --token) _next_is_token=1 ;;
+    --token-file) _next_is_token_file=1 ;;
+    --insecure) insecure=1 ;;
+    --no-insecure) insecure=0 ;;
     server|node)
       component="$_arg"
       ;;
@@ -207,6 +206,19 @@ for _arg in "$@"; do
       ;;
   esac
 done
+
+# Silence shellcheck SC2034: force is referenced indirectly when callers
+# adopt new flow but legacy --force semantics remain reserved.
+: "${force}"
+
+if [ -n "$cert_b64" ]; then
+  cat >&2 <<'EOF'
+[deprecated] --cert 已废弃，新流程不再需要预粘贴 server 客户端证书。
+  请改用控制面板"添加节点"生成的新命令（包含 --token <ENROLL_TOKEN>）。
+  本次将忽略 --cert 的值，继续按新流程执行。
+EOF
+  cert_b64=""
+fi
 
 if [ -z "$component" ]; then
   usage
@@ -249,14 +261,30 @@ fi
 tmp_dir="$(mktemp -d)"
 trap 'rm -rf "$tmp_dir"' EXIT INT TERM
 
-echo "下载 ${asset} ..."
-curl -fsSL "$download_url" -o "${tmp_dir}/${asset}"
-tar -xzf "${tmp_dir}/${asset}" -C "$tmp_dir"
-
 package_dir="${tmp_dir}/pulse-${component}-${os}-${cpu}"
-if [ ! -d "$package_dir" ]; then
-  echo "安装包内容异常: ${package_dir} 不存在" >&2
-  exit 1
+
+if [ "${PULSE_INSTALL_DRY_RUN:-0}" = "1" ]; then
+  echo "[dry-run] 跳过下载: ${download_url}"
+  # Stage a fake package layout so downstream `install` calls have something to
+  # reference (run_as_root is a no-op under dry-run, so missing payloads are
+  # tolerated).
+  mkdir -p "${package_dir}/bin" \
+           "${package_dir}/etc/pulse" \
+           "${package_dir}/lib/systemd/system" \
+           "${package_dir}/etc/init.d"
+  : > "${package_dir}/bin/pulse-${component}"
+  : > "${package_dir}/etc/pulse/pulse-${component}.env.example"
+  : > "${package_dir}/lib/systemd/system/pulse-${component}.service"
+  : > "${package_dir}/etc/init.d/pulse-${component}"
+else
+  echo "下载 ${asset} ..."
+  curl -fsSL "$download_url" -o "${tmp_dir}/${asset}"
+  tar -xzf "${tmp_dir}/${asset}" -C "$tmp_dir"
+
+  if [ ! -d "$package_dir" ]; then
+    echo "安装包内容异常: ${package_dir} 不存在" >&2
+    exit 1
+  fi
 fi
 
 run_as_root mkdir -p "$bin_dir" "$etc_dir" "$state_dir"
@@ -292,12 +320,6 @@ if [ "$component" = "server" ]; then
   fi
   if [ "${PULSE_SERVER_ADDR+x}" = "x" ]; then
     set_env_file_value "$env_target" "PULSE_SERVER_ADDR" "$PULSE_SERVER_ADDR"
-  fi
-  if [ "${PULSE_SERVER_NODE_CLIENT_CERT_FILE+x}" = "x" ]; then
-    set_env_file_value "$env_target" "PULSE_SERVER_NODE_CLIENT_CERT_FILE" "$PULSE_SERVER_NODE_CLIENT_CERT_FILE"
-  fi
-  if [ "${PULSE_SERVER_NODE_CLIENT_KEY_FILE+x}" = "x" ]; then
-    set_env_file_value "$env_target" "PULSE_SERVER_NODE_CLIENT_KEY_FILE" "$PULSE_SERVER_NODE_CLIENT_KEY_FILE"
   fi
   if [ "${PULSE_DISCOURSE_URL+x}" = "x" ]; then
     set_env_file_value "$env_target" "PULSE_DISCOURSE_URL" "$PULSE_DISCOURSE_URL"
@@ -337,28 +359,124 @@ else
   if [ ! -f "$env_target" ]; then
     run_as_root install -m 0644 "${package_dir}/etc/pulse/pulse-node.env.example" "$env_target"
   fi
-  cert_target="${etc_dir}/server_client_cert.pem"
-  if [ -n "$cert_b64" ]; then
-    # --cert 参数直接写入证书（来自控制面板生成的安装命令）
-    run_as_root mkdir -p "$(dirname "$cert_target")"
-    printf "%s" "$cert_b64" | base64 -d | run_as_root tee "$cert_target" > /dev/null
+
+  # 校验新流程必需参数（--server/--node-id/--token 由控制面板生成的命令带入；
+  # 也允许通过 --token-file 从文件或 stdin 读取 token）
+  if [ -z "$server_url" ]; then
+    echo "缺少 --server <URL>，请从控制面板'添加节点'页面复制完整命令" >&2
+    exit 1
+  fi
+  if [ -z "$node_id" ]; then
+    echo "缺少 --node-id <ID>，请从控制面板'添加节点'页面复制完整命令" >&2
+    exit 1
+  fi
+
+  if [ -n "$token" ] && [ -n "$token_file" ]; then
+    echo "--token 与 --token-file 互斥" >&2
+    exit 1
+  fi
+  if [ -z "$token" ] && [ -z "$token_file" ]; then
+    echo "缺少 --token <ENROLL_TOKEN>（或 --token-file <PATH>）" >&2
+    exit 1
+  fi
+
+  # 把 token 收敛到一个临时文件，便于以 --token-file 形式喂给 pulse-node enroll，
+  # 避免 token 出现在 ps/审计日志里。
+  token_tmp="$(mktemp)"
+  chmod 0600 "$token_tmp"
+  if [ -n "$token_file" ]; then
+    if [ "$token_file" = "-" ]; then
+      cat > "$token_tmp"
+    else
+      cat "$token_file" > "$token_tmp"
+    fi
   else
-    prompt_node_client_cert_pem "$cert_target" "$force"
+    printf "%s" "$token" > "$token_tmp"
   fi
-  # 无论新装还是更新，都确保 env 中记录证书路径
-  set_env_file_value "$env_target" "PULSE_NODE_TLS_CLIENT_CERT_FILE" "$cert_target"
-  if [ "${PULSE_NODE_ADDR+x}" = "x" ]; then
-    set_env_file_value "$env_target" "PULSE_NODE_ADDR" "$PULSE_NODE_ADDR"
+  if [ ! -s "$token_tmp" ]; then
+    rm -f "$token_tmp"
+    echo "token 内容为空" >&2
+    exit 1
   fi
-  if [ "${PULSE_NODE_PORT+x}" = "x" ]; then
-    set_env_file_value "$env_target" "PULSE_NODE_PORT" "$PULSE_NODE_PORT"
+
+  # 旧的 server 客户端证书不再使用；若残留则重命名为 .deprecated 防止混淆
+  legacy_cert="${etc_dir}/server_client_cert.pem"
+  if [ -e "$legacy_cert" ]; then
+    echo "[notice] 发现旧的 ${legacy_cert}，重命名为 ${legacy_cert}.deprecated" >&2
+    run_as_root mv "$legacy_cert" "${legacy_cert}.deprecated"
   fi
-  if [ "${PULSE_NODE_TLS_CERT_FILE+x}" = "x" ]; then
-    set_env_file_value "$env_target" "PULSE_NODE_TLS_CERT_FILE" "$PULSE_NODE_TLS_CERT_FILE"
+
+  enroll_args="--server=$server_url --node-id=$node_id --token-file=$token_tmp --out=$etc_dir"
+  if [ "$insecure" = "1" ]; then
+    # TODO: 待 pulse-node enroll 支持 --server-fingerprint 后，把默认改为 fingerprint pinning
+    enroll_args="$enroll_args --insecure"
   fi
-  if [ "${PULSE_NODE_TLS_KEY_FILE+x}" = "x" ]; then
-    set_env_file_value "$env_target" "PULSE_NODE_TLS_KEY_FILE" "$PULSE_NODE_TLS_KEY_FILE"
+
+  enroll_log="$(mktemp)"
+  echo "执行 pulse-node enroll ..."
+  if [ "${PULSE_INSTALL_DRY_RUN:-0}" = "1" ]; then
+    echo "[dry-run] ${bin_dir}/pulse-node enroll $enroll_args" >&2
+    # 模拟产物以便后续步骤继续
+    : > "${tmp_dir}/node_cert.pem"
+    : > "${tmp_dir}/node_key.pem"
+    : > "${tmp_dir}/node_ca.pem"
+    cert_target="${tmp_dir}/node_cert.pem"
+    key_target="${tmp_dir}/node_key.pem"
+    ca_target="${tmp_dir}/node_ca.pem"
+    grpc_url=""
+  else
+    # shellcheck disable=SC2086 # 我们故意拆词以便把多个 flag 传给 enroll
+    if ! run_as_root "${bin_dir}/pulse-node" enroll $enroll_args | tee "$enroll_log"; then
+      rm -f "$token_tmp"
+      echo "pulse-node enroll 失败，安装终止" >&2
+      exit 1
+    fi
+    cert_target="${etc_dir}/node_cert.pem"
+    key_target="${etc_dir}/node_key.pem"
+    ca_target="${etc_dir}/node_ca.pem"
+    if [ ! -s "$cert_target" ] || [ ! -s "$key_target" ] || [ ! -s "$ca_target" ]; then
+      rm -f "$token_tmp" "$enroll_log"
+      echo "enroll 完成但缺少证书文件 (${cert_target} / ${key_target} / ${ca_target})" >&2
+      exit 1
+    fi
+    # enroll 输出形如 'GRPC server: https://host:port'
+    grpc_url="$(awk -F': ' '/^GRPC server: /{print $2}' "$enroll_log" | tail -n1)"
   fi
+  rm -f "$token_tmp" "$enroll_log"
+
+  # 修正权限（enroll 自身已写 0644/0600/0644，这里再保险一遍）
+  if [ "${PULSE_INSTALL_DRY_RUN:-0}" != "1" ]; then
+    run_as_root chmod 0644 "$cert_target" "$ca_target"
+    run_as_root chmod 0600 "$key_target"
+    if id -u pulse >/dev/null 2>&1; then
+      run_as_root chown pulse:pulse "$key_target" 2>/dev/null || true
+    fi
+  fi
+
+  set_env_file_value "$env_target" "PULSE_NODE_ID" "$node_id"
+  set_env_file_value "$env_target" "PULSE_NODE_CLIENT_CERT_FILE" "$cert_target"
+  set_env_file_value "$env_target" "PULSE_NODE_CLIENT_KEY_FILE" "$key_target"
+  set_env_file_value "$env_target" "PULSE_NODE_SERVER_CA_FILE" "$ca_target"
+  if [ -n "$grpc_url" ]; then
+    set_env_file_value "$env_target" "PULSE_NODE_GRPC_URL" "$grpc_url"
+    # PULSE_NODE_SERVER_ADDR = host:port，从 grpc_url 解析
+    grpc_hostport="${grpc_url#*://}"
+    grpc_hostport="${grpc_hostport%%/*}"
+    set_env_file_value "$env_target" "PULSE_NODE_SERVER_ADDR" "$grpc_hostport"
+  fi
+
+  # 移除已废弃的环境变量（HTTP listener / 旧 mTLS 流程残留）
+  for legacy_var in PULSE_NODE_TLS_CERT_FILE PULSE_NODE_TLS_KEY_FILE \
+                    PULSE_NODE_TLS_CLIENT_CERT_FILE PULSE_NODE_CA_FILE \
+                    PULSE_NODE_ADDR PULSE_NODE_PORT; do
+    if grep -q "^${legacy_var}=" "$env_target" 2>/dev/null; then
+      tmp_env="$(mktemp)"
+      grep -v "^${legacy_var}=" "$env_target" > "$tmp_env" || true
+      run_as_root install -m 0644 "$tmp_env" "$env_target"
+      rm -f "$tmp_env"
+    fi
+  done
+
   if [ "$init_system" = "systemd" ]; then
     run_as_root install -m 0644 "${package_dir}/lib/systemd/system/pulse-node.service" "${lib_dir}/pulse-node.service"
     run_as_root systemctl daemon-reload
@@ -394,32 +512,15 @@ if [ "$component" = "server" ]; then
   echo "  密码:     ${_password:-(见 ${env_target})}"
   echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 else
-  _port="$(grep '^PULSE_NODE_PORT=' "$env_target" 2>/dev/null | cut -d= -f2- | tr -d "'" | tr -d '"')"
-  if [ -z "$_port" ]; then
-    _addr="$(grep '^PULSE_NODE_ADDR=' "$env_target" 2>/dev/null | cut -d= -f2- | tr -d "'" | tr -d '"')"
-    _addr="${_addr:-:8081}"
-    _port="${_addr#:}"
-  fi
   _ip="$(ip -4 addr show scope global 2>/dev/null | awk '/inet/{gsub(/\/.*/, "", $2); print $2; exit}' \
         || hostname -I 2>/dev/null | awk '{print $1}' \
         || echo "<your-ip>")"
-  _node_base_url="https://${_ip}:${_port}"
   echo ""
   echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-  echo "  节点地址: ${_node_base_url}"
+  echo "  节点 ID:   ${node_id}"
+  echo "  节点出口:  ${_ip}"
+  echo "  控制面 gRPC: ${grpc_url:-(见 ${env_target} 中的 PULSE_NODE_GRPC_URL)}"
+  echo ""
+  echo "  pulse-node 不再监听 HTTP 端口，所有指令通过 gRPC 长连接由控制面下发。"
   echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-  # 若由控制面板生成的命令提供了 server_url 和 node_id，则自动注册节点地址
-  if [ -n "$server_url" ] && [ -n "$node_id" ]; then
-    echo ""
-    echo "正在向控制面板注册节点地址..."
-    _register_url="${server_url%/}/v1/node-register"
-    _register_body="{\"node_id\":\"${node_id}\",\"base_url\":\"${_node_base_url}\"}"
-    if curl -fsSL -X POST "$_register_url" \
-        -H "Content-Type: application/json" \
-        -d "$_register_body" > /dev/null 2>&1; then
-      echo "注册成功，节点已与控制面板连接。"
-    else
-      echo "注册请求失败，请在控制面板手动填写节点地址: ${_node_base_url}" >&2
-    fi
-  fi
 fi

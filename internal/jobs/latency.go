@@ -12,8 +12,9 @@ import (
 const latencyProbeMaxConcurrency = 20
 
 // SampleLatency 并发对所有活跃节点探测上海三网延迟并持久化。
-// 由调度器每分钟调用一次。
-func SampleLatency(ctx context.Context, nodeStore nodes.Store, clientOpts nodes.ClientOptions) error {
+// 由调度器每分钟调用一次。dial 用于获取每个节点的 RPC 客户端
+// （生产环境绑定到 nodehub.Hub）。
+func SampleLatency(ctx context.Context, nodeStore nodes.Store, dial NodeDialer) error {
 	all, err := nodeStore.List()
 	if err != nil {
 		return err
@@ -37,7 +38,11 @@ func SampleLatency(ctx context.Context, nodeStore nodes.Store, clientOpts nodes.
 			defer wg.Done()
 			defer func() { <-sem }()
 
-			client := nodes.NewClient(n, clientOpts)
+			client, err := dial(n.ID)
+			if err != nil {
+				log.Printf("[latency] node %s dial error: %v", n.Name, err)
+				return
+			}
 			probeCtx, cancel := context.WithTimeout(ctx, 6*time.Second)
 			result, err := client.ProbeLatency(probeCtx)
 			cancel()

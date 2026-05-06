@@ -653,3 +653,67 @@ func (s *UserStore) ListUserGroupsByUser(userID string) ([]string, error) {
 	}
 	return rows, nil
 }
+
+func (s *UserStore) SetPassword(userID, hash string) error {
+	tag, err := s.db.Exec(context.Background(),
+		`UPDATE users SET password = $1 WHERE id = $2`, hash, userID)
+	if err != nil {
+		return err
+	}
+	if tag.RowsAffected() == 0 {
+		return users.ErrUserNotFound
+	}
+	return nil
+}
+
+func (s *UserStore) GetPasswordBySubToken(subToken string) (string, string, error) {
+	var userID, hash string
+	err := s.db.QueryRow(context.Background(),
+		`SELECT id, password FROM users WHERE sub_token = $1`, subToken,
+	).Scan(&userID, &hash)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return "", "", users.ErrUserNotFound
+	}
+	return userID, hash, err
+}
+
+// GetAdminUser 返回第一个 is_admin=true 的用户。
+func (s *UserStore) GetAdminUser() (users.User, error) {
+	var id, username, password string
+	err := s.db.QueryRow(context.Background(),
+		`SELECT id, username, password FROM users WHERE is_admin = TRUE LIMIT 1`,
+	).Scan(&id, &username, &password)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return users.User{}, users.ErrUserNotFound
+	}
+	if err != nil {
+		return users.User{}, err
+	}
+	return users.User{ID: id, Username: username, Password: password, IsAdmin: true}, nil
+}
+
+// SetIsAdmin 设置指定用户的管理员标记。
+func (s *UserStore) SetIsAdmin(userID string, isAdmin bool) error {
+	tag, err := s.db.Exec(context.Background(),
+		`UPDATE users SET is_admin = $1 WHERE id = $2`, isAdmin, userID)
+	if err != nil {
+		return err
+	}
+	if tag.RowsAffected() == 0 {
+		return users.ErrUserNotFound
+	}
+	return nil
+}
+
+// UpdateUsername 只更新用户名，不影响其他字段。
+func (s *UserStore) UpdateUsername(userID, username string) error {
+	tag, err := s.db.Exec(context.Background(),
+		`UPDATE users SET username = $1 WHERE id = $2`, username, userID)
+	if err != nil {
+		return err
+	}
+	if tag.RowsAffected() == 0 {
+		return users.ErrUserNotFound
+	}
+	return nil
+}

@@ -120,6 +120,14 @@ export default function SettingsPage() {
   const [maxmindDownloading, setMaxmindDownloading] = useState(false);
   const [maxmindShowKey, setMaxmindShowKey] = useState(false);
 
+  // 账户安全 — 修改密码
+  const [credUsername, setCredUsername] = useState("");
+  const [credOldPassword, setCredOldPassword] = useState("");
+  const [credNewPassword, setCredNewPassword] = useState("");
+  const [credConfirmPassword, setCredConfirmPassword] = useState("");
+  const [credSaving, setCredSaving] = useState(false);
+  const [credMsg, setCredMsg] = useState<string | null>(null);
+
   // ── Auth redirect helper ─────────────────────────────────────
 
   const handleAuthError = useAuthErrorHandler();
@@ -441,6 +449,44 @@ export default function SettingsPage() {
     }
   }
 
+  // ── 修改管理员凭据 ───────────────────────────────────────────────
+
+  async function saveCredentials() {
+    setCredMsg(null);
+    if (!credOldPassword || !credNewPassword) {
+      setCredMsg("旧密码和新密码不能为空");
+      return;
+    }
+    if (credNewPassword !== credConfirmPassword) {
+      setCredMsg("两次新密码不一致");
+      return;
+    }
+    if (credNewPassword.length < 6) {
+      setCredMsg("新密码至少 6 位");
+      return;
+    }
+    setCredSaving(true);
+    try {
+      const body: Record<string, string> = {
+        old_password: credOldPassword,
+        new_password: credNewPassword,
+      };
+      if (credUsername.trim()) body.username = credUsername.trim();
+      await api.put("/auth/credentials", body);
+      toast("密码已更新，下次登录请使用新密码", "success");
+      setCredOldPassword("");
+      setCredNewPassword("");
+      setCredConfirmPassword("");
+      setCredUsername("");
+      setCredMsg("保存成功");
+    } catch (err) {
+      if (handleAuthError(err as Error)) return;
+      setCredMsg(err instanceof Error ? err.message : "保存失败");
+    } finally {
+      setCredSaving(false);
+    }
+  }
+
   // ── Render ───────────────────────────────────────────────────
 
   return (
@@ -587,6 +633,69 @@ export default function SettingsPage() {
                   </p>
                 </div>
               )}
+            </CardContent>
+          </Card>
+
+          {/* 账户安全 */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-base font-medium">账户安全</CardTitle>
+            </CardHeader>
+            <Separator />
+            <CardContent className="pt-4 space-y-4">
+              <p className="text-sm text-[hsl(var(--muted-foreground))]">
+                修改管理员登录用户名或密码。旧密码为必填项；用户名留空时仅修改密码。
+              </p>
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                <div className="space-y-1.5">
+                  <Label className="text-sm">新用户名（可选）</Label>
+                  <Input
+                    type="text"
+                    autoComplete="username"
+                    placeholder="留空则不修改"
+                    value={credUsername}
+                    onChange={(e) => setCredUsername(e.target.value)}
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <Label className="text-sm">旧密码</Label>
+                  <Input
+                    type="password"
+                    autoComplete="current-password"
+                    placeholder="••••••••"
+                    value={credOldPassword}
+                    onChange={(e) => setCredOldPassword(e.target.value)}
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <Label className="text-sm">新密码</Label>
+                  <Input
+                    type="password"
+                    autoComplete="new-password"
+                    placeholder="••••••••"
+                    value={credNewPassword}
+                    onChange={(e) => setCredNewPassword(e.target.value)}
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <Label className="text-sm">确认新密码</Label>
+                  <Input
+                    type="password"
+                    autoComplete="new-password"
+                    placeholder="••••••••"
+                    value={credConfirmPassword}
+                    onChange={(e) => setCredConfirmPassword(e.target.value)}
+                  />
+                </div>
+              </div>
+              <div className="flex items-center gap-3">
+                <Button size="sm" onClick={saveCredentials} disabled={credSaving}>
+                  {credSaving ? "保存中…" : "保存"}
+                </Button>
+                {credMsg && (
+                  <span className="text-sm text-[hsl(var(--muted-foreground))]">{credMsg}</span>
+                )}
+              </div>
             </CardContent>
           </Card>
 

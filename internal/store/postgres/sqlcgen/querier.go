@@ -15,8 +15,10 @@ type Querier interface {
 	AddNodeTraffic(ctx context.Context, arg AddNodeTrafficParams) error
 	AddUserGroupMember(ctx context.Context, arg AddUserGroupMemberParams) error
 	ClaimInvoice(ctx context.Context, arg ClaimInvoiceParams) (pgconn.CommandTag, error)
+	CleanupExpiredEnrollTokens(ctx context.Context, expiresAt time.Time) (pgconn.CommandTag, error)
 	ClearAllHostExclusionsByUser(ctx context.Context, userID string) error
 	ClearHostExclusion(ctx context.Context, arg ClearHostExclusionParams) error
+	ConsumeEnrollToken(ctx context.Context, token string) (pgconn.CommandTag, error)
 	CountUsersByInbound(ctx context.Context) ([]CountUsersByInboundRow, error)
 	DeleteAllInboundsForGroup(ctx context.Context, groupID string) error
 	DeleteAllUserGroupMembers(ctx context.Context, groupID string) error
@@ -51,6 +53,7 @@ type Querier interface {
 	GetActiveAnnouncement(ctx context.Context) (Announcement, error)
 	GetAnnouncementByID(ctx context.Context, id string) (Announcement, error)
 	GetCFDomainByID(ctx context.Context, id string) (GetCFDomainByIDRow, error)
+	GetEnrollToken(ctx context.Context, token string) (EnrollToken, error)
 	GetHostByID(ctx context.Context, id string) (Host, error)
 	GetIPSentinelConfig(ctx context.Context, nodeID string) (IpSentinelConfig, error)
 	GetInboundByID(ctx context.Context, id string) (Inbound, error)
@@ -72,6 +75,8 @@ type Querier interface {
 	GetUsersByIDs(ctx context.Context, dollar_1 []string) ([]User, error)
 	IncrementPlanStockSold(ctx context.Context, id string) (pgconn.CommandTag, error)
 	InsertAnnouncement(ctx context.Context, arg InsertAnnouncementParams) error
+	// ─── Enroll Tokens ────────────────────────────────────────────────────────────
+	InsertEnrollToken(ctx context.Context, arg InsertEnrollTokenParams) error
 	InsertIPSentinelRun(ctx context.Context, arg InsertIPSentinelRunParams) error
 	InsertNodeCheckResult(ctx context.Context, arg InsertNodeCheckResultParams) error
 	// ─── node_uptime_log ──────────────────────────────────────────────────────────

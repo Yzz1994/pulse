@@ -234,6 +234,9 @@ export default function UsersPage() {
   // 凭证显示/重置状态
   const [showCredentials, setShowCredentials] = useState(false);
   const [resettingCredentials, setResettingCredentials] = useState(false);
+  // 门户密码（空字符串 = 不变，非空 = 覆盖；clearPassword = true 时清除）
+  const [editPassword, setEditPassword] = useState("");
+  const [clearPassword, setClearPassword] = useState(false);
 
   // ── Copy sub link state ────────────────────────────────────
   const [copiedUserId, setCopiedUserId] = useState<string | null>(null);
@@ -471,6 +474,8 @@ export default function UsersPage() {
     setEditLastResetAt(isoToDateInput(user.last_traffic_reset_at));
     setEditInboundIds([]);
     setShowCredentials(false);
+    setEditPassword("");
+    setClearPassword(false);
     setFormError("");
     setEditOpen(true);
     // Fetch inbounds in parallel
@@ -520,6 +525,12 @@ export default function UsersPage() {
         body.last_traffic_reset_at = dateInputToIso(editLastResetAt);
       } else {
         body.clear_last_traffic_reset_at = true;
+      }
+
+      if (clearPassword) {
+        body.password = "";
+      } else if (editPassword.trim() !== "") {
+        body.password = editPassword.trim();
       }
 
       await api.put<User>(`/users/${editingUser.id}`, body);
@@ -1243,6 +1254,44 @@ export default function UsersPage() {
                   {resettingCredentials ? "重置中..." : "重置凭证"}
                 </Button>
               </div>
+            </div>
+
+            {/* 门户密码 */}
+            <div className="grid gap-2">
+              <Label htmlFor="edit-portal-password">门户密码</Label>
+              {clearPassword ? (
+                <div className="flex items-center gap-2 rounded-md border border-[hsl(var(--destructive))]/40 bg-[hsl(var(--destructive))]/5 px-3 py-2 text-xs text-[hsl(var(--destructive))]">
+                  <span className="flex-1">保存后将清除门户密码</span>
+                  <button
+                    type="button"
+                    className="text-[hsl(var(--muted-foreground))] hover:text-[hsl(var(--foreground))]"
+                    onClick={() => setClearPassword(false)}
+                  >
+                    撤销
+                  </button>
+                </div>
+              ) : (
+                <div className="flex gap-2">
+                  <Input
+                    id="edit-portal-password"
+                    type="password"
+                    placeholder="留空保持不变；输入新密码覆盖"
+                    value={editPassword}
+                    onChange={(e) => setEditPassword(e.target.value)}
+                    autoComplete="new-password"
+                    className="flex-1"
+                  />
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    className="shrink-0 text-[hsl(var(--destructive))] border-[hsl(var(--destructive))]/30 hover:bg-[hsl(var(--destructive))]/10"
+                    onClick={() => { setClearPassword(true); setEditPassword(""); }}
+                  >
+                    清除
+                  </Button>
+                </div>
+              )}
             </div>
 
             {/* On Hold Expire At — only when status is on_hold */}

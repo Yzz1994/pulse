@@ -1,0 +1,32 @@
+syntax = "proto3";
+
+package pulse.node.v1;
+
+option go_package = "pulse/internal/pb/nodev1";
+
+// Node 主动建立 gRPC 长连接到 server，双向流：node 发 NodeMessage，server 回 ServerMessage。
+service NodeAgent {
+  // 核心双向流：server 通过 ServerMessage 下发指令，node 用 NodeMessage 回响应或主动推送。
+  rpc Session(stream NodeMessage) returns (stream ServerMessage);
+}
+
+// Server -> Node
+message ServerMessage {
+  string id     = 1;  // 请求 ID，用于关联响应
+  string method = 2;  // 对应现有 Client 方法名
+  bytes  body   = 3;  // JSON 编码的请求体（复用现有结构体）
+  // 用于取消正在进行的流式调用（如 LogsStream）
+  string cancel_id = 4;
+}
+
+// Node -> Server
+message NodeMessage {
+  string id    = 1;  // 对应请求 ID（主动推送时为空）
+  bool   ok    = 2;
+  bytes  body  = 3;  // JSON 编码的响应体
+  string error = 4;
+  // 主动推送类型："log" | "traceroute_hop" | "usage_push" | "hello" | ""
+  string event = 5;
+  // node 主动推 usage 时携带，server ack 后 node 才能丢弃
+  uint64 seq   = 6;
+}

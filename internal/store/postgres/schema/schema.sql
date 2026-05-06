@@ -64,6 +64,16 @@ CREATE TABLE IF NOT EXISTS nodes (
     is_landing          BOOLEAN NOT NULL DEFAULT TRUE
 );
 
+-- enroll_tokens：节点 enrollment 一次性令牌
+CREATE TABLE IF NOT EXISTS enroll_tokens (
+    token        TEXT PRIMARY KEY,
+    node_id      TEXT NOT NULL,
+    expires_at   TIMESTAMPTZ NOT NULL,
+    consumed_at  TIMESTAMPTZ,
+    created_at   TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_enroll_tokens_expires ON enroll_tokens(expires_at);
+
 -- outbounds：独立的出口代理配置
 CREATE TABLE IF NOT EXISTS outbounds (
     id          TEXT PRIMARY KEY,

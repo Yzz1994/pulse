@@ -18,7 +18,7 @@ NEXT_PATCH   := $(MAJOR).$(MINOR).$(shell echo $$(($(PATCH)+1)))
 NEXT_MINOR   := $(MAJOR).$(shell echo $$(($(MINOR)+1))).0
 NEXT_MAJOR   := $(shell echo $$(($(MAJOR)+1))).0.0
 
-.PHONY: build build-server build-node build-cli build-spa test sqlc package-server package-node checksums clean clean-dev dev stop release _do_release _build-server-dev
+.PHONY: build build-server build-node build-cli build-spa test loadtest sqlc proto package-server package-node checksums clean clean-dev dev stop release _do_release _build-server-dev
 
 build: build-cli build-server build-node
 
@@ -43,9 +43,25 @@ build-node:
 test:
 	go test ./...
 
+# nodehub gRPC 并发压测（1000 个 nodeagent 同进程 bufconn）。
+# 默认不进 CI（build tag `loadtest` 隔离）；在本机跑：
+#   make loadtest
+loadtest:
+	go test -tags loadtest -count=1 -timeout 5m -v ./internal/nodehub/loadtest/...
+
 sqlc:
 	sqlc generate
 	sqlc vet
+
+# 生成 gRPC / protobuf 代码到 internal/pb/nodev1/。
+# 依赖以下工具，请先安装到 PATH：
+#   brew install protobuf                                   # protoc
+#   go install google.golang.org/protobuf/cmd/protoc-gen-go@latest
+#   go install google.golang.org/grpc/cmd/protoc-gen-go-grpc@latest
+proto:
+	protoc --go_out=. --go_opt=module=pulse \
+	       --go-grpc_out=. --go-grpc_opt=module=pulse \
+	       proto/node/v1/node.proto
 
 package-server: build-server
 	rm -rf $(DIST_DIR)/package/pulse-server-$(TARGET_OS)-$(TARGET_ARCH)
@@ -123,24 +139,21 @@ dev: _build-server-dev build-node
 	@pkill -f 'dist/pulse-server' 2>/dev/null; pkill -f 'dist/pulse-node' 2>/dev/null; pkill -f 'bun run dev.ts' 2>/dev/null; sleep 0.3; true
 	@mkdir -p dev-data/server dev-data/node
 	@echo "→ server  http://localhost:8080  (admin/admin123)"
-	@echo "→ node    :8081"
+	@echo "→ grpc    :8082  (node hub, mTLS)"
 	@echo "→ panel   http://localhost:3000  (React SPA)"
+	@echo "→ node    pulse-node 不再监听端口；请通过控制面 enroll 流程注册节点"
+	@echo "         (示例：./dist/pulse-node enroll --server=http://localhost:8080 \\)"
+	@echo "                  --node-id=<ID> --token=<TOKEN> --insecure --out=./dev-data/node)"
 	@( trap 'kill $$(jobs -p) 2>/dev/null; wait' INT TERM; \
 	   PULSE_SERVER_ADDR=:8080 \
 	   PULSE_ADMIN_USERNAME=admin \
 	   PULSE_ADMIN_PASSWORD=admin123 \
 	   PULSE_DATABASE_URL=postgresql://user:password@localhost:5432/pulse?sslmode=disable \
-	   PULSE_SERVER_NODE_CLIENT_CERT_FILE=./dev-data/server/server_client_cert.pem \
-	   PULSE_SERVER_NODE_CLIENT_KEY_FILE=./dev-data/server/server_client_key.pem \
+	   PULSE_NODE_CA_CERT_FILE=./dev-data/server/node_ca_cert.pem \
+	   PULSE_NODE_CA_KEY_FILE=./dev-data/server/node_ca_key.pem \
+	   PULSE_NODE_GRPC_URL=https://localhost:8082 \
+	   PULSE_NODE_GRPC_ADDR=:8082 \
 	   ./dist/pulse-server & \
-	   sleep 1 && \
-	   PULSE_NODE_ADDR=:8081 \
-	   PULSE_NODE_SERVER_URL=http://localhost:8080 \
-	   PULSE_NODE_NAME=dev-node \
-	   PULSE_NODE_TLS_CERT_FILE=./dev-data/node/node_cert.pem \
-	   PULSE_NODE_TLS_KEY_FILE=./dev-data/node/node_key.pem \
-	   PULSE_NODE_TLS_CLIENT_CERT_FILE=./dev-data/server/server_client_cert.pem \
-	   ./dist/pulse-node & \
 	   sleep 1 && \
 	   cd web/panel && bun run dev.ts & \
 	   wait )

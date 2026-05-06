@@ -36,6 +36,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { api } from "@/lib/api";
 import { getToken } from "@/lib/auth";
 import { useAuthErrorHandler } from "@/hooks/useAuthErrorHandler";
+import { useNodeHubMetrics, formatLastSeen } from "@/hooks/useNodeHubMetrics";
 import { formatBytes, formatSpeed } from "@/lib/format";
 import type { Node, NodesResponse, CreateNodeRequest } from "@/lib/types";
 
@@ -360,6 +361,14 @@ function NodeFormDialog({ open, onOpenChange, node, onSubmit, submitting }: Node
 
 // ── Install Command Dialog ───────────────────────────────────────
 
+interface EnrollTokenResponse {
+  token: string;
+  expires_at: string;
+  install_command: string;
+  manual_command: string;
+  server_url: string;
+}
+
 function InstallCmdDialog({
   node,
   open,
@@ -369,18 +378,23 @@ function InstallCmdDialog({
   open: boolean;
   onClose: () => void;
 }) {
-  const [certB64, setCertB64] = useState<string | null>(null);
+  const [enroll, setEnroll] = useState<EnrollTokenResponse | null>(null);
+  const [error, setError] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
+  const [showManual, setShowManual] = useState(false);
   const [registered, setRegistered] = useState(false);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   useEffect(() => {
     if (!open || !node) return;
-    setCertB64(null);
+    setEnroll(null);
+    setError(null);
+    setShowManual(false);
     setRegistered(!!node.base_url);
-    api.get<{ cert_b64: string }>("/node-setup/cert")
-      .then((r) => setCertB64(r.cert_b64))
-      .catch(() => {});
+    api
+      .post<EnrollTokenResponse>(`/nodes/${node.id}/enroll-token`, {})
+      .then(setEnroll)
+      .catch((e: Error) => setError(e.message || "生成安装 token 失败"));
   }, [open, node]);
 
   useEffect(() => {
@@ -393,19 +407,12 @@ function InstallCmdDialog({
     return () => { if (pollRef.current) clearInterval(pollRef.current); };
   }, [open, node, registered]);
 
-  const origin = typeof window !== "undefined" ? window.location.origin : "";
-  const installCmd = node && certB64
-    ? [
-        "bash <(curl -fsSL https://raw.githubusercontent.com/0xUnixIO/pulse/main/scripts/install.sh) node \\",
-        `  --server ${origin} \\`,
-        `  --node-id ${node.id} \\`,
-        `  --cert ${certB64}`,
-      ].join("\n")
-    : "正在获取安装信息…";
+  const installCmd = enroll?.install_command ?? (error ?? "正在生成安装 token…");
+  const manualCmd = enroll?.manual_command ?? "";
 
-  const handleCopy = () => {
-    if (!node || !certB64) return;
-    navigator.clipboard.writeText(installCmd);
+  const handleCopy = (text: string) => {
+    if (!text) return;
+    navigator.clipboard.writeText(text);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
   };
@@ -416,30 +423,53 @@ function InstallCmdDialog({
         <DialogHeader>
           <DialogTitle>安装命令</DialogTitle>
           <DialogDescription>
-            在目标节点机器上以 root 权限运行以下命令，节点将自动安装并连接到控制面板。
+            在目标节点机器上以 root 权限运行以下命令，节点将自动安装并连接到控制面板。Token 1 小时内有效。
           </DialogDescription>
         </DialogHeader>
         <div className="space-y-3">
           <ScrollArea className="h-36 rounded-md border bg-[hsl(var(--muted))]">
             <pre className="whitespace-pre-wrap break-all p-3 text-xs font-mono">{installCmd}</pre>
           </ScrollArea>
-          <button
-            onClick={handleCopy}
-            disabled={!certB64}
-            className="inline-flex items-center gap-1.5 rounded-md border border-[hsl(var(--border))] bg-transparent px-3 py-1.5 text-xs font-medium transition-colors hover:bg-[hsl(var(--accent))] disabled:opacity-50"
-          >
-            {copied ? (
-              <>
-                <svg xmlns="http://www.w3.org/2000/svg" className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" /></svg>
-                已复制
-              </>
-            ) : (
-              <>
-                <svg xmlns="http://www.w3.org/2000/svg" className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><rect x="9" y="9" width="13" height="13" rx="2" ry="2" /><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" /></svg>
-                复制命令
-              </>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => handleCopy(installCmd)}
+              disabled={!enroll}
+              className="inline-flex items-center gap-1.5 rounded-md border border-[hsl(var(--border))] bg-transparent px-3 py-1.5 text-xs font-medium transition-colors hover:bg-[hsl(var(--accent))] disabled:opacity-50"
+            >
+              {copied ? (
+                <>
+                  <svg xmlns="http://www.w3.org/2000/svg" className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" /></svg>
+                  已复制
+                </>
+              ) : (
+                <>
+                  <svg xmlns="http://www.w3.org/2000/svg" className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><rect x="9" y="9" width="13" height="13" rx="2" ry="2" /><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" /></svg>
+                  复制命令
+                </>
+              )}
+            </button>
+            {manualCmd && (
+              <button
+                onClick={() => setShowManual((v) => !v)}
+                className="inline-flex items-center gap-1.5 rounded-md border border-[hsl(var(--border))] bg-transparent px-3 py-1.5 text-xs font-medium transition-colors hover:bg-[hsl(var(--accent))]"
+              >
+                {showManual ? "隐藏手动命令" : "已安装 pulse-node？查看手动命令"}
+              </button>
             )}
-          </button>
+          </div>
+          {showManual && manualCmd && (
+            <div className="space-y-2">
+              <ScrollArea className="h-20 rounded-md border bg-[hsl(var(--muted))]">
+                <pre className="whitespace-pre-wrap break-all p-3 text-xs font-mono">{manualCmd}</pre>
+              </ScrollArea>
+              <button
+                onClick={() => handleCopy(manualCmd)}
+                className="inline-flex items-center gap-1.5 rounded-md border border-[hsl(var(--border))] bg-transparent px-3 py-1.5 text-xs font-medium transition-colors hover:bg-[hsl(var(--accent))]"
+              >
+                复制手动命令
+              </button>
+            </div>
+          )}
         </div>
         <DialogFooter>
           <div className="flex w-full items-center justify-between">
@@ -463,6 +493,9 @@ function InstallCmdDialog({
     </Dialog>
   );
 }
+
+// TODO(panel-add-node): 为节点列表行新增"重新生成安装命令"操作，复用 /nodes/{id}/enroll-token
+// 端点。当前已通过添加流程触发，未实现行级重发。
 
 // ── Manual Update Dialog ─────────────────────────────────────────
 
@@ -849,6 +882,8 @@ interface NodeCardProps {
   onManualUpdate: (node: Node) => void;
   latestVersion: string | null;
   geoInfo?: GeoInfo | null;
+  hubOnline?: boolean;
+  hubLastSeen?: number; // unix seconds
 }
 
 // ── Traceroute Dialog ────────────────────────────────────────────
@@ -1909,7 +1944,7 @@ function countryFlag(code: string): string {
   return String.fromCodePoint(...[...code.toUpperCase()].map(c => 0x1F1E6 - 65 + c.charCodeAt(0)));
 }
 
-function NodeCard({ node, status, runtime, metrics, onEdit, onDelete, onOpenDetail, onRestart, onSpeedtest, speedtestLoading, speedtestResult, onCheck, checkLoading, checkResult, prevMetrics, onUpdate, updateLoading, onManualUpdate, latestVersion, geoInfo }: NodeCardProps) {
+function NodeCard({ node, status, runtime, metrics, onEdit, onDelete, onOpenDetail, onRestart, onSpeedtest, speedtestLoading, speedtestResult, onCheck, checkLoading, checkResult, prevMetrics, onUpdate, updateLoading, onManualUpdate, latestVersion, geoInfo, hubOnline, hubLastSeen }: NodeCardProps) {
   const [tracerouteOpen, setTracerouteOpen] = useState(false);
   const [sentinelOpen, setSentinelOpen] = useState(false);
   const totalTraffic = node.upload_bytes + node.download_bytes;
@@ -1924,6 +1959,20 @@ function NodeCard({ node, status, runtime, metrics, onEdit, onDelete, onOpenDeta
         return <Badge variant="outline">检测中...</Badge>;
     }
   })();
+
+  const hubBadge = hubOnline === undefined ? null : (
+    <span
+      className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-medium ${
+        hubOnline
+          ? "bg-emerald-500/15 text-emerald-600 dark:text-emerald-400"
+          : "bg-[hsl(var(--muted))] text-[hsl(var(--muted-foreground))]"
+      }`}
+      title={`gRPC 长连接 · 最近活跃：${formatLastSeen(hubLastSeen)}`}
+    >
+      <span className={`h-1.5 w-1.5 rounded-full ${hubOnline ? "bg-emerald-500" : "bg-gray-400"}`} />
+      {hubOnline ? "🟢 在线" : "⚪️ 离线"}
+    </span>
+  );
 
   return (
     <>
@@ -1944,6 +1993,7 @@ function NodeCard({ node, status, runtime, metrics, onEdit, onDelete, onOpenDeta
           )}
         </div>
         <div className="ml-2 flex shrink-0 items-center gap-2">
+          {hubBadge}
           {node.disabled
             ? <Badge variant="secondary">已禁用</Badge>
             : statusBadge}
@@ -2212,6 +2262,13 @@ export default function NodesPage() {
 
   // ── Auth error handler ───────────────────────────────────────
   const handleAuthError = useAuthErrorHandler();
+
+  // ── nodehub gRPC 长连接指标（每 5 秒轮询） ─────────────────
+  const hubMetrics = useNodeHubMetrics(5000);
+  const hubOnlineSet = useMemo(
+    () => new Set(hubMetrics?.online_node_ids ?? []),
+    [hubMetrics],
+  );
 
   // ── Check status for a single node ──────────────────────────
   const checkNodeStatus = useCallback(
@@ -2583,6 +2640,8 @@ export default function NodesPage() {
               onManualUpdate={(n) => { setManualUpdateNode(n); setManualUpdateOpen(true); }}
               latestVersion={latestVersion}
               geoInfo={geoInfoMap.get(node.id) ?? null}
+              hubOnline={hubMetrics ? hubOnlineSet.has(node.id) : undefined}
+              hubLastSeen={hubMetrics?.last_seen?.[node.id]}
             />
           ))}
         </div>

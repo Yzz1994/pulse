@@ -27,6 +27,14 @@ type CfDomain struct {
 	Remark   *string
 }
 
+type EnrollToken struct {
+	Token      string
+	NodeID     string
+	ExpiresAt  time.Time
+	ConsumedAt pgtype.Timestamptz
+	CreatedAt  time.Time
+}
+
 type Host struct {
 	ID               string
 	InboundID        string

@@ -1,0 +1,174 @@
+package nodeagent
+
+import (
+	"context"
+	"encoding/json"
+	"log/slog"
+	"sync"
+	"sync/atomic"
+	"time"
+
+	"pulse/internal/coremanager"
+	"pulse/internal/nodeapi"
+)
+
+// UsageSnapshotProvider 是 UsagePusher 与 nodeapi 解耦的接口：
+// reset=true 时调用方应清零 xray 内部计数（推进 baseline）。
+type UsageSnapshotProvider interface {
+	DoUsage(reset bool) coremanager.UsageStats
+}
+
+// UsagePusher 周期性把 usage delta 主动 push 给 server，并按 ack-before-reset
+// 协议在收到 ack 后才真正 reset xray 计数器。
+//
+// 重启容灾：第一次启动时先做一次 reset 清零 xray 累计计数（但不 push），
+// 避免上报历史累计数据；之后的轮次都按 (current - baseline) 计算 delta。
+type UsagePusher struct {
+	api      UsageSnapshotProvider
+	interval time.Duration
+	logger   *slog.Logger
+	ackWait  time.Duration
+
+	mu     sync.Mutex
+	sender Sender
+
+	nextSeq atomic.Uint64
+	pending sync.Map // seq → pendingUsage
+
+	primed bool // 是否已完成第一次清零（baseline 建立）
+}
+
+type pendingUsage struct {
+	seq  uint64
+	body []byte
+}
+
+// NewUsagePusher 构造一个 pusher。interval==0 时取默认 60s。
+func NewUsagePusher(api UsageSnapshotProvider, interval time.Duration) *UsagePusher {
+	if interval <= 0 {
+		interval = 60 * time.Second
+	}
+	return &UsagePusher{
+		api:      api,
+		interval: interval,
+		logger:   slog.Default(),
+		ackWait:  interval, // 默认 ack 超时 = 一个 interval
+	}
+}
+
+// SetLogger 自定义日志（默认 slog.Default()）。
+func (p *UsagePusher) SetLogger(l *slog.Logger) {
+	if l != nil {
+		p.logger = l
+	}
+}
+
+// SetAckTimeout 自定义等待 ack 的超时；<=0 时复用 interval。
+func (p *UsagePusher) SetAckTimeout(d time.Duration) {
+	if d > 0 {
+		p.ackWait = d
+	}
+}
+
+// SetSender 注入当前 session 的 Sender。传 nil 时下一轮 push 会被跳过。
+// 一般在 Config.OnConnected 回调里调用：
+//
+//	cfg.OnConnected = func(ctx context.Context, s nodeagent.Sender) {
+//	    pusher.SetSender(s)
+//	}
+func (p *UsagePusher) SetSender(s Sender) {
+	p.mu.Lock()
+	p.sender = s
+	p.mu.Unlock()
+}
+
+func (p *UsagePusher) currentSender() Sender {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	return p.sender
+}
+
+// Run 阻塞循环 push usage，直到 ctx done。
+func (p *UsagePusher) Run(ctx context.Context) error {
+	t := time.NewTicker(p.interval)
+	defer t.Stop()
+
+	for {
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-t.C:
+			p.tick(ctx)
+		}
+	}
+}
+
+// Tick 执行单次推送循环。仅供测试 / 集成验证使用：生产路径走 Run。
+func (p *UsagePusher) Tick(ctx context.Context) { p.tick(ctx) }
+
+// tick 执行单次推送循环。导出名仅用于测试。
+func (p *UsagePusher) tick(ctx context.Context) {
+	sender := p.currentSender()
+	if sender == nil {
+		return
+	}
+
+	// 第一次启动：清零 xray 累计，建立 baseline，不 push。
+	if !p.primed {
+		_ = p.api.DoUsage(true)
+		p.primed = true
+		return
+	}
+
+	// 取一次 delta 快照（不 reset）。
+	stats := p.api.DoUsage(false)
+	body, err := json.Marshal(stats)
+	if err != nil {
+		p.logger.Warn("nodeagent: marshal usage failed", "err", err)
+		return
+	}
+
+	// 重发尚未 ack 的旧 seq（按 seq 升序，server 端去重）。
+	var pendings []pendingUsage
+	p.pending.Range(func(k, v any) bool {
+		pendings = append(pendings, v.(pendingUsage))
+		return true
+	})
+	for _, pu := range pendings {
+		if err := sender.PushEvent("", "usage_push", pu.body, pu.seq); err != nil {
+			p.logger.Warn("nodeagent: re-push usage failed", "seq", pu.seq, "err", err)
+			return
+		}
+	}
+
+	seq := p.nextSeq.Add(1)
+	pend := pendingUsage{seq: seq, body: body}
+	p.pending.Store(seq, pend)
+
+	if err := sender.PushEvent("", "usage_push", body, seq); err != nil {
+		p.logger.Warn("nodeagent: push usage failed", "seq", seq, "err", err)
+		return
+	}
+
+	// 异步等待 ack：成功 → DoUsage(true) 推进 baseline；超时 → 保留 pending 给下轮重发。
+	go func(s Sender, seq uint64) {
+		waitCtx, cancel := context.WithTimeout(ctx, p.ackWait)
+		defer cancel()
+		if err := s.WaitAck(waitCtx, seq); err != nil {
+			p.logger.Debug("nodeagent: usage ack timeout", "seq", seq, "err", err)
+			return
+		}
+		_ = p.api.DoUsage(true)
+		p.pending.Delete(seq)
+	}(sender, seq)
+}
+
+// PendingCount 返回当前未 ack 的 seq 数量（仅供测试/监控用）。
+func (p *UsagePusher) PendingCount() int {
+	n := 0
+	p.pending.Range(func(_, _ any) bool { n++; return true })
+	return n
+}
+
+// 静态接口绑定，确保 *nodeapi.API 满足 UsageSnapshotProvider。
+var _ UsageSnapshotProvider = (*nodeapi.API)(nil)

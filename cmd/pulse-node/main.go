@@ -7,6 +7,7 @@ import (
 
 	"pulse/internal/buildinfo"
 	"pulse/internal/node"
+	"pulse/internal/nodeenroll"
 	"pulse/internal/ops"
 )
 
@@ -18,6 +19,11 @@ func main() {
 			return
 		case "-h", "--help", "help":
 			printUsage()
+			return
+		case "enroll":
+			if err := nodeenroll.RunCLI(os.Args[2:]); err != nil {
+				log.Fatal(err)
+			}
 			return
 		}
 		if ops.IsOpsCmd(os.Args[1]) {
@@ -42,5 +48,7 @@ func printUsage() {
 	fmt.Println("  pulse-node start             启动服务（systemctl）")
 	fmt.Println("  pulse-node stop              停止服务")
 	fmt.Println("  pulse-node restart           重启服务")
+	fmt.Println("  pulse-node enroll --server=<URL> --node-id=<ID> --token=<TOKEN> [--insecure]")
+	fmt.Println("                               执行节点初始化（生成密钥并向控制面注册）")
 	fmt.Println("  pulse-node version           查看版本")
 }

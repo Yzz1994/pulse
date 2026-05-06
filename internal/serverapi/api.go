@@ -18,6 +18,7 @@ import (
 	"pulse/internal/idgen"
 	"pulse/internal/inbounds"
 	"pulse/internal/accesslogs"
+	"pulse/internal/nodehub"
 	"pulse/internal/auditrules"
 	"pulse/internal/jobs"
 	"pulse/internal/nodes"
@@ -30,12 +31,11 @@ type API struct {
 	usersStore    users.Store
 	inboundStore  inbounds.InboundStore
 	outboundStore outbounds.Store
-	clientOptions nodes.ClientOptions
 	clientFactory func(node nodes.Node) *nodes.Client
 	applyOpts     jobs.ApplyOptions
 	settings      UpdateSettingsStore // 用于节点更新时获取 GitHub Token
-	// clientCache 缓存每个节点的 HTTP 客户端，避免每次调用都重新握手。
-	// 仅缓存初始化成功（InitErr==nil）的客户端；节点更新/删除时自动失效。
+	// clientCache 缓存每个节点的 RPC 客户端，避免重复构造。
+	// 节点更新/删除以及 SetNodeHub 时自动失效。
 	clientCache    sync.Map // nodeID → *nodes.Client
 	accessLogStore accesslogs.Store
 	auditRuleStore auditrules.Store
@@ -62,18 +62,20 @@ type configRequest struct {
 	Config string `json:"config"`
 }
 
-func New(store nodes.Store, clientOptions nodes.ClientOptions) *API {
+func New(store nodes.Store) *API {
 	return &API{
-		store:         store,
-		clientOptions: clientOptions,
+		store: store,
 		clientFactory: func(node nodes.Node) *nodes.Client {
-			return nodes.NewClient(node, clientOptions)
+			// 默认 factory：未注入 hub 时返回一个 hub == nil 的 Client；
+			// 所有方法会返回 nodes.ErrHubNotConfigured。生产环境会立即被
+			// SetNodeHub 替换，仅在单测或冷启动早期短暂出现。
+			return nodes.NewClientWithHub(node.ID, nil)
 		},
 	}
 }
 
-func NewWithUsers(nodesStore nodes.Store, usersStore users.Store, inboundStore inbounds.InboundStore, outboundStore outbounds.Store, clientOptions nodes.ClientOptions, applyOpts jobs.ApplyOptions, settings UpdateSettingsStore) *API {
-	api := New(nodesStore, clientOptions)
+func NewWithUsers(nodesStore nodes.Store, usersStore users.Store, inboundStore inbounds.InboundStore, outboundStore outbounds.Store, applyOpts jobs.ApplyOptions, settings UpdateSettingsStore) *API {
+	api := New(nodesStore)
 	api.usersStore = usersStore
 	api.inboundStore = inboundStore
 	api.outboundStore = outboundStore
@@ -90,11 +92,24 @@ func (a *API) SetAuditRuleStore(s auditrules.Store) {
 	a.auditRuleStore = s
 }
 
-func RegisterUsersAPI(mux *http.ServeMux, usersStore users.Store, nodesStore nodes.Store, inboundStore inbounds.InboundStore, outboundStore outbounds.Store, clientOptions nodes.ClientOptions, applyOpts jobs.ApplyOptions, geoDB *geoip.DB) {
-	base := New(nodesStore, clientOptions)
+// SetNodeHub 注入 gRPC 长连接 hub，所有节点 RPC 调用都通过此 hub 走 mTLS gRPC。
+// 同时清空缓存：旧的（hub == nil）默认 Client 不应再被复用。
+func (a *API) SetNodeHub(hub *nodehub.Hub) {
+	if hub == nil {
+		return
+	}
+	a.clientFactory = func(node nodes.Node) *nodes.Client {
+		return nodes.NewClientWithHub(node.ID, hub)
+	}
+	a.clientCache = sync.Map{}
+}
+
+func RegisterUsersAPI(mux *http.ServeMux, usersStore users.Store, nodesStore nodes.Store, inboundStore inbounds.InboundStore, outboundStore outbounds.Store, applyOpts jobs.ApplyOptions, geoDB *geoip.DB, sesStore PortalSessionStore) {
+	base := New(nodesStore)
 	base.inboundStore = inboundStore
 	base.outboundStore = outboundStore
 	a := newUserAPI(usersStore, nodesStore, inboundStore, outboundStore, base, applyOpts, geoDB)
+	a.sessions = sesStore
 	a.Register(mux)
 }
 
@@ -474,8 +489,7 @@ func (a *API) handleNodeLogsStream(w http.ResponseWriter, r *http.Request, nodeI
 		writeMethodNotAllowed(w, http.MethodGet)
 		return
 	}
-	flusher, ok := w.(http.Flusher)
-	if !ok {
+	if _, ok := w.(http.Flusher); !ok {
 		writeJSON(w, http.StatusInternalServerError, map[string]any{"error": "streaming not supported"})
 		return
 	}
@@ -489,23 +503,7 @@ func (a *API) handleNodeLogsStream(w http.ResponseWriter, r *http.Request, nodeI
 		writeJSON(w, http.StatusUnprocessableEntity, map[string]any{"error": err.Error()})
 		return
 	}
-	defer body.Close()
-
-	w.Header().Set("Content-Type", "text/event-stream")
-	w.Header().Set("Cache-Control", "no-cache")
-	w.Header().Set("X-Accel-Buffering", "no")
-
-	buf := make([]byte, 4096)
-	for {
-		n, readErr := body.Read(buf)
-		if n > 0 {
-			w.Write(buf[:n]) //nolint:errcheck
-			flusher.Flush()
-		}
-		if readErr != nil {
-			return
-		}
-	}
+	bridgeSSE(w, r, body)
 }
 
 func (a *API) handleNodeUsage(w http.ResponseWriter, r *http.Request, nodeID string) {
@@ -742,8 +740,7 @@ func (a *API) handleNodeTraceroute(w http.ResponseWriter, r *http.Request, nodeI
 		writeMethodNotAllowed(w, http.MethodGet)
 		return
 	}
-	flusher, ok := w.(http.Flusher)
-	if !ok {
+	if _, ok := w.(http.Flusher); !ok {
 		writeJSON(w, http.StatusInternalServerError, map[string]any{"error": "streaming not supported"})
 		return
 	}
@@ -774,23 +771,7 @@ func (a *API) handleNodeTraceroute(w http.ResponseWriter, r *http.Request, nodeI
 		writeJSON(w, http.StatusUnprocessableEntity, map[string]any{"error": err.Error()})
 		return
 	}
-	defer body.Close()
-
-	w.Header().Set("Content-Type", "text/event-stream")
-	w.Header().Set("Cache-Control", "no-cache")
-	w.Header().Set("X-Accel-Buffering", "no")
-
-	buf := make([]byte, 4096)
-	for {
-		n, readErr := body.Read(buf)
-		if n > 0 {
-			w.Write(buf[:n]) //nolint:errcheck
-			flusher.Flush()
-		}
-		if readErr != nil {
-			return
-		}
-	}
+	bridgeSSE(w, r, body)
 }
 
 func (a *API) handleNodeUpdate(w http.ResponseWriter, r *http.Request, nodeID string) {
@@ -827,7 +808,7 @@ func collectNodeUserIDs(accesses []users.UserInbound) []string {
 }
 
 func (a *API) clientFor(nodeID string) (*nodes.Client, error) {
-	// 命中缓存直接返回（复用连接池，避免重复 TLS 握手）
+	// 命中缓存直接返回（避免重复构造）
 	if v, ok := a.clientCache.Load(nodeID); ok {
 		return v.(*nodes.Client), nil
 	}
@@ -839,10 +820,7 @@ func (a *API) clientFor(nodeID string) (*nodes.Client, error) {
 		return nil, fmt.Errorf("node is disabled")
 	}
 	client := a.clientFactory(node)
-	// 仅缓存初始化成功的客户端；节点离线时不缓存，下次调用仍会重试
-	if client.InitErr() == nil {
-		a.clientCache.Store(nodeID, client)
-	}
+	a.clientCache.Store(nodeID, client)
 	return client, nil
 }
 

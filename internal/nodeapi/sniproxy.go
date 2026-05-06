@@ -1,56 +1,50 @@
 package nodeapi
 
 import (
-	"encoding/json"
-	"log"
-	"net/http"
+"errors"
+"log"
 
-	"pulse/internal/sniproxy"
+"pulse/internal/sniproxy"
 )
 
-// handleSNIProxySync 接收 pulse-server 推送的 SNI 代理完整配置，
-// 通过 sniproxy.Manager 热更新节点代理。
-func (a *API) handleSNIProxySync(w http.ResponseWriter, r *http.Request) {
-	if a.sniManager == nil {
-		writeJSON(w, http.StatusServiceUnavailable, map[string]any{
-			"error": "sni proxy manager not configured on this node",
-		})
-		return
-	}
-	var req sniproxy.ManagerConfig
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]any{"error": "invalid json body"})
-		return
-	}
-	log.Printf("sniproxy apply: listen=%q routes=%d cert_domains=%v cf_token_set=%v",
-		req.Listen, len(req.Routes), req.CertDomains, req.CloudflareToken != "")
-	if err := a.sniManager.Apply(req); err != nil {
-		log.Printf("sniproxy apply error: %v", err)
-		writeJSON(w, http.StatusInternalServerError, map[string]any{"error": err.Error()})
-		return
-	}
-	writeJSON(w, http.StatusOK, map[string]any{
-		"listen":  req.Listen,
-		"routes":  len(req.Routes),
-		"managed": a.sniManager.Config().Listen != "",
-	})
+// SNIProxySyncResponse 是 SyncSNIProxy 的成功响应。
+type SNIProxySyncResponse struct {
+Listen  string `json:"listen"`
+Routes  int    `json:"routes"`
+Managed bool   `json:"managed"`
 }
 
-// handleSNIProxyStatus 返回当前生效的配置摘要和实时运行状态。
-// Status 字段里 Listen 为空 + LastError 非空表示 Serve 失败（端口冲突等）；
-// 运维凭此判断新代理是否真的接管了流量。
-func (a *API) handleSNIProxyStatus(w http.ResponseWriter, r *http.Request) {
-	if a.sniManager == nil {
-		writeJSON(w, http.StatusOK, map[string]any{"enabled": false})
-		return
-	}
-	status := a.sniManager.Status()
-	cfg := a.sniManager.Config()
-	// 脱敏：API Token 不回显
-	cfg.CloudflareToken = ""
-	writeJSON(w, http.StatusOK, map[string]any{
-		"enabled": status.Listen != "",
-		"status":  status,
-		"config":  cfg,
-	})
+// ErrSNIProxyNotConfigured 表示节点未启用内置 SNI 代理。
+var ErrSNIProxyNotConfigured = errors.New("sni proxy manager not configured on this node")
+
+// DoSyncSNIProxy 把完整 SNI 代理配置推给 manager 热更新。
+func (a *API) DoSyncSNIProxy(req sniproxy.ManagerConfig) (SNIProxySyncResponse, error) {
+if a.sniManager == nil {
+return SNIProxySyncResponse{}, ErrSNIProxyNotConfigured
+}
+log.Printf("sniproxy apply: listen=%q routes=%d cert_domains=%v cf_token_set=%v",
+req.Listen, len(req.Routes), req.CertDomains, req.CloudflareToken != "")
+if err := a.sniManager.Apply(req); err != nil {
+return SNIProxySyncResponse{}, err
+}
+return SNIProxySyncResponse{
+Listen:  req.Listen,
+Routes:  len(req.Routes),
+Managed: a.sniManager.Config().Listen != "",
+}, nil
+}
+
+// DoSNIProxyStatus 返回当前 SNI 代理状态摘要。脱敏 cloudflare token。
+func (a *API) DoSNIProxyStatus() map[string]any {
+if a.sniManager == nil {
+return map[string]any{"enabled": false}
+}
+status := a.sniManager.Status()
+cfg := a.sniManager.Config()
+cfg.CloudflareToken = ""
+return map[string]any{
+"enabled": status.Listen != "",
+"status":  status,
+"config":  cfg,
+}
 }

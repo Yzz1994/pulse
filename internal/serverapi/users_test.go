@@ -15,13 +15,11 @@ import (
 )
 
 // setupTestMux 创建带 mock 节点的测试 mux，返回 mux 和 ibStore。
-func setupTestMux(t *testing.T, nodeHandler func(path string, w http.ResponseWriter, r *http.Request)) (*http.ServeMux, *inbounds.MemoryStore) {
+// nodeHandler 按 RPC 方法名（如 "Restart"、"Status"）注册响应。
+func setupTestMux(t *testing.T, nodeHandlers map[string]func(body any) (json.RawMessage, error)) (*http.ServeMux, *inbounds.MemoryStore) {
 	t.Helper()
 
-	nodeMux := http.NewServeMux()
-	nodeMux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
-		nodeHandler(r.URL.Path, w, r)
-	})
+	hub := &fakeHub{handlers: nodeHandlers}
 
 	nodeStore := nodes.NewMemoryStore()
 	_, _ = nodeStore.Upsert(nodes.Node{
@@ -30,16 +28,8 @@ func setupTestMux(t *testing.T, nodeHandler func(path string, w http.ResponseWri
 		BaseURL: "http://node.test",
 	})
 
-	baseAPI := New(nodeStore, nodes.ClientOptions{})
-	baseAPI.clientFactory = func(node nodes.Node) *nodes.Client {
-		return nodes.NewClientWithHTTPClient(node.BaseURL, &http.Client{
-			Transport: roundTripperFunc(func(req *http.Request) (*http.Response, error) {
-				rec := httptest.NewRecorder()
-				nodeMux.ServeHTTP(rec, req)
-				return rec.Result(), nil
-			}),
-		})
-	}
+	baseAPI := New(nodeStore)
+	baseAPI.clientFactory = fakeHubClientFactory(hub)
 
 	ibStore := inbounds.NewMemoryStore()
 	userAPI := newUserAPI(users.NewMemoryStore(), nodeStore, ibStore, nil, baseAPI, jobs.ApplyOptions{}, nil)
@@ -80,18 +70,15 @@ func createUserInbound(t *testing.T, mux *http.ServeMux, userID, inboundID strin
 
 func TestUserSubscriptionAndApplyFlow(t *testing.T) {
 	var capturedConfig string
-	mux, ibStore := setupTestMux(t, func(path string, w http.ResponseWriter, r *http.Request) {
-		switch path {
-		case "/v1/node/runtime/restart":
-			var req map[string]string
-			_ = json.NewDecoder(r.Body).Decode(&req)
-			capturedConfig = req["config"]
-			if !strings.Contains(req["config"], "\"protocol\": \"vless\"") {
-				http.Error(w, "bad config", http.StatusBadRequest)
-				return
+	mux, ibStore := setupTestMux(t, map[string]func(body any) (json.RawMessage, error){
+		"Restart": func(b any) (json.RawMessage, error) {
+			req, _ := b.(nodes.ConfigRequest)
+			capturedConfig = req.Config
+			if !strings.Contains(req.Config, "\"protocol\": \"vless\"") {
+				return nil, &nodeAPIError{"bad config"}
 			}
-			_ = json.NewEncoder(w).Encode(map[string]any{"running": true})
-		}
+			return json.RawMessage(`{"running":true}`), nil
+		},
 	})
 
 	// 在 ibStore 中注册 vless 入站和对应 host
@@ -161,7 +148,7 @@ func TestCreateUserAutoGeneratesID(t *testing.T) {
 		BaseURL: "http://node.test",
 	})
 
-	baseAPI := New(nodeStore, nodes.ClientOptions{})
+	baseAPI := New(nodeStore)
 	userAPI := newUserAPI(users.NewMemoryStore(), nodeStore, inbounds.NewMemoryStore(), nil, baseAPI, jobs.ApplyOptions{}, nil)
 	mux := http.NewServeMux()
 	userAPI.Register(mux)
@@ -184,10 +171,10 @@ func TestCreateUserAutoGeneratesID(t *testing.T) {
 }
 
 func TestUserSupportsMultipleProtocols(t *testing.T) {
-	mux, ibStore := setupTestMux(t, func(path string, w http.ResponseWriter, r *http.Request) {
-		if path == "/v1/node/runtime/restart" {
-			_ = json.NewEncoder(w).Encode(map[string]any{"running": true})
-		}
+	mux, ibStore := setupTestMux(t, map[string]func(body any) (json.RawMessage, error){
+		"Restart": func(any) (json.RawMessage, error) {
+			return json.RawMessage(`{"running":true}`), nil
+		},
 	})
 
 	// 在 node-1 上注册 trojan 和 shadowsocks 入站
@@ -249,6 +236,7 @@ func TestUserSupportsMultipleProtocols(t *testing.T) {
 
 func TestSyncUsageDisablesLimitedUserAndReloadsNode(t *testing.T) {
 	var capturedConfig string
+	var removedEmails []string
 	nodeStore := nodes.NewMemoryStore()
 	_, _ = nodeStore.Upsert(nodes.Node{
 		ID:      "node-1",
@@ -256,36 +244,21 @@ func TestSyncUsageDisablesLimitedUserAndReloadsNode(t *testing.T) {
 		BaseURL: "http://node.test",
 	})
 
-	baseAPI := New(nodeStore, nodes.ClientOptions{})
-	baseAPI.clientFactory = func(node nodes.Node) *nodes.Client {
-		return nodes.NewClientWithHTTPClient(node.BaseURL, &http.Client{
-			Transport: roundTripperFunc(func(req *http.Request) (*http.Response, error) {
-				rec := httptest.NewRecorder()
-				switch req.URL.Path {
-				case "/v1/node/runtime/usage":
-					_ = json.NewEncoder(rec).Encode(map[string]any{
-						"available":      true,
-						"running":        true,
-						"upload_total":   100,
-						"download_total": 200,
-						"connections":    1,
-						"users": []map[string]any{
-							{"user": "alice@pulse-vless-node-1", "upload_total": 80, "download_total": 40, "connections": 1},
-							{"user": "bob@pulse-vless-node-1", "upload_total": 10, "download_total": 10, "connections": 0},
-						},
-					})
-				case "/v1/node/runtime/restart":
-					var reqBody map[string]string
-					_ = json.NewDecoder(req.Body).Decode(&reqBody)
-					capturedConfig = reqBody["config"]
-					_ = json.NewEncoder(rec).Encode(map[string]any{"running": true})
-				default:
-					http.NotFound(rec, req)
-				}
-				return rec.Result(), nil
-			}),
-		})
-	}
+	hub := &fakeHub{handlers: map[string]func(body any) (json.RawMessage, error){
+		"Restart": func(b any) (json.RawMessage, error) {
+			req, _ := b.(nodes.ConfigRequest)
+			capturedConfig = req.Config
+			return json.RawMessage(`{"running":true}`), nil
+		},
+		"RemoveUser": func(b any) (json.RawMessage, error) {
+			if m, ok := b.(map[string]string); ok {
+				removedEmails = append(removedEmails, m["email"])
+			}
+			return json.RawMessage(`{}`), nil
+		},
+	}}
+	baseAPI := New(nodeStore)
+	baseAPI.clientFactory = fakeHubClientFactory(hub)
 
 	ibStore := inbounds.NewMemoryStore()
 	_, _ = ibStore.UpsertInbound(inbounds.Inbound{
@@ -302,9 +275,20 @@ func TestSyncUsageDisablesLimitedUserAndReloadsNode(t *testing.T) {
 	_, _ = userStore.UpsertUserInbound(users.UserInbound{ID: "u1-ib0", UserID: "u1", InboundID: "ib-vless", NodeID: "node-1", UUID: "uuid-alice", Secret: "secret-alice"})
 	_, _ = userStore.UpsertUserInbound(users.UserInbound{ID: "u2-ib0", UserID: "u2", InboundID: "ib-vless", NodeID: "node-1", UUID: "uuid-bob", Secret: "secret-bob"})
 
-	result, err := jobs.SyncUsage(t.Context(), userStore, nodeStore, ibStore, baseAPI.Dial, jobs.ApplyOptions{}, nil)
+	// usage 通过 push buffer 提供（hub 模式下 c.Usage 不可用）。
+	usageBuf := nodes.NewUsageBuffer()
+	_ = usageBuf.Append("node-1", 1, nodes.UsageStats{
+		Available: true, Running: true,
+		UploadTotal: 100, DownloadTotal: 200, Connections: 1,
+		Users: []nodes.UserUsage{
+			{User: "alice@pulse-vless-node-1", UploadTotal: 80, DownloadTotal: 40, Connections: 1},
+			{User: "bob@pulse-vless-node-1", UploadTotal: 10, DownloadTotal: 10, Connections: 0},
+		},
+	})
+
+	result, err := jobs.SyncUsageWith(t.Context(), userStore, nodeStore, ibStore, baseAPI.Dial, jobs.ApplyOptions{}, nil, usageBuf)
 	if err != nil {
-		t.Fatalf("SyncUsage() error = %v", err)
+		t.Fatalf("SyncUsageWith() error = %v", err)
 	}
 	if result.NodesReloaded != 1 {
 		t.Fatalf("expected 1 node reload, got %#v", result)
@@ -328,7 +312,21 @@ func TestSyncUsageDisablesLimitedUserAndReloadsNode(t *testing.T) {
 	if !bob.EffectiveEnabled() {
 		t.Fatalf("expected bob to remain enabled")
 	}
-	if !strings.Contains(capturedConfig, "bob@") || strings.Contains(capturedConfig, "alice@") {
-		t.Fatalf("expected config to keep only bob, got %s", capturedConfig)
+	// 删除被禁用的 alice 优先走 delta 路径（RemoveUser 热更新），不会触发全量 Restart。
+	if len(removedEmails) == 0 {
+		t.Fatalf("expected RemoveUser to be called for disabled user, got none")
 	}
+	foundAlice := false
+	for _, e := range removedEmails {
+		if strings.Contains(e, "alice") {
+			foundAlice = true
+		}
+		if strings.Contains(e, "bob") {
+			t.Fatalf("did not expect bob to be removed, got %q", e)
+		}
+	}
+	if !foundAlice {
+		t.Fatalf("expected alice to be removed via RemoveUser, got %v", removedEmails)
+	}
+	_ = capturedConfig
 }

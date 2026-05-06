@@ -10,6 +10,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"golang.org/x/crypto/bcrypt"
 )
 
 // SessionStore 定义 session 持久化接口。
@@ -17,6 +19,12 @@ type SessionStore interface {
 	Create(token, username string) error
 	GetUsername(token string) (string, bool)
 	Delete(token string) error
+	DeleteAll() error
+}
+
+// AdminStore 从数据库读取管理员凭证。
+type AdminStore interface {
+	GetAdminUser() (id, username, hash string, ok bool)
 }
 
 // loginAttempt 记录某 IP 的登录失败情况。
@@ -32,10 +40,8 @@ const (
 )
 
 type Manager struct {
-	mu       sync.RWMutex
-	username string
-	password string
-	sessions SessionStore
+	adminStore AdminStore
+	sessions   SessionStore
 
 	failMu   sync.Mutex
 	failures map[string]*loginAttempt // key: client IP
@@ -46,12 +52,11 @@ type loginRequest struct {
 	Password string `json:"password"`
 }
 
-func NewManager(username, password string, sessions SessionStore) *Manager {
+func NewManager(sessions SessionStore, adminStore AdminStore) *Manager {
 	return &Manager{
-		username: username,
-		password: password,
-		sessions: sessions,
-		failures: make(map[string]*loginAttempt),
+		adminStore: adminStore,
+		sessions:   sessions,
+		failures:   make(map[string]*loginAttempt),
 	}
 }
 
@@ -83,7 +88,19 @@ func (m *Manager) HandleLogin(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusBadRequest, map[string]any{"error": "invalid json body"})
 		return
 	}
-	if req.Username != m.username || req.Password != m.password {
+
+	_, username, hash, ok := m.adminStore.GetAdminUser()
+	if !ok || req.Username != username {
+		m.recordFailure(ip)
+		writeJSON(w, http.StatusUnauthorized, map[string]any{"error": "invalid credentials"})
+		return
+	}
+	if len(req.Password) > 72 {
+		m.recordFailure(ip)
+		writeJSON(w, http.StatusUnauthorized, map[string]any{"error": "invalid credentials"})
+		return
+	}
+	if err := bcrypt.CompareHashAndPassword([]byte(hash), []byte(req.Password)); err != nil {
 		m.recordFailure(ip)
 		writeJSON(w, http.StatusUnauthorized, map[string]any{"error": "invalid credentials"})
 		return
@@ -141,8 +158,15 @@ func bearerToken(header string) string {
 
 func randomToken() string {
 	buf := make([]byte, 32)
-	_, _ = rand.Read(buf)
+	if _, err := rand.Read(buf); err != nil {
+		panic("crypto/rand unavailable: " + err.Error())
+	}
 	return hex.EncodeToString(buf)
+}
+
+// DeleteAllSessions 使所有管理员 session 失效（改密后调用）。
+func (m *Manager) DeleteAllSessions() error {
+	return m.sessions.DeleteAll()
 }
 
 func writeJSON(w http.ResponseWriter, status int, payload any) {
@@ -153,10 +177,14 @@ func writeJSON(w http.ResponseWriter, status int, payload any) {
 
 // Login 验证凭据并创建新的 session token。ip 用于暴力破解防护（可传空字符串跳过）。
 func (m *Manager) Login(username, password string) (string, error) {
-	m.mu.RLock()
-	match := username == m.username && password == m.password
-	m.mu.RUnlock()
-	if !match {
+	_, adminUsername, hash, ok := m.adminStore.GetAdminUser()
+	if !ok || username != adminUsername {
+		return "", errors.New("invalid credentials")
+	}
+	if len(password) > 72 {
+		return "", errors.New("invalid credentials")
+	}
+	if err := bcrypt.CompareHashAndPassword([]byte(hash), []byte(password)); err != nil {
 		return "", errors.New("invalid credentials")
 	}
 	token := randomToken()
@@ -172,10 +200,16 @@ func (m *Manager) LoginFromRequest(r *http.Request, username, password string) (
 	if m.isLocked(ip) {
 		return "", errors.New("too many failed attempts, try later")
 	}
-	m.mu.RLock()
-	match := username == m.username && password == m.password
-	m.mu.RUnlock()
-	if !match {
+	_, adminUsername, hash, ok := m.adminStore.GetAdminUser()
+	if !ok || username != adminUsername {
+		m.recordFailure(ip)
+		return "", errors.New("invalid credentials")
+	}
+	if len(password) > 72 {
+		m.recordFailure(ip)
+		return "", errors.New("invalid credentials")
+	}
+	if err := bcrypt.CompareHashAndPassword([]byte(hash), []byte(password)); err != nil {
 		m.recordFailure(ip)
 		return "", errors.New("invalid credentials")
 	}

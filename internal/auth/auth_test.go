@@ -7,6 +7,8 @@ import (
 	"net/http/httptest"
 	"sync"
 	"testing"
+
+	"golang.org/x/crypto/bcrypt"
 )
 
 // memSessionStore 内存实现，仅用于测试。
@@ -40,8 +42,23 @@ func (s *memSessionStore) Delete(token string) error {
 	return nil
 }
 
+func (s *memSessionStore) DeleteAll() error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.data = make(map[string]string)
+	return nil
+}
+
+// mockAdminStore 内存管理员 store，仅用于测试。
+type mockAdminStore struct{ username, hash string }
+
+func (s *mockAdminStore) GetAdminUser() (string, string, string, bool) {
+	return "1", s.username, s.hash, true
+}
+
 func TestLoginMeLogout(t *testing.T) {
-	manager := NewManager("admin", "secret", newMemStore())
+	hash, _ := bcrypt.GenerateFromPassword([]byte("secret"), bcrypt.MinCost)
+	manager := NewManager(newMemStore(), &mockAdminStore{"admin", string(hash)})
 
 	loginBody := []byte(`{"username":"admin","password":"secret"}`)
 	req := httptest.NewRequest(http.MethodPost, "/v1/auth/login", bytes.NewReader(loginBody))

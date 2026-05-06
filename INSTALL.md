@@ -43,12 +43,20 @@ curl -fsSL https://raw.githubusercontent.com/0xUnixIO/pulse/main/scripts/install
 |------|--------|------|
 | `PULSE_ADMIN_USERNAME` | `admin` | 管理员用户名 |
 | `PULSE_ADMIN_PASSWORD` | 随机生成 | 管理员密码 |
-| `PULSE_SERVER_ADDR` | 随机端口 | 监听地址，格式 `:端口` |
+| `PULSE_SERVER_ADDR` | 随机端口 | HTTP 监听地址（API + 面板 + 订阅 + enroll），格式 `:端口` |
+| `PULSE_NODE_GRPC_ADDR` | `:8082` | 节点 gRPC Hub 监听地址 |
+| `PULSE_NODE_GRPC_URL` | `https://<面板域名>:8082` | enroll 时返回给节点的 gRPC 拨号 URL；公网部署需改为可达地址 |
+| `PULSE_NODE_CA_CERT_FILE` | `/etc/pulse/node_ca_cert.pem` | NodeCA 证书（首次启动自动生成） |
+| `PULSE_NODE_CA_KEY_FILE` | `/etc/pulse/node_ca_key.pem` | NodeCA 私钥 |
 | `PULSE_INSTALL_BIN` | `/usr/local/bin` | 二进制安装目录 |
 | `PULSE_INSTALL_ETC` | `/etc/pulse` | 配置目录 |
 | `PULSE_STATE_DIR` | `/var/lib/pulse` | 数据目录 |
 | `PULSE_STRIPE_SECRET_KEY` | — | Stripe Secret Key |
 | `PULSE_STRIPE_WEBHOOK_SECRET` | — | Stripe Webhook Signing Secret |
+
+> 控制面对外需要开放两个端口：HTTP（`PULSE_SERVER_ADDR`，默认随机或 `:8080`）
+> 与 gRPC（`PULSE_NODE_GRPC_ADDR`，默认 `:8082`）。前者面向用户/管理员/订阅客户端，
+> 后者面向节点。
 
 修改配置：
 
@@ -57,38 +65,68 @@ vim /etc/pulse/pulse-server.env
 systemctl restart pulse-server
 ```
 
-## 2. 获取节点证书
+## 2. 添加节点（生成安装命令）
 
-登录控制面 → **Settings** 页面，复制「Node 客户端证书」区块中的 PEM 内容。
+登录控制面 → **节点**页面 → **添加节点** → 复制生成的完整安装命令（已包含
+`--server`、`--node-id`、`--token` 三个参数）。token 是一次性的，一经使用即失效；
+未使用且过期 24h 后由 `cleanup-enroll-tokens` 任务回收。
 
 ## 3. 安装 node
 
-```bash
-curl -fsSL https://raw.githubusercontent.com/0xUnixIO/pulse/main/scripts/install.sh | sh -s -- node
-```
-
-指定监听端口（默认 8081）：
+将上一步复制的命令粘贴到节点机器上执行，例如：
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/0xUnixIO/pulse/main/scripts/install.sh | PULSE_NODE_PORT='9090' sh -s -- node
+bash <(curl -fsSL https://raw.githubusercontent.com/0xUnixIO/pulse/main/scripts/install.sh) node \
+  --server https://<控制面板地址> \
+  --node-id <节点ID> \
+  --token <ENROLL_TOKEN>
 ```
 
-执行后脚本提示粘贴证书（第 2 步复制的 PEM），输入空行确认，安装完成后显示：
+也可以从 stdin 传入 token（避免 token 进入 shell history）：
+
+```bash
+echo "$ENROLL_TOKEN" | bash <(curl -fsSL https://raw.githubusercontent.com/0xUnixIO/pulse/main/scripts/install.sh) node \
+  --server https://<控制面板地址> --node-id <节点ID> --token-file -
+```
+
+脚本会自动：
+
+1. 下载并安装 `pulse-node` 二进制
+2. 调用 `pulse-node enroll --server=<URL> --node-id=<ID> --token-file=<TMP> --insecure --out=/etc/pulse`
+   向控制面 POST CSR，控制面用 NodeCA 签发节点证书，返回三件套
+   `node_cert.pem` / `node_key.pem` / `node_ca.pem` 写入 `/etc/pulse/`
+3. 把 `PULSE_NODE_ID` / `PULSE_NODE_GRPC_URL` / `PULSE_NODE_SERVER_ADDR` 等
+   写入 `pulse-node.env`
+4. 启动 systemd / OpenRC 服务
+
+启动后 pulse-node 会主动连控制面 gRPC（默认 `:8082`）建立长连接，**节点本身不监听任何端口**。
+
+安装完成后显示：
 
 ```
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  节点地址: https://<IP>:<端口>
+  节点 ID:     <node-id>
+  节点出口:    <node-ip>
+  控制面 gRPC: https://<控制面板地址>:8082
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 ```
+
+> 旧的 `--cert <BASE64>`（手动粘贴 server 客户端证书）流程已废弃，传入会被忽略并打印警告。
+> 已存在的 `/etc/pulse/server_client_cert.pem` 会被自动重命名为 `.deprecated`。
+> 旧的 `PULSE_NODE_ADDR` / `PULSE_NODE_PORT` / `PULSE_NODE_TLS_*` / `PULSE_NODE_CA_FILE`
+> 等环境变量在升级时会被脚本主动清除。
 
 **node 安装脚本环境变量：**
 
 | 变量 | 默认值 | 说明 |
 |------|--------|------|
-| `PULSE_NODE_ADDR` | `:8081` | 监听地址，格式 `:端口` |
-| `PULSE_NODE_PORT` | `8081` | 监听端口（优先于 ADDR） |
-| `PULSE_NODE_TLS_CERT_FILE` | — | 自定义 TLS 证书路径 |
-| `PULSE_NODE_TLS_KEY_FILE` | — | 自定义 TLS 私钥路径 |
+| `PULSE_NODE_ID` | enroll 时传入 | 节点 ID（与证书 CN 一致），由脚本写入 env |
+| `PULSE_NODE_GRPC_URL` | enroll 响应 | 控制面 gRPC URL，由脚本写入 env |
+| `PULSE_NODE_SERVER_ADDR` | enroll 响应 | 控制面 gRPC `host:port`，由脚本写入 env |
+| `PULSE_NODE_CLIENT_CERT_FILE` | `/etc/pulse/node_cert.pem` | 节点客户端证书（由 enroll 写入） |
+| `PULSE_NODE_CLIENT_KEY_FILE` | `/etc/pulse/node_key.pem` | 节点客户端私钥（由 enroll 写入） |
+| `PULSE_NODE_SERVER_CA_FILE` | `/etc/pulse/node_ca.pem` | 控制面 CA 证书（由 enroll 写入） |
+| `PULSE_INSTALL_DRY_RUN` | — | 设为 `1` 时跳过下载、特权操作和 enroll，仅 sanity check |
 
 修改配置：
 

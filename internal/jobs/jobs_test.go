@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
-	"net/http/httptest"
 	"testing"
 	"time"
 
@@ -809,21 +808,5 @@ func usageDial(t *testing.T, username string, upload, download int64) NodeDialer
 
 func testDial(t *testing.T, handler func(path string, w http.ResponseWriter, r *http.Request)) NodeDialer {
 	t.Helper()
-	nodeMux := http.NewServeMux()
-	nodeMux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
-		handler(r.URL.Path, w, r)
-	})
-	return func(nodeID string) (*nodes.Client, error) {
-		return nodes.NewClientWithHTTPClient("http://node.test", &http.Client{
-			Transport: roundTripperFunc(func(req *http.Request) (*http.Response, error) {
-				rec := httptest.NewRecorder()
-				nodeMux.ServeHTTP(rec, req)
-				return rec.Result(), nil
-			}),
-		}), nil
-	}
+	return hubDial(pathHub(handler))
 }
-
-type roundTripperFunc func(*http.Request) (*http.Response, error)
-
-func (f roundTripperFunc) RoundTrip(r *http.Request) (*http.Response, error) { return f(r) }
