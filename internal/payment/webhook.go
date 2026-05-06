@@ -91,6 +91,7 @@ func (d *WebhookDeps) handleCheckoutCompleted(event stripe.Event) {
 	now := time.Now().UTC()
 	order.Status = orders.StatusPaid
 	order.PaidAt = &now
+	order.StripeSessionID = sess.ID
 	if sess.Customer != nil {
 		order.StripeCustomerID = sess.Customer.ID
 	}
@@ -121,7 +122,8 @@ func (d *WebhookDeps) handleCheckoutCompleted(event stripe.Event) {
 	}
 
 	if _, err := d.OrderStore.UpsertOrder(order); err != nil {
-		log.Printf("payment: update order %s: %v", order.ID, err)
+		log.Printf("payment: update order %s to paid: %v — MANUAL ACTION REQUIRED", order.ID, err)
+		return
 	}
 
 	// 原子递增库存（超卖时只打日志，不回滚已完成的付款）

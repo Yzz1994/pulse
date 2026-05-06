@@ -33,6 +33,7 @@ import {
   TabsList,
   TabsTrigger,
   TabsContent,
+  toast,
 } from "@/components/ui";
 import { api, AuthError } from "@/lib/api";
 import { clearToken } from "@/lib/auth";
@@ -326,6 +327,7 @@ export default function PlansPage() {
       setOrders(res.orders ?? []);
     } catch (err) {
       if (err instanceof AuthError) { clearToken(); navigate({ to: "/panel/login" }); }
+      else { toast(err instanceof Error ? err.message : "加载账单失败", "error"); }
     } finally {
       setOrdersLoading(false);
     }
@@ -777,7 +779,7 @@ export default function PlansPage() {
 
   return (
     <div className="flex h-full flex-col p-4 sm:p-6 lg:p-8">
-      <Tabs defaultValue="plans" className="flex flex-col flex-1 min-h-0" onValueChange={(v) => { if (v === "billing" && orders.length === 0 && !ordersLoading) fetchOrders(); }}>
+      <Tabs defaultValue="plans" className="flex flex-col flex-1 min-h-0" onValueChange={(v) => { if (v === "billing" && !ordersLoading) fetchOrders(); }}>
         <div className="mb-4">
           <TabsList>
             <TabsTrigger value="plans">套餐管理</TabsTrigger>
@@ -1035,12 +1037,17 @@ export default function PlansPage() {
                 ? formatOrderAmount(orders.filter((o) => o.status === "paid").reduce((s, o) => s + o.amount_cents, 0), orders[0]?.currency ?? "usd")
                 : "—"}
             </p>
-            <Input
-              placeholder="搜索邮箱 / 订单 ID"
-              value={orderSearch}
-              onChange={(e) => setOrderSearch(e.target.value)}
-              className="w-56 h-8 text-sm"
-            />
+            <div className="flex items-center gap-2">
+              <Button variant="outline" size="sm" onClick={fetchOrders} disabled={ordersLoading} className="h-8">
+                {ordersLoading ? "加载中…" : "刷新"}
+              </Button>
+              <Input
+                placeholder="搜索邮箱 / 订单 ID"
+                value={orderSearch}
+                onChange={(e) => setOrderSearch(e.target.value)}
+                className="w-56 h-8 text-sm"
+              />
+            </div>
           </div>
 
           <Card className="flex min-h-0 flex-1 flex-col overflow-hidden">
