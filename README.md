@@ -17,45 +17,9 @@
 - **审计日志** — 管理操作全程记录
 - **工单系统** — 用户与管理员的消息通道
 
-## 架构
-
-```
-pulse-server
-  ├── REST API (/v1/*)              # 管理 API
-  ├── 管理面板 (/panel/*)           # React SPA（内嵌于二进制）
-  ├── 订阅端点 (/sub/:token)        # 返回 base64 代理链接列表
-  ├── PostgreSQL 持久化
-  └── 定时调度器（流量同步 / 重置 / on_hold 激活）
-
-pulse-node
-  ├── RPC API (/v1/node/*)          # 接受控制面指令
-  ├── Xray 进程管理
-  └── NodeGate（内置 SNI 代理 + ACME）
-```
-
-控制面与节点通过 **mTLS** 通信：控制面启动时自签客户端证书，安装节点时需将证书内容粘贴到节点机器。
-
 ## 开发
 
-**依赖**：Go 1.21+、Bun、PostgreSQL
-
-```bash
-# 启动 server(:8080) + node(:8081) + React SPA dev server(:3000)
-make dev
-
-# 停止所有开发进程
-make stop
-
-# 运行测试
-make test
-
-# 编译所有二进制（同时构建并嵌入前端）
-make build
-```
-
-默认地址：`http://localhost:3000`（面板），账号 `admin` / 密码 `admin123`。
-
-> `make dev` 使用硬编码的开发凭据，不要用于生产环境。
+详见 [DEVELOPMENT.md](DEVELOPMENT.md)。
 
 ## 生产安装
 
