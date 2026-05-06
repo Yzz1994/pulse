@@ -1,5 +1,4 @@
 import { useEffect, useState, useCallback, useMemo } from "react";
-import { useNavigate } from "@tanstack/react-router";
 import {
   AreaChart,
   Area,
@@ -21,8 +20,8 @@ import {
 } from "@/components/ui";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { api, AuthError } from "@/lib/api";
-import { clearToken } from "@/lib/auth";
+import { api } from "@/lib/api";
+import { useAuthErrorHandler } from "@/hooks/useAuthErrorHandler";
 import { formatBytes, formatBytesCompact } from "@/lib/format";
 import type { Summary, NodePeriodStat, TodayUserStat, TodayNodeStat } from "@/lib/types";
 
@@ -97,7 +96,7 @@ type NodeStatusValue = "online" | "offline" | "loading";
 
 // ── Main page ────────────────────────────────────────────────────
 export default function DashboardPage() {
-  const navigate = useNavigate();
+  const handleAuthError = useAuthErrorHandler();
   const [data, setData] = useState<Summary | null>(null);
   const [days, setDays] = useState(7);
   const [loading, setLoading] = useState(true);
@@ -112,15 +111,11 @@ export default function DashboardPage() {
       .get<Summary>(`/stats?days=${d}`)
       .then(setData)
       .catch((err) => {
-        if (err instanceof AuthError) {
-          clearToken();
-          navigate({ to: "/panel/login" });
-          return;
-        }
+        if (handleAuthError(err)) return;
         setError(err instanceof Error ? err.message : "加载失败");
       })
       .finally(() => setLoading(false));
-  }, [navigate]);
+  }, [handleAuthError]);
 
   useEffect(() => {
     fetchData(days);

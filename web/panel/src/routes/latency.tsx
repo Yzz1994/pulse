@@ -1,5 +1,4 @@
 import { useEffect, useState, useCallback, useMemo } from "react";
-import { useNavigate } from "@tanstack/react-router";
 import {
   LineChart,
   Line,
@@ -11,8 +10,8 @@ import {
   Legend,
 } from "recharts";
 import { Button, Badge } from "@/components/ui";
-import { api, AuthError } from "@/lib/api";
-import { clearToken } from "@/lib/auth";
+import { api } from "@/lib/api";
+import { useAuthErrorHandler } from "@/hooks/useAuthErrorHandler";
 import type { Node, NodesResponse } from "@/lib/types";
 
 // ── 类型 ────────────────────────────────────────────────────────
@@ -187,7 +186,7 @@ function makeLegendFormatter(nodeMap: Map<string, string>) {
 // ── 主页面 ────────────────────────────────────────────────────────
 
 export default function LatencyPage() {
-  const navigate = useNavigate();
+  const handleAuthError = useAuthErrorHandler();
   const [rangeMinutes, setRangeMinutes] = useState(60);
   const [loading, setLoading] = useState(false);
   const [samples, setSamples] = useState<LatencySample[]>([]);
@@ -207,9 +206,9 @@ export default function LatencyPage() {
         setSelectedIds(new Set(nodes.map((n) => n.id)));
       })
       .catch((err) => {
-        if (err instanceof AuthError) { clearToken(); navigate({ to: "/panel/login" }); }
+        if (handleAuthError(err)) return;
       });
-  }, [navigate]);
+  }, [handleAuthError]);
 
   const fetchData = useCallback(async (minutes: number) => {
     setLoading(true);
@@ -222,16 +221,12 @@ export default function LatencyPage() {
       );
       setSamples(res.samples ?? []);
     } catch (err) {
-      if (err instanceof AuthError) {
-        clearToken();
-        navigate({ to: "/panel/login" });
-        return;
-      }
+      if (handleAuthError(err)) return;
       setError(err instanceof Error ? err.message : "加载失败");
     } finally {
       setLoading(false);
     }
-  }, [navigate]);
+  }, [handleAuthError]);
 
   useEffect(() => {
     fetchData(rangeMinutes);

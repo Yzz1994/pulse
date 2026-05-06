@@ -1,5 +1,4 @@
 import { useEffect, useState, useCallback, useMemo } from "react";
-import { useNavigate } from "@tanstack/react-router";
 import {
   Card,
   CardContent,
@@ -44,9 +43,9 @@ import {
   toast,
 } from "@/components/ui";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { api, cfApi, nodeDomainApi, AuthError } from "@/lib/api";
+import { api, cfApi, nodeDomainApi } from "@/lib/api";
 import { hostSubName } from "@/lib/format";
-import { clearToken } from "@/lib/auth";
+import { useAuthErrorHandler } from "@/hooks/useAuthErrorHandler";
 import type {
   Inbound,
   InboundsResponse,
@@ -2127,7 +2126,6 @@ function UserAllocDialog({ open, onOpenChange, inbound, handleAuthError, onSaved
 // ── Main Page ────────────────────────────────────────────────────
 
 export default function InboundsPage() {
-  const navigate = useNavigate();
 
   const [inbounds, setInbounds] = useState<Inbound[]>([]);
   const [userCounts, setUserCounts] = useState<Record<string, number>>({});
@@ -2163,17 +2161,7 @@ export default function InboundsPage() {
   const [userAllocInbound, setUserAllocInbound] = useState<Inbound | null>(null);
 
   // ── Auth error handler ───────────────────────────────────────
-  const handleAuthError = useCallback(
-    (err: unknown) => {
-      if (err instanceof AuthError) {
-        clearToken();
-        navigate({ to: "/panel/login" });
-        return true;
-      }
-      return false;
-    },
-    [navigate],
-  );
+  const handleAuthError = useAuthErrorHandler();
 
   // ── Node name lookup ─────────────────────────────────────────
   const nodeNameMap = useMemo(() => {

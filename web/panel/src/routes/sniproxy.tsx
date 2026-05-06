@@ -18,8 +18,8 @@ import {
   TableCell,
 } from "@/components/ui";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { api, AuthError } from "@/lib/api";
-import { clearToken } from "@/lib/auth";
+import { api } from "@/lib/api";
+import { useAuthErrorHandler } from "@/hooks/useAuthErrorHandler";
 import { toast } from "@/components/ui";
 import type { Node, NodesResponse } from "@/lib/types";
 
@@ -66,15 +66,6 @@ interface NodeStatus {
 interface ProxyRule {
   domain: string;
   backend: string;
-}
-
-function handleAuthError(err: unknown): boolean {
-  if (err instanceof AuthError) {
-    clearToken();
-    window.location.href = "/panel/login";
-    return true;
-  }
-  return false;
 }
 
 function fmtDate(s?: string): string {
@@ -134,6 +125,7 @@ interface HTTPReverseRulesProps {
 }
 
 function HTTPReverseRules({ node, onNodeUpdated }: HTTPReverseRulesProps) {
+  const handleAuthError = useAuthErrorHandler();
   const [rules, setRules] = useState<ProxyRule[]>(() =>
     parseProxyRules(node.extra_proxies ?? "")
   );
@@ -265,6 +257,7 @@ function HTTPReverseRules({ node, onNodeUpdated }: HTTPReverseRulesProps) {
 // ── 主页面 ────────────────────────────────────────────────────────
 
 export default function SNIProxyPage() {
+  const handleAuthError = useAuthErrorHandler();
   const [nodes, setNodes] = useState<Node[]>([]);
   const [rows, setRows] = useState<Map<string, NodeStatus>>(new Map());
   const [loadingNodes, setLoadingNodes] = useState(true);

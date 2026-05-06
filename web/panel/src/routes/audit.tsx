@@ -1,5 +1,4 @@
 import { useEffect, useState, useCallback } from "react";
-import { useNavigate } from "@tanstack/react-router";
 import {
   Card,
   CardHeader,
@@ -26,8 +25,8 @@ import {
   TabsContent,
   toast,
 } from "@/components/ui";
-import { api, AuthError } from "@/lib/api";
-import { clearToken } from "@/lib/auth";
+import { api } from "@/lib/api";
+import { useAuthErrorHandler } from "@/hooks/useAuthErrorHandler";
 
 // ── 类型定义 ─────────────────────────────────────────────────────
 
@@ -138,7 +137,7 @@ function buildQuery(params: Record<string, string>): string {
 // ── 历史日志子组件 ────────────────────────────────────────────────
 
 function AuditLogsTab() {
-  const navigate = useNavigate();
+  const handleAuthError = useAuthErrorHandler();
 
   // 筛选状态
   const [selectedHours, setSelectedHours] = useState<number>(1);
@@ -192,16 +191,12 @@ function AuditLogsTab() {
       );
       setEntries(sorted);
     } catch (err) {
-      if (err instanceof AuthError) {
-        clearToken();
-        navigate({ to: "/panel/login" });
-        return;
-      }
+      if (handleAuthError(err)) return;
       toast((err as Error).message || "加载失败", "error");
     } finally {
       setLoading(false);
     }
-  }, [selectedHours, username, nodeId, navigate]);
+  }, [selectedHours, username, nodeId, handleAuthError]);
 
   // 首次加载
   useEffect(() => {
@@ -393,7 +388,6 @@ function AuditLogsTab() {
 // ── 告警规则子组件 ────────────────────────────────────────────────
 
 function AlertRulesTab() {
-  const navigate = useNavigate();
 
   // 规则列表状态
   const [rules, setRules] = useState<Rule[]>([]);
@@ -409,17 +403,7 @@ function AlertRulesTab() {
   // 正在删除的规则 ID 集合
   const [deletingIds, setDeletingIds] = useState<Set<string>>(new Set());
 
-  const handleAuthError = useCallback(
-    (err: unknown) => {
-      if (err instanceof AuthError) {
-        clearToken();
-        navigate({ to: "/panel/login" });
-        return true;
-      }
-      return false;
-    },
-    [navigate]
-  );
+  const handleAuthError = useAuthErrorHandler();
 
   const fetchRules = useCallback(async () => {
     setLoading(true);
@@ -625,7 +609,7 @@ function AlertRulesTab() {
 // ── 用户分析子组件 ────────────────────────────────────────────────
 
 function AnalysisTab() {
-  const navigate = useNavigate();
+  const handleAuthError = useAuthErrorHandler();
   const [selectedHours, setSelectedHours] = useState<number>(24);
   const [users, setUsers] = useState<UserAnalysis[]>([]);
   const [loading, setLoading] = useState(false);
@@ -640,12 +624,12 @@ function AnalysisTab() {
       );
       setUsers(data.users ?? []);
     } catch (err) {
-      if (err instanceof AuthError) { clearToken(); navigate({ to: "/panel/login" }); return; }
+      if (handleAuthError(err)) return;
       toast((err as Error).message || "加载失败", "error");
     } finally {
       setLoading(false);
     }
-  }, [selectedHours, navigate]);
+  }, [selectedHours, handleAuthError]);
 
   useEffect(() => { fetchAnalysis(); }, [fetchAnalysis]);
 

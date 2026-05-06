@@ -1,5 +1,4 @@
 import { useEffect, useState, useCallback, type FormEvent } from "react";
-import { useNavigate } from "@tanstack/react-router";
 import {
   Card,
   CardContent,
@@ -28,8 +27,8 @@ import {
   SelectItem,
   Textarea,
 } from "@/components/ui";
-import { api, AuthError } from "@/lib/api";
-import { clearToken } from "@/lib/auth";
+import { api } from "@/lib/api";
+import { useAuthErrorHandler } from "@/hooks/useAuthErrorHandler";
 import type {
   Outbound,
   OutboundProtocol,
@@ -455,7 +454,7 @@ function ImportDialog({
 // ── Main page ────────────────────────────────────────────────────
 
 export default function OutboundsPage() {
-  const navigate = useNavigate();
+  const handleAuthError = useAuthErrorHandler();
 
   const [outbounds, setOutbounds] = useState<Outbound[]>([]);
   const [loading, setLoading] = useState(true);
@@ -490,15 +489,11 @@ export default function OutboundsPage() {
       .get<OutboundsResponse>("/outbounds")
       .then((res) => setOutbounds(res.outbounds ?? []))
       .catch((err) => {
-        if (err instanceof AuthError) {
-          clearToken();
-          navigate({ to: "/panel/login" });
-          return;
-        }
+        if (handleAuthError(err)) return;
         setError(err instanceof Error ? err.message : "加载失败");
       })
       .finally(() => setLoading(false));
-  }, [navigate]);
+  }, [handleAuthError]);
 
   useEffect(() => {
     fetchOutbounds();
@@ -561,11 +556,7 @@ export default function OutboundsPage() {
       setEditingId(null);
       fetchOutbounds();
     } catch (err) {
-      if (err instanceof AuthError) {
-        clearToken();
-        navigate({ to: "/panel/login" });
-        return;
-      }
+      if (handleAuthError(err)) return;
       setFormError(err instanceof Error ? err.message : "更新失败");
     } finally {
       setSubmitting(false);
@@ -590,11 +581,7 @@ export default function OutboundsPage() {
       setDeletingOutbound(null);
       fetchOutbounds();
     } catch (err) {
-      if (err instanceof AuthError) {
-        clearToken();
-        navigate({ to: "/panel/login" });
-        return;
-      }
+      if (handleAuthError(err)) return;
       setFormError(err instanceof Error ? err.message : "删除失败");
     } finally {
       setSubmitting(false);

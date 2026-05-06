@@ -1,5 +1,4 @@
 import { useEffect, useState, useCallback, useRef, useMemo } from "react";
-import { useNavigate } from "@tanstack/react-router";
 import {
   Card,
   CardHeader,
@@ -34,8 +33,9 @@ import {
   Switch,
 } from "@/components/ui";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { api, AuthError } from "@/lib/api";
-import { clearToken, getToken } from "@/lib/auth";
+import { api } from "@/lib/api";
+import { getToken } from "@/lib/auth";
+import { useAuthErrorHandler } from "@/hooks/useAuthErrorHandler";
 import { formatBytes, formatSpeed } from "@/lib/format";
 import type { Node, NodesResponse, CreateNodeRequest } from "@/lib/types";
 
@@ -1706,7 +1706,6 @@ function NodeCard({ node, status, runtime, metrics, onEdit, onDelete, onOpenDeta
 // ── Main Page ────────────────────────────────────────────────────
 
 export default function NodesPage() {
-  const navigate = useNavigate();
 
   const [nodes, setNodes] = useState<Node[]>([]);
   const [loading, setLoading] = useState(true);
@@ -1758,17 +1757,7 @@ export default function NodesPage() {
   const [prevNodeMetrics, setPrevNodeMetrics] = useState<Map<string, NodeMetrics>>(new Map());
 
   // ── Auth error handler ───────────────────────────────────────
-  const handleAuthError = useCallback(
-    (err: unknown) => {
-      if (err instanceof AuthError) {
-        clearToken();
-        navigate({ to: "/panel/login" });
-        return true;
-      }
-      return false;
-    },
-    [navigate],
-  );
+  const handleAuthError = useAuthErrorHandler();
 
   // ── Check status for a single node ──────────────────────────
   const checkNodeStatus = useCallback(

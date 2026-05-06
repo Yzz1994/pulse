@@ -1,5 +1,4 @@
 import { useEffect, useState, useCallback, useRef } from "react";
-import { useNavigate } from "@tanstack/react-router";
 import {
   Card,
   Table,
@@ -37,8 +36,8 @@ import {
   toast,
 } from "@/components/ui";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { api, AuthError } from "@/lib/api";
-import { clearToken } from "@/lib/auth";
+import { api } from "@/lib/api";
+import { useAuthErrorHandler } from "@/hooks/useAuthErrorHandler";
 import { formatBytes, hostSubName } from "@/lib/format";
 import type {
   User,
@@ -188,8 +187,6 @@ interface UserInboundsResponse {
 // ── Main Component ───────────────────────────────────────────────
 
 export default function UsersPage() {
-  const navigate = useNavigate();
-
   // ── List state ───────────────────────────────────────────────
   const [users, setUsers] = useState<User[]>([]);
   const [total, setTotal] = useState(0);
@@ -278,17 +275,7 @@ export default function UsersPage() {
   }, []);
 
   // ── Auth error handler ───────────────────────────────────────
-  const handleAuthError = useCallback(
-    (err: unknown) => {
-      if (err instanceof AuthError) {
-        clearToken();
-        navigate({ to: "/panel/login" });
-        return true;
-      }
-      return false;
-    },
-    [navigate],
-  );
+  const handleAuthError = useAuthErrorHandler();
 
   // ── Fetch users ──────────────────────────────────────────────
   const fetchUsers = useCallback(async () => {

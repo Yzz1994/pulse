@@ -17,6 +17,7 @@ import {
 } from "@/components/ui";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { api, AuthError } from "@/lib/api";
+import { useAuthErrorHandler } from "@/hooks/useAuthErrorHandler";
 import { clearToken, getToken } from "@/lib/auth";
 
 // ── Types ────────────────────────────────────────────────────────
@@ -121,14 +122,7 @@ export default function SettingsPage() {
 
   // ── Auth redirect helper ─────────────────────────────────────
 
-  function handleAuthError(err: unknown): boolean {
-    if (err instanceof AuthError) {
-      clearToken();
-      navigate({ to: "/panel/login" });
-      return true;
-    }
-    return false;
-  }
+  const handleAuthError = useAuthErrorHandler();
 
   const fetchDbStats = useCallback(() => {
     setDbStatsLoading(true);
@@ -137,7 +131,7 @@ export default function SettingsPage() {
       .then(setDbStats)
       .catch((err) => { if (handleAuthError(err)) return; })
       .finally(() => setDbStatsLoading(false));
-  }, [navigate]);
+  }, [handleAuthError]);
 
   // ── Fetch certificate (plain text endpoint) ──────────────────
 

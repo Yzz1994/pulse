@@ -1,5 +1,4 @@
 import { useEffect, useState, useCallback } from "react";
-import { useNavigate } from "@tanstack/react-router";
 import {
   Button,
   Input,
@@ -31,8 +30,8 @@ import {
   TableCell,
   toast,
 } from "@/components/ui";
-import { api, AuthError } from "@/lib/api";
-import { clearToken } from "@/lib/auth";
+import { api } from "@/lib/api";
+import { useAuthErrorHandler } from "@/hooks/useAuthErrorHandler";
 import { hostSubName } from "@/lib/format";
 import type {
   UserGroup,
@@ -598,8 +597,6 @@ function MemberSheet({ group, open, onOpenChange, allPlans, handleAuthError }: M
 // ── 主页面 ────────────────────────────────────────────────────────
 
 export default function UserGroupsPage() {
-  const navigate = useNavigate();
-
   const [groups, setGroups] = useState<UserGroup[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -626,14 +623,7 @@ export default function UserGroupsPage() {
   // 行级同步状态
   const [syncingIds, setSyncingIds] = useState<Set<string>>(new Set());
 
-  function handleAuthError(err: unknown): boolean {
-    if (err instanceof AuthError) {
-      clearToken();
-      navigate({ to: "/panel/login" });
-      return true;
-    }
-    return false;
-  }
+  const handleAuthError = useAuthErrorHandler();
 
   const fetchGroups = useCallback(() => {
     setLoading(true);
@@ -646,8 +636,7 @@ export default function UserGroupsPage() {
         setError(err instanceof Error ? err.message : "加载失败");
       })
       .finally(() => setLoading(false));
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [handleAuthError]);
 
   // 加载所有外部数据
   useEffect(() => {
@@ -672,8 +661,7 @@ export default function UserGroupsPage() {
       .get<PlansResponse>("/plans")
       .then((res) => setAllPlans(res.plans ?? []))
       .catch((err) => { if (!handleAuthError(err)) console.warn("加载 plans 失败", err); });
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [handleAuthError]);
 
   function openCreateDialog() {
     setEditingGroup(null);

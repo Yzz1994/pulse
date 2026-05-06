@@ -846,8 +846,12 @@ func (a *API) clientFor(nodeID string) (*nodes.Client, error) {
 	return client, nil
 }
 
-// evictClient 使指定节点的缓存客户端失效（节点信息变更或删除时调用）。
 func (a *API) evictClient(nodeID string) {
+	a.clientCache.Delete(nodeID)
+}
+
+// EvictClient 导出给外部调用（如 node-register 接口更新 BaseURL 后使缓存失效）。
+func (a *API) EvictClient(nodeID string) {
 	a.clientCache.Delete(nodeID)
 }
 

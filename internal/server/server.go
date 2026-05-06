@@ -1132,7 +1132,7 @@ func Run() error {
 	serverapi.RegisterPortalAPI(mux, userStore, store, inboundStore, outboundStore, settingsStore, db.PlanStore(), annStore, ticketStore, uploadsDir)
 
 	// 节点自注册（公开）+ 安装证书查询（受保护）
-	serverapi.RegisterNodeRegisterAPI(mux, protectedV1, store, cfg.ServerNodeClientCertFile)
+	serverapi.RegisterNodeRegisterAPI(mux, protectedV1, store, cfg.ServerNodeClientCertFile, nodeAPI2.EvictClient)
 	mux.Handle("/v1/node-setup/cert", authManager.Middleware(protectedV1))
 
 	// SPA catch-all: must be registered last

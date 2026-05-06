@@ -1,5 +1,4 @@
 import { useEffect, useState, useCallback, type FormEvent } from "react";
-import { useNavigate } from "@tanstack/react-router";
 import {
   Card,
   CardContent,
@@ -31,8 +30,8 @@ import {
   toast,
 } from "@/components/ui";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { cfApi, nodeDomainApi, api, AuthError } from "@/lib/api";
-import { clearToken } from "@/lib/auth";
+import { cfApi, nodeDomainApi, api } from "@/lib/api";
+import { useAuthErrorHandler } from "@/hooks/useAuthErrorHandler";
 import type {
   CFDomain,
   CFZone,
@@ -148,7 +147,7 @@ function AddDomainDialog({
   onOpenChange: (open: boolean) => void;
   onSuccess: () => void;
 }) {
-  const navigate = useNavigate();
+  const handleAuthError = useAuthErrorHandler();
   const [step, setStep] = useState<"token" | "select">("token");
   const [cfToken, setCfToken] = useState("");
   const [remark, setRemark] = useState("");
@@ -183,11 +182,7 @@ function AddDomainDialog({
         setStep("select");
       }
     } catch (err) {
-      if (err instanceof AuthError) {
-        clearToken();
-        navigate({ to: "/panel/login" });
-        return;
-      }
+      if (handleAuthError(err)) return;
       setError(err instanceof Error ? err.message : "验证失败");
     } finally {
       setVerifying(false);
@@ -225,11 +220,7 @@ function AddDomainDialog({
       onOpenChange(false);
       onSuccess();
     } catch (err) {
-      if (err instanceof AuthError) {
-        clearToken();
-        navigate({ to: "/panel/login" });
-        return;
-      }
+      if (handleAuthError(err)) return;
       setError(err instanceof Error ? err.message : "添加失败");
     } finally {
       setSubmitting(false);
@@ -407,7 +398,7 @@ function RecordFormDialog({
   editingRecord: CFDNSRecord | null;
   onSuccess: () => void;
 }) {
-  const navigate = useNavigate();
+  const handleAuthError = useAuthErrorHandler();
   const isEdit = editingRecord !== null;
   const [form, setForm] = useState<RecordFormState>(EMPTY_RECORD_FORM);
   const [submitting, setSubmitting] = useState(false);
@@ -457,11 +448,7 @@ function RecordFormDialog({
       onOpenChange(false);
       onSuccess();
     } catch (err) {
-      if (err instanceof AuthError) {
-        clearToken();
-        navigate({ to: "/panel/login" });
-        return;
-      }
+      if (handleAuthError(err)) return;
       setError(err instanceof Error ? err.message : "操作失败");
     } finally {
       setSubmitting(false);
@@ -587,7 +574,7 @@ function RecordFormDialog({
 // ── DNS 记录面板 ────────────────────────────────────────────────
 
 function DnsRecordsPanel({ domain }: { domain: CFDomain }) {
-  const navigate = useNavigate();
+  const handleAuthError = useAuthErrorHandler();
   const [records, setRecords] = useState<CFDNSRecord[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -610,15 +597,11 @@ function DnsRecordsPanel({ domain }: { domain: CFDomain }) {
       .listRecords(domain.id, typeParam)
       .then((res) => setRecords(res.records ?? []))
       .catch((err) => {
-        if (err instanceof AuthError) {
-          clearToken();
-          navigate({ to: "/panel/login" });
-          return;
-        }
+        if (handleAuthError(err)) return;
         setError(err instanceof Error ? err.message : "加载失败");
       })
       .finally(() => setLoading(false));
-  }, [domain.id, filterType, navigate]);
+  }, [domain.id, filterType, handleAuthError]);
 
   useEffect(() => {
     fetchRecords();
@@ -634,11 +617,7 @@ function DnsRecordsPanel({ domain }: { domain: CFDomain }) {
       setDeletingRecord(null);
       fetchRecords();
     } catch (err) {
-      if (err instanceof AuthError) {
-        clearToken();
-        navigate({ to: "/panel/login" });
-        return;
-      }
+      if (handleAuthError(err)) return;
       toast.error(err instanceof Error ? err.message : "删除失败");
     } finally {
       setDeleting(false);
@@ -815,7 +794,7 @@ function DnsRecordsPanel({ domain }: { domain: CFDomain }) {
 // ── 节点映射面板 ────────────────────────────────────────────────
 
 function NodeMappingPanel({ domain, nodes }: { domain: CFDomain; nodes: Node[] }) {
-  const navigate = useNavigate();
+  const handleAuthError = useAuthErrorHandler();
   const [records, setRecords] = useState<NodeDomain[]>([]);
   const [loading, setLoading] = useState(true);
   const [syncing, setSyncing] = useState(false);
@@ -826,15 +805,11 @@ function NodeMappingPanel({ domain, nodes }: { domain: CFDomain; nodes: Node[] }
       .list(domain.id)
       .then((res) => setRecords(res.node_domains ?? []))
       .catch((err) => {
-        if (err instanceof AuthError) {
-          clearToken();
-          navigate({ to: "/panel/login" });
-          return;
-        }
+        if (handleAuthError(err)) return;
         toast.error(err instanceof Error ? err.message : "加载失败");
       })
       .finally(() => setLoading(false));
-  }, [domain.id, navigate]);
+  }, [domain.id, handleAuthError]);
 
   useEffect(() => {
     fetchRecords();
@@ -847,11 +822,7 @@ function NodeMappingPanel({ domain, nodes }: { domain: CFDomain; nodes: Node[] }
       toast.success(`同步完成，共 ${res.synced} 条记录`);
       fetchRecords();
     } catch (err) {
-      if (err instanceof AuthError) {
-        clearToken();
-        navigate({ to: "/panel/login" });
-        return;
-      }
+      if (handleAuthError(err)) return;
       toast.error(err instanceof Error ? err.message : "同步失败");
     } finally {
       setSyncing(false);
@@ -863,11 +834,7 @@ function NodeMappingPanel({ domain, nodes }: { domain: CFDomain; nodes: Node[] }
       const updated = await nodeDomainApi.updateNodeID(id, nodeId);
       setRecords((prev) => prev.map((r) => (r.id === id ? updated : r)));
     } catch (err) {
-      if (err instanceof AuthError) {
-        clearToken();
-        navigate({ to: "/panel/login" });
-        return;
-      }
+      if (handleAuthError(err)) return;
       toast.error(err instanceof Error ? err.message : "更新失败");
     }
   }
@@ -878,11 +845,7 @@ function NodeMappingPanel({ domain, nodes }: { domain: CFDomain; nodes: Node[] }
       setRecords((prev) => prev.filter((r) => r.id !== id));
       toast.success("已删除");
     } catch (err) {
-      if (err instanceof AuthError) {
-        clearToken();
-        navigate({ to: "/panel/login" });
-        return;
-      }
+      if (handleAuthError(err)) return;
       toast.error(err instanceof Error ? err.message : "删除失败");
     }
   }
@@ -1106,7 +1069,7 @@ function DomainCard({
 // ── 主页面 ──────────────────────────────────────────────────────
 
 export default function DomainsPage() {
-  const navigate = useNavigate();
+  const handleAuthError = useAuthErrorHandler();
 
   // CF 域名状态
   const [domains, setDomains] = useState<CFDomain[]>([]);
@@ -1132,17 +1095,13 @@ export default function DomainsPage() {
         setNodes(nodesRes.nodes ?? []);
       })
       .catch((err) => {
-        if (err instanceof AuthError) {
-          clearToken();
-          navigate({ to: "/panel/login" });
-          return;
-        }
+        if (handleAuthError(err)) return;
         setError(err instanceof Error ? err.message : "加载失败");
       })
       .finally(() => {
         setLoading(false);
       });
-  }, [navigate]);
+  }, [handleAuthError]);
 
   useEffect(() => {
     fetchDomains();
@@ -1158,11 +1117,7 @@ export default function DomainsPage() {
       setDeletingDomain(null);
       fetchDomains();
     } catch (err) {
-      if (err instanceof AuthError) {
-        clearToken();
-        navigate({ to: "/panel/login" });
-        return;
-      }
+      if (handleAuthError(err)) return;
       toast.error(err instanceof Error ? err.message : "删除失败");
     } finally {
       setDeleting(false);

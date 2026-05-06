@@ -1,5 +1,4 @@
 import { useEffect, useState, useCallback, type FormEvent } from "react";
-import { useNavigate } from "@tanstack/react-router";
 import {
   Card,
   CardContent,
@@ -35,8 +34,8 @@ import {
   TabsContent,
   toast,
 } from "@/components/ui";
-import { api, AuthError } from "@/lib/api";
-import { clearToken } from "@/lib/auth";
+import { api } from "@/lib/api";
+import { useAuthErrorHandler } from "@/hooks/useAuthErrorHandler";
 import type { Plan, PlanType, PlansResponse, ResetStrategy, UserGroup, UserGroupsResponse } from "@/lib/types";
 
 // ── Icons ────────────────────────────────────────────────────────
@@ -281,7 +280,7 @@ function SkeletonRow() {
 // ── Main page ────────────────────────────────────────────────────
 
 export default function PlansPage() {
-  const navigate = useNavigate();
+  const handleAuthError = useAuthErrorHandler();
 
   const [plans, setPlans] = useState<Plan[]>([]);
   const [allUserGroups, setAllUserGroups] = useState<UserGroup[]>([]);
@@ -326,12 +325,11 @@ export default function PlansPage() {
       const res = await api.get<{ orders: Order[] }>("/orders");
       setOrders(res.orders ?? []);
     } catch (err) {
-      if (err instanceof AuthError) { clearToken(); navigate({ to: "/panel/login" }); }
-      else { toast(err instanceof Error ? err.message : "加载账单失败", "error"); }
+      if (!handleAuthError(err)) { toast(err instanceof Error ? err.message : "加载账单失败", "error"); }
     } finally {
       setOrdersLoading(false);
     }
-  }, [navigate]);
+  }, [handleAuthError]);
 
   const patchForm = useCallback(
     (patch: Partial<PlanForm>) =>
@@ -353,15 +351,11 @@ export default function PlansPage() {
         setAllUserGroups(groupsRes.user_groups ?? []);
       })
       .catch((err) => {
-        if (err instanceof AuthError) {
-          clearToken();
-          navigate({ to: "/panel/login" });
-          return;
-        }
+        if (handleAuthError(err)) return;
         setError(err instanceof Error ? err.message : "加载失败");
       })
       .finally(() => setLoading(false));
-  }, [navigate]);
+  }, [handleAuthError]);
 
   useEffect(() => {
     fetchData();
@@ -400,11 +394,7 @@ export default function PlansPage() {
       setForm(EMPTY_FORM);
       fetchData();
     } catch (err) {
-      if (err instanceof AuthError) {
-        clearToken();
-        navigate({ to: "/panel/login" });
-        return;
-      }
+      if (handleAuthError(err)) return;
       setFormError(err instanceof Error ? err.message : "创建失败");
     } finally {
       setSubmitting(false);
@@ -447,11 +437,7 @@ export default function PlansPage() {
       setEditingId(null);
       fetchData();
     } catch (err) {
-      if (err instanceof AuthError) {
-        clearToken();
-        navigate({ to: "/panel/login" });
-        return;
-      }
+      if (handleAuthError(err)) return;
       setFormError(err instanceof Error ? err.message : "更新失败");
     } finally {
       setSubmitting(false);
@@ -476,11 +462,7 @@ export default function PlansPage() {
       setDeletingPlan(null);
       fetchData();
     } catch (err) {
-      if (err instanceof AuthError) {
-        clearToken();
-        navigate({ to: "/panel/login" });
-        return;
-      }
+      if (handleAuthError(err)) return;
       setFormError(err instanceof Error ? err.message : "删除失败");
     } finally {
       setSubmitting(false);

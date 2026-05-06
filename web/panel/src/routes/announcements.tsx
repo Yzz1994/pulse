@@ -1,5 +1,4 @@
 import { useEffect, useState, useCallback } from "react";
-import { useNavigate } from "@tanstack/react-router";
 import {
   Card,
   CardHeader,
@@ -10,8 +9,8 @@ import {
   Separator,
   ConfirmDialog,
 } from "@/components/ui";
-import { api, AuthError } from "@/lib/api";
-import { clearToken } from "@/lib/auth";
+import { api } from "@/lib/api";
+import { useAuthErrorHandler } from "@/hooks/useAuthErrorHandler";
 
 interface Announcement {
   id: string;
@@ -22,8 +21,6 @@ interface Announcement {
 }
 
 export default function AnnouncementsPage() {
-  const navigate = useNavigate();
-
   const [anns, setAnns] = useState<Announcement[]>([]);
   const [loading, setLoading] = useState(true);
   const [msg, setMsg] = useState<string | null>(null);
@@ -38,14 +35,7 @@ export default function AnnouncementsPage() {
   const [editContent, setEditContent] = useState("");
   const [saving, setSaving] = useState(false);
 
-  function handleAuthError(err: unknown): boolean {
-    if (err instanceof AuthError) {
-      clearToken();
-      navigate({ to: "/panel/login" });
-      return true;
-    }
-    return false;
-  }
+  const handleAuthError = useAuthErrorHandler();
 
   const fetchAnnouncements = useCallback(() => {
     setLoading(true);
@@ -54,7 +44,7 @@ export default function AnnouncementsPage() {
       .then((data) => setAnns(data.announcements ?? []))
       .catch((err) => { if (handleAuthError(err)) return; })
       .finally(() => setLoading(false));
-  }, [navigate]);
+  }, [handleAuthError]);
 
   useEffect(() => {
     fetchAnnouncements();

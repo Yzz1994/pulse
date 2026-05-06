@@ -1,5 +1,4 @@
 import { useEffect, useState, useCallback, useMemo, type FormEvent } from "react";
-import { useNavigate } from "@tanstack/react-router";
 import {
   Card,
   CardContent,
@@ -31,8 +30,8 @@ import {
   type MultiSelectOption,
   SingleSelect,
 } from "@/components/ui";
-import { api, AuthError } from "@/lib/api";
-import { clearToken } from "@/lib/auth";
+import { api } from "@/lib/api";
+import { useAuthErrorHandler } from "@/hooks/useAuthErrorHandler";
 import { hostSubName } from "@/lib/format";
 import type {
   RouteRule,
@@ -201,7 +200,7 @@ function SkeletonRow() {
 // ── Main page ────────────────────────────────────────────────────
 
 export default function RouteRulesPage() {
-  const navigate = useNavigate();
+  const handleAuthError = useAuthErrorHandler();
 
   const [rules, setRules] = useState<RouteRule[]>([]);
   const [outbounds, setOutbounds] = useState<Outbound[]>([]);
@@ -287,15 +286,11 @@ export default function RouteRulesPage() {
         setAllHosts(hostsRes.hosts ?? []);
       })
       .catch((err) => {
-        if (err instanceof AuthError) {
-          clearToken();
-          navigate({ to: "/panel/login" });
-          return;
-        }
+        if (handleAuthError(err)) return;
         setError(err instanceof Error ? err.message : "加载失败");
       })
       .finally(() => setLoading(false));
-  }, [navigate]);
+  }, [handleAuthError]);
 
   useEffect(() => {
     fetchData();
@@ -331,11 +326,7 @@ export default function RouteRulesPage() {
       setForm(EMPTY_FORM);
       fetchData();
     } catch (err) {
-      if (err instanceof AuthError) {
-        clearToken();
-        navigate({ to: "/panel/login" });
-        return;
-      }
+      if (handleAuthError(err)) return;
       setFormError(err instanceof Error ? err.message : "创建失败");
     } finally {
       setSubmitting(false);
@@ -372,11 +363,7 @@ export default function RouteRulesPage() {
       setEditingId(null);
       fetchData();
     } catch (err) {
-      if (err instanceof AuthError) {
-        clearToken();
-        navigate({ to: "/panel/login" });
-        return;
-      }
+      if (handleAuthError(err)) return;
       setFormError(err instanceof Error ? err.message : "更新失败");
     } finally {
       setSubmitting(false);
@@ -401,11 +388,7 @@ export default function RouteRulesPage() {
       setDeletingRule(null);
       fetchData();
     } catch (err) {
-      if (err instanceof AuthError) {
-        clearToken();
-        navigate({ to: "/panel/login" });
-        return;
-      }
+      if (handleAuthError(err)) return;
       setFormError(err instanceof Error ? err.message : "删除失败");
     } finally {
       setSubmitting(false);

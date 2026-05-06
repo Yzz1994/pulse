@@ -13,7 +13,7 @@ import (
 
 // RegisterNodeRegisterAPI 注册节点自注册接口（公开，无鉴权）和节点安装证书接口（受保护）。
 // publicMux: 直接挂载，无需认证；protectedMux: 挂载后由外层 auth.Middleware 保护。
-func RegisterNodeRegisterAPI(publicMux, protectedMux *http.ServeMux, store nodes.Store, certFile string) {
+func RegisterNodeRegisterAPI(publicMux, protectedMux *http.ServeMux, store nodes.Store, certFile string, evictClient func(string)) {
 	publicMux.HandleFunc("POST /v1/node-register", func(w http.ResponseWriter, r *http.Request) {
 		var req struct {
 			NodeID  string `json:"node_id"`
@@ -41,6 +41,7 @@ func RegisterNodeRegisterAPI(publicMux, protectedMux *http.ServeMux, store nodes
 			writeJSON(w, http.StatusInternalServerError, map[string]any{"error": err.Error()})
 			return
 		}
+		evictClient(req.NodeID)
 		writeJSON(w, http.StatusOK, map[string]any{"ok": true})
 	})
 

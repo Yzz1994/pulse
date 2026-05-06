@@ -1,5 +1,4 @@
 import { useEffect, useState, useCallback, useRef, useMemo } from "react";
-import { useNavigate } from "@tanstack/react-router";
 import { getTheme } from "@/lib/theme";
 import {
   Card,
@@ -11,8 +10,9 @@ import {
   Separator,
 } from "@/components/ui";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { api, AuthError } from "@/lib/api";
-import { clearToken, getToken } from "@/lib/auth";
+import { api } from "@/lib/api";
+import { useAuthErrorHandler } from "@/hooks/useAuthErrorHandler";
+import { getToken } from "@/lib/auth";
 import { marked } from "marked";
 import MDEditor, { commands } from "@uiw/react-md-editor";
 
@@ -58,7 +58,6 @@ const statusVariant: Record<string, "default" | "secondary" | "outline" | "destr
 };
 
 export default function TicketsPage() {
-  const navigate = useNavigate();
   const theme = useMemo(() => getTheme(), []);
 
   const [tickets, setTickets] = useState<Ticket[]>([]);
@@ -75,14 +74,7 @@ export default function TicketsPage() {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
-  function handleAuthError(err: unknown): boolean {
-    if (err instanceof AuthError) {
-      clearToken();
-      navigate({ to: "/panel/login" });
-      return true;
-    }
-    return false;
-  }
+  const handleAuthError = useAuthErrorHandler();
 
   const fetchTickets = useCallback(() => {
     setLoading(true);
@@ -91,7 +83,7 @@ export default function TicketsPage() {
       .then((data) => setTickets(data.tickets ?? []))
       .catch((err) => { if (handleAuthError(err)) return; })
       .finally(() => setLoading(false));
-  }, [navigate]);
+  }, [handleAuthError]);
 
   useEffect(() => {
     fetchTickets();

@@ -1,5 +1,4 @@
 import { useEffect, useState, useCallback, useRef } from "react";
-import { useNavigate } from "@tanstack/react-router";
 import {
   Card,
   CardHeader,
@@ -16,7 +15,7 @@ import {
   toast,
 } from "@/components/ui";
 import { api, AuthError } from "@/lib/api";
-import { clearToken } from "@/lib/auth";
+import { useAuthErrorHandler } from "@/hooks/useAuthErrorHandler";
 
 // ── 类型定义 ─────────────────────────────────────────────────────
 
@@ -716,14 +715,11 @@ function ScheduleBar({ onAuthError }: { onAuthError: () => void }) {
 // ── 主页面 ───────────────────────────────────────────────────────
 
 export default function IPSentinelPage() {
-  const navigate = useNavigate();
+  const handleAuthError = useAuthErrorHandler();
+  // 包装为 () => void 供子组件 prop 使用
+  const onAuthError = () => handleAuthError(new AuthError("Unauthorized"));
   const [nodes, setNodes] = useState<NodeItem[]>([]);
   const [loading, setLoading] = useState(true);
-
-  function handleAuthError() {
-    clearToken();
-    navigate({ to: "/panel/login" });
-  }
 
   const fetchNodes = useCallback(async () => {
     setLoading(true);
@@ -731,16 +727,13 @@ export default function IPSentinelPage() {
       const data = await api.get<NodesResponse>("/nodes");
       setNodes(data.nodes ?? []);
     } catch (err) {
-      if (err instanceof AuthError) {
-        handleAuthError();
-      } else {
+      if (!handleAuthError(err)) {
         toast(err instanceof Error ? err.message : "加载节点列表失败", "error");
       }
     } finally {
       setLoading(false);
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [handleAuthError]);
 
   useEffect(() => {
     fetchNodes();
@@ -761,7 +754,7 @@ export default function IPSentinelPage() {
         </div>
 
         {/* 全局设置条 */}
-        <ScheduleBar onAuthError={handleAuthError} />
+        <ScheduleBar onAuthError={onAuthError} />
 
         {/* 节点卡片网格 */}
         {loading ? (
@@ -784,7 +777,7 @@ export default function IPSentinelPage() {
               <NodeCard
                 key={node.id}
                 node={node}
-                onAuthError={handleAuthError}
+                onAuthError={onAuthError}
               />
             ))}
           </div>
