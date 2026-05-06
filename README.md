@@ -37,14 +37,6 @@ curl -fsSL https://raw.githubusercontent.com/0xUnixIO/pulse/main/scripts/install
 
 详见 [DEVELOPMENT.md](DEVELOPMENT.md)。
 
-## 发布新版本
-
-交互式选择 patch / minor / major，先运行测试，通过后自动打 tag 并推送，触发 GitHub Actions 构建：
-
-```bash
-make release
-```
-
 ## 许可证
 
 [GNU Affero General Public License v3.0](LICENSE)
