@@ -25,11 +25,9 @@
 curl -fsSL https://raw.githubusercontent.com/0xUnixIO/pulse/main/scripts/install.sh | sh -s -- server
 ```
 
-**安装 node（在节点机器上运行）：**
+**安装 node：**
 
-```bash
-curl -fsSL https://raw.githubusercontent.com/0xUnixIO/pulse/main/scripts/install.sh | sh -s -- node
-```
+在控制面板「节点」页面点击「添加节点」，填写节点名称后会自动生成安装命令，复制到节点机器上运行即可，无需手动配置证书。
 
 完整安装步骤、环境变量配置、NodeGate 设置详见 [INSTALL.md](INSTALL.md)。
 
