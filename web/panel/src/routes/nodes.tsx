@@ -508,30 +508,25 @@ function ManualUpdateDialog({
   open: boolean;
   onClose: () => void;
 }) {
-  const [certB64, setCertB64] = useState<string | null>(null);
+  const [enroll, setEnroll] = useState<EnrollTokenResponse | null>(null);
+  const [error, setError] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
 
   useEffect(() => {
     if (!open || !node) return;
-    setCertB64(null);
-    api.get<{ cert_b64: string }>("/node-setup/cert")
-      .then((r) => setCertB64(r.cert_b64))
-      .catch(() => {});
+    setEnroll(null);
+    setError(null);
+    api
+      .post<EnrollTokenResponse>(`/nodes/${node.id}/enroll-token`, {})
+      .then(setEnroll)
+      .catch((e: Error) => setError(e.message || "生成安装 token 失败"));
   }, [open, node]);
 
-  const origin = typeof window !== "undefined" ? window.location.origin : "";
-  const installCmd = node && certB64
-    ? [
-        "bash <(curl -fsSL https://raw.githubusercontent.com/0xUnixIO/pulse/main/scripts/install.sh) node \\",
-        `  --server ${origin} \\`,
-        `  --node-id ${node.id} \\`,
-        `  --cert ${certB64}`,
-      ].join("\n")
-    : "正在获取安装信息…";
+  const installCmd = enroll?.install_command ?? (error ?? "正在获取安装信息…");
 
   const handleCopy = () => {
-    if (!node || !certB64) return;
-    navigator.clipboard.writeText(installCmd);
+    if (!enroll?.install_command) return;
+    navigator.clipboard.writeText(enroll.install_command);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
   };
@@ -551,7 +546,7 @@ function ManualUpdateDialog({
           </ScrollArea>
           <button
             onClick={handleCopy}
-            disabled={!certB64}
+            disabled={!enroll?.install_command}
             className="inline-flex items-center gap-1.5 rounded-md border border-[hsl(var(--border))] bg-transparent px-3 py-1.5 text-xs font-medium transition-colors hover:bg-[hsl(var(--accent))] disabled:opacity-50"
           >
             {copied ? (
