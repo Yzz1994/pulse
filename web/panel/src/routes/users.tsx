@@ -56,6 +56,8 @@ import type {
   HostsResponse,
   UserGroup,
   UserGroupsResponse,
+  Plan,
+  PlansResponse,
 } from "@/lib/types";
 
 // ── Constants ────────────────────────────────────────────────────
@@ -208,11 +210,16 @@ export default function UsersPage() {
 
   // ── Create form state ────────────────────────────────────────
   const [createUsername, setCreateUsername] = useState("");
+  const [createPlanId, setCreatePlanId] = useState("");
   const [createTrafficGb, setCreateTrafficGb] = useState("");
   const [createExpireAt, setCreateExpireAt] = useState("");
   const [createResetStrategy, setCreateResetStrategy] = useState<ResetStrategy>("no_reset");
   const [createNote, setCreateNote] = useState("");
   const [createInboundIds, setCreateInboundIds] = useState<string[]>([]);
+
+  // ── Plans & user groups (for create dialog plan selector) ────
+  const [allPlans, setAllPlans] = useState<Plan[]>([]);
+  const [allUserGroups, setAllUserGroups] = useState<UserGroup[]>([]);
 
   // ── Edit form state ──────────────────────────────────────────
   const [editStatus, setEditStatus] = useState<UserStatus>("active");
@@ -307,16 +314,20 @@ export default function UsersPage() {
   const fetchAllInbounds = useCallback(async () => {
     setInboundsLoading(true);
     try {
-      const [inboundsData, nodesData, outboundsData, hostsData] = await Promise.all([
+      const [inboundsData, nodesData, outboundsData, hostsData, plansData, userGroupsData] = await Promise.all([
         api.get<InboundsResponse>("/inbounds"),
         api.get<NodesResponse>("/nodes"),
         api.get<OutboundsResponse>("/outbounds").catch(() => ({ outbounds: [] }) as OutboundsResponse),
         api.get<HostsResponse>("/hosts").catch(() => ({ hosts: [] }) as HostsResponse),
+        api.get<PlansResponse>("/plans").catch(() => ({ plans: [] }) as PlansResponse),
+        api.get<UserGroupsResponse>("/user-groups").catch(() => ({ user_groups: [] }) as UserGroupsResponse),
       ]);
       setAllInbounds(inboundsData.inbounds ?? []);
       setAllNodes(nodesData.nodes ?? []);
       setAllOutbounds(outboundsData.outbounds ?? []);
       setAllHosts(hostsData.hosts ?? []);
+      setAllPlans(plansData.plans ?? []);
+      setAllUserGroups(userGroupsData.user_groups ?? []);
     } catch (err) {
       if (!handleAuthError(err)) {
         console.error("Failed to fetch inbounds:", err);
@@ -354,6 +365,7 @@ export default function UsersPage() {
     const in30Days = new Date();
     in30Days.setDate(in30Days.getDate() + 30);
     setCreateUsername("");
+    setCreatePlanId("");
     setCreateTrafficGb("");
     setCreateExpireAt(in30Days.toISOString().slice(0, 10));
     setCreateResetStrategy("no_reset");
@@ -366,6 +378,35 @@ export default function UsersPage() {
     resetCreateForm();
     fetchAllInbounds();
     setCreateOpen(true);
+  };
+
+  const applyPlan = (planId: string) => {
+    setCreatePlanId(planId);
+    if (!planId) return;
+    const plan = allPlans.find((p) => p.id === planId);
+    if (!plan) return;
+    if (plan.traffic_limit > 0) {
+      setCreateTrafficGb(String(parseFloat((plan.traffic_limit / 1e9).toFixed(2))));
+    }
+    if (plan.duration_days > 0) {
+      const expiry = new Date();
+      expiry.setDate(expiry.getDate() + plan.duration_days);
+      setCreateExpireAt(expiry.toISOString().slice(0, 10));
+    }
+    if (plan.data_limit_reset_strategy) {
+      setCreateResetStrategy(plan.data_limit_reset_strategy as ResetStrategy);
+    }
+    if (plan.user_group_ids) {
+      const groupIds = plan.user_group_ids.split(",").map((s) => s.trim()).filter(Boolean);
+      const ibIds = new Set<string>();
+      for (const gid of groupIds) {
+        const group = allUserGroups.find((g) => g.id === gid);
+        if (group?.inbound_ids) {
+          group.inbound_ids.split(",").map((s) => s.trim()).filter(Boolean).forEach((id) => ibIds.add(id));
+        }
+      }
+      if (ibIds.size > 0) setCreateInboundIds([...ibIds]);
+    }
   };
 
   const handleCreate = async () => {
@@ -827,6 +868,25 @@ export default function UsersPage() {
 
           <ScrollArea className="max-h-[60vh]">
             <div className="grid gap-4 py-2">
+            {/* Plan selector */}
+            {allPlans.length > 0 && (
+              <div className="grid gap-2">
+                <Label>套餐（可选）</Label>
+                <Select value={createPlanId} onValueChange={applyPlan}>
+                  <SelectTrigger className="w-full">
+                    <SelectValue placeholder="选择套餐自动填入配置…" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {allPlans.map((p) => (
+                      <SelectItem key={p.id} value={p.id}>
+                        {p.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
+
             {/* Username */}
             <div className="grid gap-2">
               <Label htmlFor="create-username">
