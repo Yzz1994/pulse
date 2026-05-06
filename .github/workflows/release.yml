@@ -9,41 +9,27 @@ permissions:
   contents: write
 
 jobs:
-  # 前端只构建一次，amd64/arm64 共用同一份产物
   frontend:
-    runs-on: self-hosted
+    runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v4
 
       - uses: oven-sh/setup-bun@v2
         with:
           bun-version: latest
 
-      - name: Ensure AWS CLI
-        run: |
-          which aws 2>/dev/null || {
-            arch=$(uname -m)
-            curl -fsSL "https://awscli.amazonaws.com/awscli-exe-linux-${arch}.sh" -o awscliv2.sh
-            sudo sh awscliv2.sh --install-dir /usr/local/aws-cli --bin-dir /usr/local/bin
-            rm awscliv2.sh
-          }
-
       - name: Build frontend
         run: cd web/panel && bun install --frozen-lockfile && bun run build.ts
 
-      - name: Upload frontend dist to R2
-        env:
-          AWS_ACCESS_KEY_ID: ${{ secrets.CF_R2_ACCESS_KEY_ID }}
-          AWS_SECRET_ACCESS_KEY: ${{ secrets.CF_R2_SECRET_KEY }}
-          AWS_DEFAULT_REGION: auto
-        run: |
-          tar -czf frontend-dist.tar.gz -C web/panel/dist .
-          aws s3 cp frontend-dist.tar.gz \
-            s3://${{ secrets.CF_R2_BUCKET }}/ci/${{ github.run_id }}/frontend-dist.tar.gz \
-            --endpoint-url https://${{ secrets.CF_ACCOUNT_ID }}.r2.cloudflarestorage.com
+      - name: Upload frontend dist
+        uses: actions/upload-artifact@v4
+        with:
+          name: frontend-dist
+          path: web/panel/dist/
+          retention-days: 1
 
   build:
-    runs-on: self-hosted
+    runs-on: ubuntu-latest
     needs: frontend
     strategy:
       fail-fast: false
@@ -51,36 +37,18 @@ jobs:
         component: [server, node]
         arch: [amd64, arm64]
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v4
 
-      - uses: actions/setup-go@v6
+      - uses: actions/setup-go@v5
         with:
           go-version-file: go.mod
-          cache: false
 
-      - name: Ensure AWS CLI
-        run: |
-          which aws 2>/dev/null || {
-            arch=$(uname -m)
-            curl -fsSL "https://awscli.amazonaws.com/awscli-exe-linux-${arch}.sh" -o awscliv2.sh
-            sudo sh awscliv2.sh --install-dir /usr/local/aws-cli --bin-dir /usr/local/bin
-            rm awscliv2.sh
-          }
-
-      # 只有 server 需要前端产物
-      - name: Download frontend dist from R2
+      - name: Download frontend dist
         if: matrix.component == 'server'
-        env:
-          AWS_ACCESS_KEY_ID: ${{ secrets.CF_R2_ACCESS_KEY_ID }}
-          AWS_SECRET_ACCESS_KEY: ${{ secrets.CF_R2_SECRET_KEY }}
-          AWS_DEFAULT_REGION: auto
-        run: |
-          mkdir -p web/panel/dist
-          aws s3 cp \
-            s3://${{ secrets.CF_R2_BUCKET }}/ci/${{ github.run_id }}/frontend-dist.tar.gz \
-            frontend-dist.tar.gz \
-            --endpoint-url https://${{ secrets.CF_ACCOUNT_ID }}.r2.cloudflarestorage.com
-          tar -xzf frontend-dist.tar.gz -C web/panel/dist
+        uses: actions/download-artifact@v4
+        with:
+          name: frontend-dist
+          path: web/panel/dist/
 
       - name: Build release package
         run: |
@@ -91,52 +59,32 @@ jobs:
             VERSION=${version} \
             SKIP_SPA=1
 
-      - name: Upload package to R2
-        env:
-          AWS_ACCESS_KEY_ID: ${{ secrets.CF_R2_ACCESS_KEY_ID }}
-          AWS_SECRET_ACCESS_KEY: ${{ secrets.CF_R2_SECRET_KEY }}
-          AWS_DEFAULT_REGION: auto
-        run: |
-          aws s3 cp \
-            dist/release/pulse-${{ matrix.component }}-linux-${{ matrix.arch }}.tar.gz \
-            s3://${{ secrets.CF_R2_BUCKET }}/ci/${{ github.run_id }}/pulse-${{ matrix.component }}-linux-${{ matrix.arch }}.tar.gz \
-            --endpoint-url https://${{ secrets.CF_ACCOUNT_ID }}.r2.cloudflarestorage.com
+      - name: Upload package
+        uses: actions/upload-artifact@v4
+        with:
+          name: pulse-${{ matrix.component }}-linux-${{ matrix.arch }}
+          path: dist/release/pulse-${{ matrix.component }}-linux-${{ matrix.arch }}.tar.gz
+          retention-days: 1
 
   release:
-    runs-on: self-hosted
+    runs-on: ubuntu-latest
     needs: build
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v4
 
-      - name: Download packages from R2
-        env:
-          AWS_ACCESS_KEY_ID: ${{ secrets.CF_R2_ACCESS_KEY_ID }}
-          AWS_SECRET_ACCESS_KEY: ${{ secrets.CF_R2_SECRET_KEY }}
-          AWS_DEFAULT_REGION: auto
-        run: |
-          mkdir -p dist/release
-          aws s3 sync \
-            s3://${{ secrets.CF_R2_BUCKET }}/ci/${{ github.run_id }}/ \
-            dist/release/ \
-            --endpoint-url https://${{ secrets.CF_ACCOUNT_ID }}.r2.cloudflarestorage.com \
-            --exclude "frontend-dist.tar.gz"
-          cd dist/release && sha256sum *.tar.gz > checksums.txt
+      - name: Download all packages
+        uses: actions/download-artifact@v4
+        with:
+          pattern: pulse-*
+          path: dist/release/
+          merge-multiple: true
+
+      - name: Generate checksums
+        run: cd dist/release && sha256sum *.tar.gz > checksums.txt
 
       - name: Publish GitHub Release
-        uses: softprops/action-gh-release@v2.6.1
+        uses: softprops/action-gh-release@v2
         with:
           files: |
             dist/release/*.tar.gz
             dist/release/checksums.txt
-
-      - name: Cleanup CI artifacts from R2
-        if: always()
-        env:
-          AWS_ACCESS_KEY_ID: ${{ secrets.CF_R2_ACCESS_KEY_ID }}
-          AWS_SECRET_ACCESS_KEY: ${{ secrets.CF_R2_SECRET_KEY }}
-          AWS_DEFAULT_REGION: auto
-        run: |
-          aws s3 rm \
-            s3://${{ secrets.CF_R2_BUCKET }}/ci/${{ github.run_id }}/ \
-            --recursive \
-            --endpoint-url https://${{ secrets.CF_ACCOUNT_ID }}.r2.cloudflarestorage.com
