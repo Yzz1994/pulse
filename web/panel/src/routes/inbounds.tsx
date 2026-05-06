@@ -2634,7 +2634,7 @@ export default function InboundsPage() {
                             </Button>
                           </DropdownMenuTrigger>
                           <DropdownMenuContent align="end">
-                            <DropdownMenuItem onClick={() => openHosts(ib)}>Hosts</DropdownMenuItem>
+                            <DropdownMenuItem onClick={() => openHosts(ib)}>连接地址</DropdownMenuItem>
                             <DropdownMenuItem onClick={() => openUserAlloc(ib)}>分配用户</DropdownMenuItem>
                             <DropdownMenuItem onClick={() => openEdit(ib)}>编辑</DropdownMenuItem>
                             <DropdownMenuSeparator />
