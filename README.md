@@ -1,19 +1,19 @@
 # Pulse
 
-代理节点控制面与节点管理系统。单仓双进制：`pulse-server`（控制面）和 `pulse-node`（节点面），通过 mTLS 通信。
+分布式边缘节点编排与管理平台。单仓双进制：`pulse-server`（控制面）和 `pulse-node`（节点面），通过 mTLS 加密通信。
 
 ## 功能特性
 
-- **多节点管理** — 在控制面统一管理任意数量的代理节点，通过 RPC 热更新节点配置
-- **多协议支持** — 基于 Xray-core，支持 VLESS、VLESS+Reality、Trojan、Shadowsocks、AnyTLS 等协议
-- **用户与流量计费** — 流量配额、到期时间、状态机（active / disabled / limited / expired / on_hold）、按 inbound 维度设置流量倍率
-- **订阅链接** — 自动生成 base64 订阅端点，兼容主流客户端
-- **NodeGate（内置 SNI 代理）** — 无需 Nginx/Caddy，443 端口 TLS 终止、ACME 自动证书（支持 Cloudflare DNS-01）、HTTP 反向代理均在节点进程内完成
-- **出口链路** — 在面板配置出站节点（Shadowsocks / VLESS+Reality），实现落地机流量转发
-- **套餐与商店** — 套餐管理 + Stripe 付款，用户自助购买订阅
-- **用户分组** — 将用户划分至不同分组，批量控制节点访问权限
+- **多节点编排** — 控制面统一纳管任意数量的边缘节点，支持 RPC 热推送配置变更
+- **多传输层协议** — 基于 Xray-core 引擎，支持多种传输层协议与加密方式
+- **资源配额与访问控制** — 流量配额、有效期、多状态机（active / disabled / limited / expired / on_hold）、按入站维度配置流量倍率
+- **客户端配置分发** — 自动生成标准化配置端点，兼容主流客户端
+- **NodeGate（内置网关）** — 节点进程内置 TLS 终止、ACME 自动证书（支持 Cloudflare DNS-01）与 HTTP 反向代理，无需额外部署 Nginx/Caddy
+- **出站路由策略** — 在面板配置出站节点，实现多级流量转发
+- **套餐与商店** — 套餐管理 + Stripe 付款，用户自助购买服务
+- **用户分组** — 将用户划分至不同分组，批量管控节点访问权限
 - **IP Sentinel** — 基于 IP 的连接频率限制与访问控制
-- **GeoIP 路由规则** — 内置 GeoIP 数据库，支持按国家/地区分流
+- **GeoIP 路由规则** — 内置 GeoIP 数据库，支持按地区路由分流
 - **审计日志** — 管理操作全程记录
 - **工单系统** — 用户与管理员的消息通道
 
