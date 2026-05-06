@@ -1115,6 +1115,8 @@ func Run() error {
 	mux.Handle("/v1/routerules/", authManager.Middleware(protectedV1))
 	mux.Handle("/v1/plans", authManager.Middleware(protectedV1))
 	mux.Handle("/v1/plans/", authManager.Middleware(protectedV1))
+	mux.Handle("/v1/orders", authManager.Middleware(protectedV1))
+	mux.Handle("/v1/orders/", authManager.Middleware(protectedV1))
 	mux.Handle("/v1/settings/", authManager.Middleware(protectedV1))
 	mux.Handle("/v1/announcements", authManager.Middleware(protectedV1))
 	mux.Handle("/v1/announcements/", authManager.Middleware(protectedV1))
