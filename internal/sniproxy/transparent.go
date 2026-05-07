@@ -15,7 +15,7 @@ import (
 // 连接到达时根据客户端 TLS SNI 选择对应 Backend，原样 TCP 转发，不终止 TLS。
 type TransparentRoute struct {
 	SNI     string // 客户端 TLS ClientHello 中的 server_name
-	Backend string // 目标地址，如 "68.77.201.32:20148"
+	Backend string // 目标地址，如 "203.0.113.20:20148"
 }
 
 // TransparentProxy 是透明 SNI 代理，用于前置节点转发 TLS 到落地节点。

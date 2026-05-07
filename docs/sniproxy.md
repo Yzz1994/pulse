@@ -96,7 +96,7 @@ Surge → cdn-ad5f.xxx.com (前置节点:443, SNI=cdn-ad5d.xxx.com)
   "acme_staging": false,
   "routes": [
     {"sni": "cdn-ad5d.xxx.com", "backend": "127.0.0.1:20149", "mode": "terminating"},
-    {"sni": "cdn-ad5f.xxx.com", "backend": "68.77.201.32:20148", "mode": "transparent"},
+    {"sni": "cdn-ad5f.xxx.com", "backend": "203.0.113.20:20148", "mode": "transparent"},
     {"sni": "panel.xxx.com",    "backend": "127.0.0.1:8080",   "mode": "http-reverse"}
   ]
 }
