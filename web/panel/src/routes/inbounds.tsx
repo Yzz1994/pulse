@@ -935,18 +935,7 @@ function slugPart(s: string): string {
 interface HostFormState {
   address: string;
   port: string;
-  remark: string;
   sni: string;
-  host: string;
-  path: string;
-  security: string;
-  alpn: string;
-  fingerprint: string;
-  allow_insecure: boolean;
-  mux_enable: boolean;
-  reality_public_key: string;
-  reality_short_id: string;
-  reality_spider_x: string;
   country: string;
   region: string;
   network: string;
@@ -959,18 +948,7 @@ interface HostFormState {
 const EMPTY_HOST_FORM: HostFormState = {
   address: "",
   port: "0",
-  remark: "",
   sni: "",
-  host: "",
-  path: "",
-  security: "__inherit__",
-  alpn: "",
-  fingerprint: "",
-  allow_insecure: false,
-  mux_enable: false,
-  reality_public_key: "",
-  reality_short_id: "",
-  reality_spider_x: "",
   country: "",
   region: "",
   network: "",
@@ -988,7 +966,6 @@ interface HostFormDialogProps {
   inboundTag?: string;
   inboundProtocol?: string;
   inboundPort?: number;
-  inboundSecurity?: string;
   nodeIp?: string;
   nodeId?: string;
   nodes: Node[];
@@ -1007,7 +984,6 @@ function HostFormDialog({
   inboundTag,
   inboundProtocol,
   inboundPort,
-  inboundSecurity = "",
   nodeIp = "",
   nodeId,
   nodes,
@@ -1019,7 +995,6 @@ function HostFormDialog({
 }: HostFormDialogProps) {
   const [form, setForm] = useState<HostFormState>(EMPTY_HOST_FORM);
   const [submitting, setSubmitting] = useState(false);
-  const [showAdvanced, setShowAdvanced] = useState(false);
   const [showRelay, setShowRelay] = useState(false);
   const [autoGen, setAutoGen] = useState<{ zone: CFDomain; subdomain: string; remark: string } | null>(null);
   const [autoGenApplying, setAutoGenApplying] = useState(false);
@@ -1036,18 +1011,7 @@ function HostFormDialog({
       setForm({
         address: host.address,
         port: host.relay_node_id && host.relay_port ? String(host.relay_port) : String(host.port),
-        remark: host.remark || "",
         sni: host.sni || "",
-        host: host.host || "",
-        path: host.path || "",
-        security: inboundSecurity || "none",
-        alpn: host.alpn || "",
-        fingerprint: host.fingerprint || "",
-        allow_insecure: host.allow_insecure,
-        mux_enable: host.mux_enable,
-        reality_public_key: host.reality_public_key || "",
-        reality_short_id: host.reality_short_id || "",
-        reality_spider_x: host.reality_spider_x || "",
         country: host.country || "",
         region: host.region || "",
         network: host.network || "",
@@ -1056,15 +1020,13 @@ function HostFormDialog({
         relay_node_id: host.relay_node_id || "",
         https_port: host.https_port ? String(host.https_port) : "",
       });
-      setShowAdvanced(true);
       setShowRelay(!!host.relay_node_id);
     } else {
       const defaultPort = (inboundProtocol === "anytls" || inboundProtocol === "trojan") ? "443" : String(inboundPort ?? "");
-      setForm({ ...EMPTY_HOST_FORM, address: nodeIp || "", port: defaultPort, remark: inboundTag || "", security: inboundSecurity || "none" });
-      setShowAdvanced(false);
+      setForm({ ...EMPTY_HOST_FORM, address: nodeIp || "", port: defaultPort });
       setShowRelay(false);
     }
-  }, [open, host, inboundTag, inboundProtocol, inboundPort, inboundSecurity, nodeIp]);
+  }, [open, host, inboundProtocol, inboundPort, nodeIp]);
 
   // 前置节点变化时实时查询 NodeGate (sniproxy) 运行状态
   useEffect(() => {
@@ -1163,13 +1125,7 @@ function HostFormDialog({
         inbound_id: inboundId,
         address: form.address.trim(),
         port: Number(form.port) || 0,
-        remark: "",
         sni: form.sni,
-        fingerprint: form.fingerprint,
-        security: form.security,
-        reality_public_key: form.security === "reality" ? form.reality_public_key : "",
-        reality_short_id: form.security === "reality" ? form.reality_short_id : "",
-        reality_spider_x: form.security === "reality" ? form.reality_spider_x : "",
         country: form.country,
         region: form.region,
         network: form.network,
@@ -1221,15 +1177,7 @@ function HostFormDialog({
                   <div className="flex items-center gap-2">
                     <Input
                       value={form.address}
-                      onChange={(e) => {
-                        const v = e.target.value;
-                        setForm((prev) => ({
-                          ...prev,
-                          address: v,
-                          sni: (!prev.sni || prev.sni === prev.address) ? v : prev.sni,
-                          host: (!prev.host || prev.host === prev.address) ? v : prev.host,
-                        }));
-                      }}
+                      onChange={(e) => updateField("address", e.target.value)}
                       placeholder="域名或 IP"
                       required
                       className="flex-1"
@@ -1387,64 +1335,6 @@ function HostFormDialog({
                 </p>
               </div>
             </div>
-
-            {showAdvanced && false && (
-              <div className="space-y-4 rounded-lg border border-[hsl(var(--border))] p-4">
-                {/* SNI */}
-                <div className="space-y-2">
-                  <Label>SNI</Label>
-                  <Input
-                    value={form.sni}
-                    onChange={(e) => updateField("sni", e.target.value)}
-                    placeholder="Server Name Indication"
-                  />
-                </div>
-
-                {/* Fingerprint（VLESS+Reality / Trojan 使用） */}
-                <div className="space-y-2">
-                  <Label>TLS 指纹</Label>
-                  <Input
-                    value={form.fingerprint}
-                    onChange={(e) => updateField("fingerprint", e.target.value)}
-                    placeholder="chrome（留空默认）"
-                  />
-                </div>
-
-                {/* Reality fields */}
-                {form.security === "reality" && (
-                  <div className="space-y-4 rounded-lg border border-[hsl(var(--border))] p-4">
-                    <p className="text-sm font-medium text-[hsl(var(--foreground))]">Reality 配置</p>
-                    <div className="space-y-2">
-                      <Label>Public Key</Label>
-                      <Input
-                        value={form.reality_public_key}
-                        onChange={(e) => updateField("reality_public_key", e.target.value)}
-                        placeholder="公钥"
-                        className="font-mono text-xs"
-                      />
-                    </div>
-                    <div className="space-y-2">
-                      <Label>Short ID</Label>
-                      <Input
-                        value={form.reality_short_id}
-                        onChange={(e) => updateField("reality_short_id", e.target.value)}
-                        placeholder="短 ID"
-                        className="font-mono text-xs"
-                      />
-                    </div>
-                    <div className="space-y-2">
-                      <Label>Spider X</Label>
-                      <Input
-                        value={form.reality_spider_x}
-                        onChange={(e) => updateField("reality_spider_x", e.target.value)}
-                        placeholder="/"
-                        className="font-mono text-xs"
-                      />
-                    </div>
-                  </div>
-                )}
-              </div>
-            )}
 
             {/* ── 前置中转 toggle ───────────────────────────── */}
             <button
@@ -1758,7 +1648,6 @@ function HostsDialog({ open, onOpenChange, inbound, nodeIp = "", nodeId, nodes, 
           inboundTag={`${inbound.protocol}:${inbound.port}`}
           inboundProtocol={inbound.protocol}
           inboundPort={inbound.port}
-          inboundSecurity={inbound.security}
           nodeIp={nodeIp}
           nodeId={nodeId}
           nodes={nodes}

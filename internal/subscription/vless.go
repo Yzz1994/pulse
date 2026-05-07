@@ -247,12 +247,11 @@ func vlessLink(ib inbounds.Inbound, host inbounds.Host, acc users.UserInbound, u
 		if spiderX != "" {
 			query.Set("spx", spiderX)
 		}
-		sni := host.SNI
-		if sni == "" && ib.RealityHandshakeAddr != "" {
+		sni := ""
+		if ib.RealityHandshakeAddr != "" {
 			if h, _, err := net.SplitHostPort(ib.RealityHandshakeAddr); err == nil {
 				sni = h
 			} else {
-				// 没有端口时直接用整个地址作为 SNI
 				sni = ib.RealityHandshakeAddr
 			}
 		}
@@ -280,11 +279,7 @@ func trojanLink(ib inbounds.Inbound, host inbounds.Host, acc users.UserInbound, 
 	query.Set("type", "ws")
 	query.Set("path", "/ws")
 	query.Set("security", "tls")
-	sni := host.SNI
-	if sni == "" {
-		sni = addr
-	}
-	query.Set("sni", sni)
+	query.Set("sni", addr)
 	if host.Fingerprint != "" {
 		query.Set("fp", host.Fingerprint)
 	}
