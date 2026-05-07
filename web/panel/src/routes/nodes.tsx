@@ -35,6 +35,7 @@ import {
 } from "@/components/ui";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { api } from "@/lib/api";
+import { copyText } from "@/lib/clipboard";
 import { getToken } from "@/lib/auth";
 import { useAuthErrorHandler } from "@/hooks/useAuthErrorHandler";
 import { formatBytes, formatSpeed } from "@/lib/format";
@@ -416,7 +417,7 @@ function InstallCmdDialog({
 
   const handleCopy = (text: string) => {
     if (!text) return;
-    navigator.clipboard.writeText(text);
+    copyText(text);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
   };
@@ -509,7 +510,7 @@ function ManualUpdateDialog({
 
   const handleCopy = () => {
     if (!enroll?.install_command) return;
-    navigator.clipboard.writeText(enroll.install_command);
+    copyText(enroll.install_command);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
   };
@@ -1267,7 +1268,7 @@ function TracerouteDialog({ node, open, onOpenChange }: {
         );
       }
     }
-    navigator.clipboard.writeText(lines.join("\n")).then(() => {
+    copyText(lines.join("\n")).then(() => {
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
     });

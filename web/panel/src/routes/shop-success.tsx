@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { Card, CardContent, Button } from "@/components/ui";
 import { getTheme, toggleTheme, type Theme } from "@/lib/theme";
+import { copyText } from "@/lib/clipboard";
 
 /* ── Types ────────────────────────────────────────────────────── */
 
@@ -88,7 +89,7 @@ export default function ShopSuccessPage() {
 
   function handleCopy() {
     if (!orderInfo?.sub_url) return;
-    navigator.clipboard.writeText(orderInfo.sub_url).then(() => {
+    copyText(orderInfo.sub_url).then(() => {
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
     });

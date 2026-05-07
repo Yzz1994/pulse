@@ -26,6 +26,7 @@ import {
   toast,
 } from "@/components/ui";
 import { api } from "@/lib/api";
+import { copyText } from "@/lib/clipboard";
 import { useAuthErrorHandler } from "@/hooks/useAuthErrorHandler";
 
 // ── 类型定义 ─────────────────────────────────────────────────────
@@ -218,7 +219,7 @@ function AuditLogsTab() {
     );
     const text = ["时间\t用户\t源IP\t源端口\t协议\t目标地址\t路由出口", ...lines].join("\n");
     try {
-      await navigator.clipboard.writeText(text);
+      await copyText(text);
       toast(`${entries.length} 条记录已复制到剪贴板`, "success");
     } catch {
       toast("复制失败，请手动选中内容复制", "error");

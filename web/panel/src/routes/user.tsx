@@ -43,6 +43,7 @@ import {
 } from "@/components/ui";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { formatBytes, formatBytesCompact } from "@/lib/format";
+import { copyText } from "@/lib/clipboard";
 
 /* ── Types ────────────────────────────────────────────────────── */
 
@@ -518,7 +519,7 @@ export default function UserPage() {
 
   const copyToClipboard = useCallback(async (text: string, label: string) => {
     try {
-      await navigator.clipboard.writeText(text);
+      await copyText(text);
       setCopied(label);
       setTimeout(() => setCopied(null), 2000);
     } catch {

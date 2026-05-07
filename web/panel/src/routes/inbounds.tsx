@@ -980,13 +980,6 @@ const EMPTY_HOST_FORM: HostFormState = {
   https_port: "",
 };
 
-const HOST_SECURITY_OPTIONS = [
-  { value: "__inherit__", label: "继承入站" },
-  { value: "none", label: "none" },
-  { value: "tls", label: "tls" },
-  { value: "reality", label: "reality" },
-] as const;
-
 interface HostFormDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -995,6 +988,7 @@ interface HostFormDialogProps {
   inboundTag?: string;
   inboundProtocol?: string;
   inboundPort?: number;
+  inboundSecurity?: string;
   nodeIp?: string;
   nodeId?: string;
   nodes: Node[];
@@ -1013,6 +1007,7 @@ function HostFormDialog({
   inboundTag,
   inboundProtocol,
   inboundPort,
+  inboundSecurity = "",
   nodeIp = "",
   nodeId,
   nodes,
@@ -1045,7 +1040,7 @@ function HostFormDialog({
         sni: host.sni || "",
         host: host.host || "",
         path: host.path || "",
-        security: host.security || "__inherit__",
+        security: inboundSecurity || "none",
         alpn: host.alpn || "",
         fingerprint: host.fingerprint || "",
         allow_insecure: host.allow_insecure,
@@ -1065,11 +1060,11 @@ function HostFormDialog({
       setShowRelay(!!host.relay_node_id);
     } else {
       const defaultPort = (inboundProtocol === "anytls" || inboundProtocol === "trojan") ? "443" : String(inboundPort ?? "");
-      setForm({ ...EMPTY_HOST_FORM, address: nodeIp || "", port: defaultPort, remark: inboundTag || "" });
+      setForm({ ...EMPTY_HOST_FORM, address: nodeIp || "", port: defaultPort, remark: inboundTag || "", security: inboundSecurity || "none" });
       setShowAdvanced(false);
       setShowRelay(false);
     }
-  }, [open, host, inboundTag, inboundProtocol, inboundPort, nodeIp]);
+  }, [open, host, inboundTag, inboundProtocol, inboundPort, inboundSecurity, nodeIp]);
 
   // 前置节点变化时实时查询 NodeGate (sniproxy) 运行状态
   useEffect(() => {
@@ -1126,7 +1121,6 @@ function HostFormDialog({
       const fqdn = `${autoGen.subdomain}.${autoGen.zone.zone_name}`;
       updateField("address", fqdn);
       updateField("sni", fqdn);
-      if (autoGen.remark) updateField("remark", autoGen.remark);
       toast.success(`已创建 ${fqdn}`);
       setAutoGen(null);
     } catch (err) {
@@ -1142,17 +1136,12 @@ function HostFormDialog({
   const canSubmit = form.address.trim() !== "" && relayValid && !relayPortConflict;
 
   const handleGeoLookup = async () => {
-    const addr = form.address.trim() || nodeIp;
-    if (!addr || geoLooking) return;
-    // 若 address 为空则用节点 IP 回填，确保表单可提交
-    if (!form.address.trim() && nodeIp) {
-      updateField("address", nodeIp);
-    }
+    if (!nodeIp || geoLooking) return;
     setGeoLooking(true);
     try {
       const info = await api.get<{
         country_code: string; country_name: string; city: string; asn_org: string;
-      }>(`/system/geoip/lookup?host=${encodeURIComponent(addr)}`);
+      }>(`/system/geoip/lookup?host=${encodeURIComponent(nodeIp)}`);
       if (info.country_code) {
         updateField("country", info.country_code.toUpperCase());
       }
@@ -1174,7 +1163,7 @@ function HostFormDialog({
         inbound_id: inboundId,
         address: form.address.trim(),
         port: Number(form.port) || 0,
-        remark: form.remark,
+        remark: "",
         sni: form.sni,
         host: form.host,
         path: form.path,
@@ -1227,6 +1216,76 @@ function HostFormDialog({
           </DialogHeader>
 
           <div className="mt-4 space-y-4">
+            {/* ── 节点命名 ──────────────────────────── */}
+            <div className="space-y-3 rounded-md border border-[hsl(var(--border))] p-3">
+              <div className="flex items-center justify-between">
+                <p className="text-xs font-medium text-[hsl(var(--muted-foreground))]">
+                  节点命名（留空则回退到订阅名/标签）
+                </p>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="h-6 px-2 text-xs"
+                  disabled={!nodeIp || geoLooking}
+                  onClick={handleGeoLookup}
+                  title="根据连接地址自动填入国家、地区、网络（需在设置中配置 MaxMind License Key）"
+                >
+                  {geoLooking ? "查询中…" : "IP 自动填入"}
+                </Button>
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1">
+                  <Label className="text-xs">国家</Label>
+                  <Input
+                    value={form.country}
+                    onChange={(e) => updateField("country", e.target.value)}
+                    placeholder="HK"
+                    className="h-8 text-sm"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-xs">地区</Label>
+                  <Input
+                    value={form.region}
+                    onChange={(e) => updateField("region", e.target.value)}
+                    placeholder="香港"
+                    className="h-8 text-sm"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-xs">网络</Label>
+                  <Input
+                    value={form.network}
+                    onChange={(e) => updateField("network", e.target.value)}
+                    placeholder="GIA"
+                    className="h-8 text-sm"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-xs">入口</Label>
+                  <Input
+                    value={form.entry}
+                    onChange={(e) => updateField("entry", e.target.value)}
+                    placeholder="深圳（选填）"
+                    className="h-8 text-sm"
+                  />
+                </div>
+              </div>
+              <div className="space-y-1">
+                <Label className="text-xs">业务标签</Label>
+                <Input
+                  value={form.tags}
+                  onChange={(e) => updateField("tags", e.target.value)}
+                  placeholder="NF·GPT（选填，多个用 · 分隔）"
+                  className="h-8 text-sm"
+                />
+              </div>
+              <p className="text-xs text-[hsl(var(--muted-foreground))]">
+                编号自动生成，倍率来自入站配置，均无需手动填写。
+              </p>
+            </div>
+
             {/* ── Address (required) ────────────────────────── */}
             <div className="space-y-2">
               <Label>地址 *</Label>
@@ -1331,86 +1390,6 @@ function HostFormDialog({
 
             {showAdvanced && (
               <div className="space-y-4 rounded-lg border border-[hsl(var(--border))] p-4">
-                {/* Remark */}
-                <div className="space-y-2">
-                  <Label>订阅名</Label>
-                  <Input
-                    value={form.remark}
-                    onChange={(e) => updateField("remark", e.target.value)}
-                    placeholder="留空自动使用：国家+地区+运营商+入口"
-                  />
-                </div>
-
-                {/* ── 节点命名 ──────────────────────────── */}
-                <div className="space-y-3 rounded-md border border-[hsl(var(--border))] p-3">
-                  <div className="flex items-center justify-between">
-                    <p className="text-xs font-medium text-[hsl(var(--muted-foreground))]">
-                      节点命名（留空则回退到订阅名/标签）
-                    </p>
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="sm"
-                      className="h-6 px-2 text-xs"
-                      disabled={(!form.address.trim() && !nodeIp) || geoLooking}
-                      onClick={handleGeoLookup}
-                      title="根据连接地址自动填入国家、地区、网络"
-                    >
-                      {geoLooking ? "查询中…" : "IP 自动填入"}
-                    </Button>
-                  </div>
-                  <div className="grid grid-cols-2 gap-3">
-                    <div className="space-y-1">
-                      <Label className="text-xs">国家</Label>
-                      <Input
-                        value={form.country}
-                        onChange={(e) => updateField("country", e.target.value)}
-                        placeholder="HK"
-                        className="h-8 text-sm"
-                      />
-                    </div>
-                    <div className="space-y-1">
-                      <Label className="text-xs">地区</Label>
-                      <Input
-                        value={form.region}
-                        onChange={(e) => updateField("region", e.target.value)}
-                        placeholder="香港"
-                        className="h-8 text-sm"
-                      />
-                    </div>
-                    <div className="space-y-1">
-                      <Label className="text-xs">网络</Label>
-                      <Input
-                        value={form.network}
-                        onChange={(e) => updateField("network", e.target.value)}
-                        placeholder="GIA"
-                        className="h-8 text-sm"
-                      />
-                    </div>
-                    <div className="space-y-1">
-                      <Label className="text-xs">入口</Label>
-                      <Input
-                        value={form.entry}
-                        onChange={(e) => updateField("entry", e.target.value)}
-                        placeholder="深圳（选填）"
-                        className="h-8 text-sm"
-                      />
-                    </div>
-                  </div>
-                  <div className="space-y-1">
-                    <Label className="text-xs">业务标签</Label>
-                    <Input
-                      value={form.tags}
-                      onChange={(e) => updateField("tags", e.target.value)}
-                      placeholder="NF·GPT（选填，多个用 · 分隔）"
-                      className="h-8 text-sm"
-                    />
-                  </div>
-                  <p className="text-xs text-[hsl(var(--muted-foreground))]">
-                    编号自动生成，倍率来自入站配置，均无需手动填写。
-                  </p>
-                </div>
-
                 {/* SNI */}
                 <div className="space-y-2">
                   <Label>SNI</Label>
@@ -1441,24 +1420,13 @@ function HostFormDialog({
                   />
                 </div>
 
-                {/* Security */}
+                {/* Security (只读，跟随入站) */}
                 <div className="space-y-2">
                   <Label>安全</Label>
-                  <Select
-                    value={form.security || "__inherit__"}
-                    onValueChange={(v) => updateField("security", v === "__inherit__" ? "" : v)}
-                  >
-                    <SelectTrigger>
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {HOST_SECURITY_OPTIONS.map((s) => (
-                        <SelectItem key={s.value} value={s.value}>
-                          {s.label}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+                  <p className="text-sm text-[hsl(var(--muted-foreground))]">
+                    <span className="font-mono text-[hsl(var(--foreground))]">{inboundSecurity || "none"}</span>
+                    <span className="ml-2 text-xs">（跟随入站）</span>
+                  </p>
                 </div>
 
                 {/* ALPN */}
@@ -1747,7 +1715,7 @@ function HostsDialog({ open, onOpenChange, inbound, nodeIp = "", nodeId, nodes, 
               连接地址 — {inbound ? `${inbound.protocol}:${inbound.port}` : ""}
             </DialogTitle>
             <DialogDescription>
-              管理入站 <span className="font-semibold">{inbound ? `${inbound.protocol}:${inbound.port}` : ""}</span> 的连接地址列表。
+              每条连接地址对应用户订阅中的一个节点记录。
             </DialogDescription>
           </DialogHeader>
 
@@ -1781,7 +1749,6 @@ function HostsDialog({ open, onOpenChange, inbound, nodeIp = "", nodeId, nodes, 
                       <TableHead className="px-3">订阅名</TableHead>
                       <TableHead className="px-3">地址</TableHead>
                       <TableHead className="px-3">端口</TableHead>
-                      <TableHead className="px-3">安全</TableHead>
                       <TableHead className="px-3 text-right">操作</TableHead>
                     </TableRow>
                   </TableHeader>
@@ -1789,20 +1756,13 @@ function HostsDialog({ open, onOpenChange, inbound, nodeIp = "", nodeId, nodes, 
                     {hosts.map((h) => (
                       <TableRow key={h.id}>
                         <TableCell className="px-3 text-[hsl(var(--foreground))]">
-                          {h.remark || "—"}
+                          {hostSubName(h, inbound?.traffic_rate) || "—"}
                         </TableCell>
                         <TableCell className="px-3 font-mono text-sm text-[hsl(var(--muted-foreground))]">
                           {h.address}
                         </TableCell>
                         <TableCell className="px-3 font-mono text-sm text-[hsl(var(--muted-foreground))]">
-                          {h.port === 0 ? "同入站" : h.port}
-                        </TableCell>
-                        <TableCell className="px-3">
-                          {h.security && h.security !== "none" ? (
-                            <Badge variant="outline">{h.security}</Badge>
-                          ) : (
-                            <span className="text-[hsl(var(--muted-foreground))]">—</span>
-                          )}
+                          {h.port}
                         </TableCell>
                         <TableCell className="px-3 text-right">
                           <div className="flex justify-end gap-1">
@@ -1859,6 +1819,7 @@ function HostsDialog({ open, onOpenChange, inbound, nodeIp = "", nodeId, nodes, 
           inboundTag={`${inbound.protocol}:${inbound.port}`}
           inboundProtocol={inbound.protocol}
           inboundPort={inbound.port}
+          inboundSecurity={inbound.security}
           nodeIp={nodeIp}
           nodeId={nodeId}
           nodes={nodes}

@@ -51,6 +51,10 @@ export default function RootLayout() {
     api.get<{ version: string }>("/system/info")
       .then((r) => setCurrentVersion(r.version))
       .catch(() => {});
+    // 静默检查更新，有新版本时亮红点
+    api.get<{ has_update: boolean; latest: string; current: string }>("/system/update/check")
+      .then((r) => { if (r.has_update) setUpdateResult(r); })
+      .catch(() => {});
   }, []);
 
   // Standalone pages — no sidebar
@@ -174,7 +178,12 @@ export default function RootLayout() {
           onClick={updateResult?.has_update ? applyUpdate : checkUpdate}
           disabled={updateChecking || updateApplying}
         >
-          <UpdateIcon className="h-4 w-4 shrink-0" />
+          <span className="relative shrink-0">
+            <UpdateIcon className="h-4 w-4" />
+            {updateResult?.has_update && !updateApplying && (
+              <span className="absolute -top-0.5 -right-0.5 h-1.5 w-1.5 rounded-full bg-red-500" />
+            )}
+          </span>
           <span className="flex flex-col items-start">
             <span>{updateApplying ? "更新中…" : updateChecking ? "检查中…" : updateResult?.has_update ? `更新到 ${updateResult.latest}` : "检查更新"}</span>
             {currentVersion && <span className="text-[10px] opacity-50 font-mono">{currentVersion}</span>}

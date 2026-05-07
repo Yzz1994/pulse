@@ -37,6 +37,7 @@ import {
 } from "@/components/ui";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { api } from "@/lib/api";
+import { copyText } from "@/lib/clipboard";
 import { useAuthErrorHandler } from "@/hooks/useAuthErrorHandler";
 import { formatBytes, hostSubName } from "@/lib/format";
 import type {
@@ -369,9 +370,9 @@ export default function UsersPage() {
     in30Days.setDate(in30Days.getDate() + 30);
     setCreateUsername("");
     setCreatePlanId("");
-    setCreateTrafficGb("");
+    setCreateTrafficGb("100");
     setCreateExpireAt(in30Days.toISOString().slice(0, 10));
-    setCreateResetStrategy("no_reset");
+    setCreateResetStrategy("month");
     setCreateNote("");
     setCreateInboundIds([]);
     setFormError("");
@@ -597,7 +598,7 @@ export default function UsersPage() {
   const copySubLink = useCallback((user: User) => {
     if (!user.sub_token) return;
     const url = `${window.location.origin}/sub/${user.sub_token}`;
-    navigator.clipboard.writeText(url).then(() => {
+    copyText(url).then(() => {
       setCopiedUserId(user.id);
       setTimeout(() => setCopiedUserId(null), 1500);
     });
@@ -874,11 +875,11 @@ export default function UsersPage() {
           </DialogHeader>
 
           <ScrollArea className="max-h-[60vh]">
-            <div className="grid gap-4 py-2">
+            <div className="grid gap-4 py-2 px-1">
             {/* Plan selector */}
             {allPlans.length > 0 && (
               <div className="grid gap-2">
-                <Label>套餐（可选）</Label>
+                <Label>分配套餐</Label>
                 <Select value={createPlanId} onValueChange={applyPlan}>
                   <SelectTrigger className="w-full">
                     <SelectValue placeholder="选择套餐自动填入配置…" />
@@ -966,43 +967,6 @@ export default function UsersPage() {
               />
             </div>
 
-            {/* Inbound association */}
-            <div className="grid gap-2">
-              <Label>入站关联</Label>
-              {inboundsLoading ? (
-                <p className="text-sm text-[hsl(var(--muted-foreground))]">
-                  加载中...
-                </p>
-              ) : allInbounds.length === 0 ? (
-                <p className="text-sm text-[hsl(var(--muted-foreground))]">
-                  暂无可用入站
-                </p>
-              ) : (
-                <MultiSelect
-                  value={createInboundIds}
-                  onChange={setCreateInboundIds}
-                  options={allInbounds.map((ib) => {
-                    const nodeName = allNodes.find((n) => n.id === ib.node_id)?.name ?? ib.node_id;
-                    const primaryHost = allHosts.find((h) => h.inbound_id === ib.id);
-                    const subName = primaryHost ? hostSubName(primaryHost, ib.traffic_rate) : "";
-                    const displayName = subName || ib.tag || `${ib.protocol}:${ib.port}`;
-                    return {
-                      value: ib.id,
-                      triggerLabel: `${nodeName} · ${ib.protocol} · ${displayName}`,
-                      label: (
-                        <span>
-                          <span className="text-[hsl(var(--muted-foreground))]">{nodeName} · {ib.protocol} · </span>
-                          <span className="font-medium">{displayName}</span>
-                        </span>
-                      ),
-                    };
-                  })}
-                  placeholder="选择入站..."
-                  countLabel="已选 {n} 个入站"
-                />
-              )}
-            </div>
-
             {/* Error */}
             {formError && (
               <p className="text-sm text-[hsl(var(--destructive))]">{formError}</p>
@@ -1044,7 +1008,7 @@ export default function UsersPage() {
           </DialogHeader>
 
           <ScrollArea className="max-h-[60vh]">
-            <div className="grid gap-4 py-2">
+            <div className="grid gap-4 py-2 px-1">
             {/* Status */}
             <div className="grid gap-2">
               <Label>状态</Label>
@@ -1160,7 +1124,7 @@ export default function UsersPage() {
                   className="shrink-0"
                   onClick={() => {
                     if (editSubToken) {
-                      navigator.clipboard.writeText(editSubToken);
+                      copyText(editSubToken);
                     }
                   }}
                   title="复制"
@@ -1686,7 +1650,7 @@ function SubLinksDialog({
   }, [open, user]);
 
   const copyLink = (link: string, idx: number) => {
-    navigator.clipboard.writeText(link).then(() => {
+    copyText(link).then(() => {
       setCopiedIdx(idx);
       setTimeout(() => setCopiedIdx(null), 1500);
     });
