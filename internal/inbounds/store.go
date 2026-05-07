@@ -41,7 +41,7 @@ type Host struct {
 	InboundID     string `json:"inbound_id"`
 	Remark        string `json:"remark"`
 	Address       string `json:"address"`                  // 客户端连接地址（域名 / IP）
-	Port          int    `json:"port,omitempty"`           // 覆盖入站端口，0 表示使用入站端口
+	Port          int    `json:"port,omitempty"`           // 订阅链接端口
 	SNI           string `json:"sni,omitempty"`            // TLS SNI
 	Host          string `json:"host,omitempty"`           // HTTP Host 头
 	Path          string `json:"path,omitempty"`           // WebSocket / HTTP path

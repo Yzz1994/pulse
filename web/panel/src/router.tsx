@@ -12,6 +12,7 @@ import SetupPage from "./routes/setup";
 import DashboardPage from "./routes/dashboard";
 import UsersPage from "./routes/users";
 import NodesPage from "./routes/nodes";
+import NodeDetailPage from "./routes/node-detail";
 import InboundsPage from "./routes/inbounds";
 import OutboundsPage from "./routes/outbounds";
 import SettingsPage from "./routes/settings";
@@ -131,6 +132,13 @@ const nodesRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/panel/nodes",
   component: NodesPage,
+  beforeLoad: requireAuth,
+});
+
+const nodeDetailRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/panel/nodes/$nodeId",
+  component: NodeDetailPage,
   beforeLoad: requireAuth,
 });
 
@@ -272,6 +280,7 @@ const routeTree = rootRoute.addChildren([
   dashboardRoute,
   usersRoute,
   nodesRoute,
+  nodeDetailRoute,
   inboundsRoute,
   outboundsRoute,
   routerulesRoute,

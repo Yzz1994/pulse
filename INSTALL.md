@@ -1,31 +1,26 @@
 # 生产安装指南
 
+Pulse 由两个二进制组成：
+
+- **pulse-server** — 控制面（HTTP 面板 + 节点 gRPC Hub + 订阅服务）
+- **pulse-node**   — 节点（管理 xray 进程，由控制面通过 gRPC 长连接下发指令）
+
+后端持久化使用 **PostgreSQL**（必需）。
+
 ## 1. 安装 server
+
+最简形式（脚本会自动检测并安装本机 PostgreSQL，使用本地 socket 创建数据库）：
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/0xUnixIO/pulse/main/scripts/install.sh | sh -s -- server
 ```
 
-指定管理员密码：
+使用已有 PostgreSQL（强烈推荐用于生产）：
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/0xUnixIO/pulse/main/scripts/install.sh | PULSE_ADMIN_PASSWORD='strong-password' sh -s -- server
-```
-
-重置管理员密码：
-
-```bash
-curl -fsSL https://raw.githubusercontent.com/0xUnixIO/pulse/main/scripts/install.sh | sh -s -- server --reset-password
-```
-
-安装完成后打印：
-
-```
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  面板地址: http://<IP>:<随机端口>
-  管理员:   admin
-  密码:     <随机生成>
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+curl -fsSL https://raw.githubusercontent.com/0xUnixIO/pulse/main/scripts/install.sh | \
+  PULSE_DATABASE_URL='postgres://user:pass@host:5432/pulse?sslmode=disable' \
+  sh -s -- server
 ```
 
 启用 Stripe 商店：
@@ -37,26 +32,42 @@ curl -fsSL https://raw.githubusercontent.com/0xUnixIO/pulse/main/scripts/install
   sh -s -- server
 ```
 
+安装完成后会打印：
+
+```
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  面板地址: http://<IP>:<随机端口>
+  节点 gRPC: https://<面板域名>:8082
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+```
+
+**首次访问面板会进入「初始化向导」**：在向导里设置第一个管理员用户名和密码（不通过环境变量）。
+
+> 控制面对外需要开放两个端口：HTTP（`PULSE_SERVER_ADDR`，默认随机或 `:8080`）
+> 与 gRPC（`PULSE_NODE_GRPC_ADDR`，默认 `:8082`）。前者面向用户/管理员/订阅客户端，
+> 后者面向节点。
+
 **server 安装脚本环境变量：**
 
 | 变量 | 默认值 | 说明 |
 |------|--------|------|
-| `PULSE_ADMIN_USERNAME` | `admin` | 管理员用户名 |
-| `PULSE_ADMIN_PASSWORD` | 随机生成 | 管理员密码 |
+| `PULSE_DATABASE_URL` | 自动检测本机 PostgreSQL | PostgreSQL 连接串，格式 `postgres://user:pass@host:5432/db?sslmode=disable` |
 | `PULSE_SERVER_ADDR` | 随机端口 | HTTP 监听地址（API + 面板 + 订阅 + enroll），格式 `:端口` |
 | `PULSE_NODE_GRPC_ADDR` | `:8082` | 节点 gRPC Hub 监听地址 |
 | `PULSE_NODE_GRPC_URL` | `https://<面板域名>:8082` | enroll 时返回给节点的 gRPC 拨号 URL；公网部署需改为可达地址 |
 | `PULSE_NODE_CA_CERT_FILE` | `/etc/pulse/node_ca_cert.pem` | NodeCA 证书（首次启动自动生成） |
 | `PULSE_NODE_CA_KEY_FILE` | `/etc/pulse/node_ca_key.pem` | NodeCA 私钥 |
+| `PULSE_DATA_DIR` | `/var/lib/pulse` | 数据目录（geoip / 上传文件等） |
 | `PULSE_INSTALL_BIN` | `/usr/local/bin` | 二进制安装目录 |
 | `PULSE_INSTALL_ETC` | `/etc/pulse` | 配置目录 |
-| `PULSE_STATE_DIR` | `/var/lib/pulse` | 数据目录 |
+| `PULSE_STATE_DIR` | `/var/lib/pulse` | 工作目录 |
 | `PULSE_STRIPE_SECRET_KEY` | — | Stripe Secret Key |
 | `PULSE_STRIPE_WEBHOOK_SECRET` | — | Stripe Webhook Signing Secret |
-
-> 控制面对外需要开放两个端口：HTTP（`PULSE_SERVER_ADDR`，默认随机或 `:8080`）
-> 与 gRPC（`PULSE_NODE_GRPC_ADDR`，默认 `:8082`）。前者面向用户/管理员/订阅客户端，
-> 后者面向节点。
+| `PULSE_DISCOURSE_URL` | — | Discourse SSO 跳转地址，启用论坛单点登录 |
+| `PULSE_DISCOURSE_SSO_SECRET` | — | Discourse SSO Secret |
+| `PULSE_DISCOURSE_ADMIN_USERS` | — | Discourse 管理员用户名（逗号分隔） |
+| `PULSE_DOWNLOAD_MIRROR` | — | GitHub 下载镜像前缀，例如 `https://ghfast.top/`（断网/慢网环境） |
+| `PULSE_INSTALL_DRY_RUN` | — | 设为 `1` 时跳过下载、特权操作和数据库配置，仅 sanity check |
 
 修改配置：
 
@@ -64,6 +75,8 @@ curl -fsSL https://raw.githubusercontent.com/0xUnixIO/pulse/main/scripts/install
 vim /etc/pulse/pulse-server.env
 systemctl restart pulse-server
 ```
+
+忘记管理员密码：登录数据库直接更新 `users` 表的 `password_hash` 字段，或在面板设置页内改密码。
 
 ## 2. 添加节点（生成安装命令）
 
@@ -108,6 +121,8 @@ echo "$ENROLL_TOKEN" | bash <(curl -fsSL https://raw.githubusercontent.com/0xUni
   节点 ID:     <node-id>
   节点出口:    <node-ip>
   控制面 gRPC: https://<控制面板地址>:8082
+
+  pulse-node 不再监听 HTTP 端口，所有指令通过 gRPC 长连接由控制面下发。
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 ```
 
@@ -126,6 +141,7 @@ echo "$ENROLL_TOKEN" | bash <(curl -fsSL https://raw.githubusercontent.com/0xUni
 | `PULSE_NODE_CLIENT_CERT_FILE` | `/etc/pulse/node_cert.pem` | 节点客户端证书（由 enroll 写入） |
 | `PULSE_NODE_CLIENT_KEY_FILE` | `/etc/pulse/node_key.pem` | 节点客户端私钥（由 enroll 写入） |
 | `PULSE_NODE_SERVER_CA_FILE` | `/etc/pulse/node_ca.pem` | 控制面 CA 证书（由 enroll 写入） |
+| `PULSE_DOWNLOAD_MIRROR` | — | GitHub 下载镜像前缀 |
 | `PULSE_INSTALL_DRY_RUN` | — | 设为 `1` 时跳过下载、特权操作和 enroll，仅 sanity check |
 
 修改配置：
@@ -149,6 +165,8 @@ NodeGate 是节点内置的 SNI 代理，无需安装 Nginx 或 Caddy。
 1. 进入 **面板 → NodeGate**，编辑节点，填写 **ACME Email** 和 **面板域名**
 2. 保存后面板自动触发同步，证书由 Let's Encrypt 自动申请
 
+NodeGate **按需自动启停**：当节点上至少存在一条 host 把它当 relay 或一个 https_port>0 的入站时，控制面会自动下发 `Listen=":443"` 启动监听；否则保持关闭。
+
 **无公网 80/443（NAT 机器）**：在 **面板 → 设置 → Cloudflare API Token** 配置 Token（需 `Zone:DNS:Edit` 权限），启用 DNS-01 验证。
 
 详见 [docs/sniproxy.md](docs/sniproxy.md)。
@@ -160,3 +178,4 @@ curl -fsSL https://raw.githubusercontent.com/0xUnixIO/pulse/main/scripts/uninsta
 ```
 
 卸载脚本停止并删除 systemd 服务、所有二进制、配置文件及数据目录（`/var/lib/pulse`）。
+PostgreSQL 中的 `pulse` 数据库**不会**自动删除，如需要请手动 `DROP DATABASE pulse`。

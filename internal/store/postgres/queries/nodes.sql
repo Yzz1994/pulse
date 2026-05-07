@@ -69,6 +69,12 @@ FROM node_daily_usage
 WHERE date >= $1
 ORDER BY date ASC;
 
+-- name: ListNodeDailyUsageRange :many
+SELECT date, upload_bytes, download_bytes
+FROM node_daily_usage
+WHERE node_id = $1 AND date >= $2 AND date <= $3
+ORDER BY date ASC;
+
 -- name: DeleteOldNodeDailyUsage :exec
 DELETE FROM node_daily_usage WHERE date < $1;
 

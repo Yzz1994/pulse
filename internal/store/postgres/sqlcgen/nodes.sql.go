@@ -350,6 +350,45 @@ func (q *Queries) ListNodeDailyUsage(ctx context.Context, date string) ([]NodeDa
 	return items, nil
 }
 
+const listNodeDailyUsageRange = `-- name: ListNodeDailyUsageRange :many
+SELECT date, upload_bytes, download_bytes
+FROM node_daily_usage
+WHERE node_id = $1 AND date >= $2 AND date <= $3
+ORDER BY date ASC
+`
+
+type ListNodeDailyUsageRangeParams struct {
+	NodeID string
+	Date   string
+	Date_2 string
+}
+
+type ListNodeDailyUsageRangeRow struct {
+	Date          string
+	UploadBytes   int64
+	DownloadBytes int64
+}
+
+func (q *Queries) ListNodeDailyUsageRange(ctx context.Context, arg ListNodeDailyUsageRangeParams) ([]ListNodeDailyUsageRangeRow, error) {
+	rows, err := q.db.Query(ctx, listNodeDailyUsageRange, arg.NodeID, arg.Date, arg.Date_2)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListNodeDailyUsageRangeRow{}
+	for rows.Next() {
+		var i ListNodeDailyUsageRangeRow
+		if err := rows.Scan(&i.Date, &i.UploadBytes, &i.DownloadBytes); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listNodeTracerouteSnapshots = `-- name: ListNodeTracerouteSnapshots :many
 SELECT id, node_id, direction, target, hops, quality, created_at
 FROM traceroute_snapshots

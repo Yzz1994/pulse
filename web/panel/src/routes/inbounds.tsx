@@ -37,9 +37,6 @@ import {
   TooltipTrigger,
   TooltipContent,
   TooltipProvider,
-  Popover,
-  PopoverTrigger,
-  PopoverContent,
   toast,
 } from "@/components/ui";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -483,7 +480,6 @@ function InboundFormDialog({
 
   const showReality = form.security === "reality";
   const showSS = form.protocol === "shadowsocks";
-  const showAnyTLS = form.protocol === "anytls";
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -763,16 +759,6 @@ function InboundFormDialog({
               </div>
             )}
 
-            {/* ── AnyTLS fields ─────────────────────────────── */}
-            {showAnyTLS && (
-              <div className="space-y-4 rounded-lg border border-[hsl(var(--border))] p-4">
-                <p className="text-sm font-medium text-[hsl(var(--foreground))]">AnyTLS 配置</p>
-                <p className="text-xs text-[hsl(var(--muted-foreground))]">
-                  用户密码由系统自动生成。如需 NodeGate SNI 路由（443 端口），
-                  请在保存后为该入站添加连接地址，填写对应域名作为客户端地址。
-                </p>
-              </div>
-            )}
           </div>
 
           <DialogFooter className="mt-6">
@@ -1008,6 +994,7 @@ interface HostFormDialogProps {
   inboundId: string;
   inboundTag?: string;
   inboundProtocol?: string;
+  inboundPort?: number;
   nodeIp?: string;
   nodeId?: string;
   nodes: Node[];
@@ -1025,6 +1012,7 @@ function HostFormDialog({
   inboundId,
   inboundTag,
   inboundProtocol,
+  inboundPort,
   nodeIp = "",
   nodeId,
   nodes,
@@ -1037,6 +1025,7 @@ function HostFormDialog({
   const [form, setForm] = useState<HostFormState>(EMPTY_HOST_FORM);
   const [submitting, setSubmitting] = useState(false);
   const [showAdvanced, setShowAdvanced] = useState(false);
+  const [showRelay, setShowRelay] = useState(false);
   const [autoGen, setAutoGen] = useState<{ zone: CFDomain; subdomain: string; remark: string } | null>(null);
   const [autoGenApplying, setAutoGenApplying] = useState(false);
   const [geoLooking, setGeoLooking] = useState(false);
@@ -1073,12 +1062,14 @@ function HostFormDialog({
         https_port: host.https_port ? String(host.https_port) : "",
       });
       setShowAdvanced(true);
+      setShowRelay(!!host.relay_node_id);
     } else {
-      const defaultPort = (inboundProtocol === "anytls" || inboundProtocol === "trojan") ? "443" : "0";
+      const defaultPort = (inboundProtocol === "anytls" || inboundProtocol === "trojan") ? "443" : String(inboundPort ?? "");
       setForm({ ...EMPTY_HOST_FORM, address: nodeIp || "", port: defaultPort, remark: inboundTag || "" });
       setShowAdvanced(false);
+      setShowRelay(false);
     }
-  }, [open, host, inboundTag, inboundProtocol, nodeIp]);
+  }, [open, host, inboundTag, inboundProtocol, inboundPort, nodeIp]);
 
   // 前置节点变化时实时查询 NodeGate (sniproxy) 运行状态
   useEffect(() => {
@@ -1321,106 +1312,13 @@ function HostFormDialog({
               <Label>端口</Label>
               <Input
                 type="number"
-                min={0}
+                min={1}
                 max={65535}
                 value={form.port}
                 onChange={(e) => updateField("port", e.target.value)}
-                placeholder="0 = 同入站端口"
+                placeholder="端口"
               />
-              <p className="text-xs text-[hsl(var(--muted-foreground))]">
-                {form.relay_node_id ? "前置节点监听端口，同时写入订阅链接" : "0 表示使用入站端口"}
-              </p>
             </div>
-
-            {/* ── 前置节点 ──────────────────────────────────── */}
-            {(() => {
-              const nodeGateDisabled = form.relay_node_id && relaySniproxyEnabled === false;
-              // 该前置节点已被占用的端口（排除当前编辑的 host 自身）
-              const takenPorts = new Set(
-                allHosts
-                  .filter((h) => h.relay_node_id === form.relay_node_id && h.id !== host?.id)
-                  .map((h) => h.relay_port)
-              );
-              const portConflict =
-                form.relay_node_id !== "" && form.port !== "" &&
-                takenPorts.has(Number(form.port));
-
-              return (
-                <div className="rounded-lg border border-[hsl(var(--border))] p-4 space-y-3">
-                  <p className="text-sm font-medium">前置中转</p>
-                  <div className="space-y-1">
-                    <Label>前置节点（可选）</Label>
-                    <Select
-                      value={form.relay_node_id || "__none__"}
-                      onValueChange={(v) => {
-                        const id = v === "__none__" ? "" : v;
-                        updateField("relay_node_id", id);
-                        // 自动填入前置节点 IP 作为客户端连接地址
-                        if (id && nodeIpMap) {
-                          const ip = nodeIpMap.get(id);
-                          if (ip) updateField("address", ip);
-                        }
-                      }}
-                    >
-                      <SelectTrigger>
-                        <SelectValue placeholder="不使用前置节点" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="__none__">不使用前置节点</SelectItem>
-                        {nodes.map((n) => (
-                          <SelectItem key={n.id} value={n.id}>{n.name}</SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                    {/* NodeGate 未启用提示 */}
-                    {nodeGateDisabled && (
-                      <p className="text-xs text-[hsl(var(--muted-foreground))]">
-                        ℹ 该节点 NodeGate 暂无路由（未监听）。保存后将自动下发并启用；如仍未生效，请到 NodeGate 页面查看节点错误。
-                      </p>
-                    )}
-                  </div>
-
-                  {form.relay_node_id && (
-                    <>
-                      {portConflict && (
-                        <p className="text-xs text-[hsl(var(--destructive))]">
-                          该端口已被同一前置节点的其他连接地址占用
-                        </p>
-                      )}
-                      <div className="grid gap-3 grid-cols-2">
-                        <div className="space-y-1">
-                          <Label>NodeGate HTTPS 端口</Label>
-                          <Input
-                            type="number"
-                            min={0}
-                            max={65535}
-                            value={form.https_port}
-                            onChange={(e) => updateField("https_port", e.target.value)}
-                            placeholder="443"
-                            className="font-mono text-xs"
-                          />
-                          <p className="text-xs text-[hsl(var(--muted-foreground))]">
-                            落地节点 NodeGate 监听端口，0 = 节点默认
-                          </p>
-                        </div>
-                        <div className="space-y-1">
-                          <Label>SNI / 落地域名</Label>
-                          <Input
-                            value={form.sni}
-                            onChange={(e) => updateField("sni", e.target.value)}
-                            placeholder="落地节点的域名"
-                            className="font-mono text-xs"
-                          />
-                          <p className="text-xs text-[hsl(var(--muted-foreground))]">
-                            客户端 TLS SNI，同时用于落地节点 NodeGate 路由和证书申请
-                          </p>
-                        </div>
-                      </div>
-                    </>
-                  )}
-                </div>
-              );
-            })()}
 
             {/* ── Advanced toggle ───────────────────────────── */}
             <button
@@ -1640,6 +1538,100 @@ function HostFormDialog({
                 )}
               </div>
             )}
+
+            {/* ── 前置中转 toggle ───────────────────────────── */}
+            <button
+              type="button"
+              className="flex items-center gap-1 text-sm font-medium text-[hsl(var(--primary))] hover:underline"
+              onClick={() => setShowRelay((v) => !v)}
+            >
+              {showRelay ? "▾ 前置中转" : "▸ 前置中转"}
+            </button>
+
+            {showRelay && (() => {
+              const nodeGateDisabled = form.relay_node_id && relaySniproxyEnabled === false;
+              const takenPorts = new Set(
+                allHosts
+                  .filter((h) => h.relay_node_id === form.relay_node_id && h.id !== host?.id)
+                  .map((h) => h.relay_port)
+              );
+              const portConflict =
+                form.relay_node_id !== "" && form.port !== "" &&
+                takenPorts.has(Number(form.port));
+
+              return (
+                <div className="rounded-lg border border-[hsl(var(--border))] p-4 space-y-3">
+                  <div className="space-y-1">
+                    <Label>前置节点（可选）</Label>
+                    <Select
+                      value={form.relay_node_id || "__none__"}
+                      onValueChange={(v) => {
+                        const id = v === "__none__" ? "" : v;
+                        updateField("relay_node_id", id);
+                        if (id && nodeIpMap) {
+                          const ip = nodeIpMap.get(id);
+                          if (ip) updateField("address", ip);
+                        }
+                      }}
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder="不使用前置节点" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="__none__">不使用前置节点</SelectItem>
+                        {nodes.map((n) => (
+                          <SelectItem key={n.id} value={n.id}>{n.name}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    {nodeGateDisabled && (
+                      <p className="text-xs text-[hsl(var(--muted-foreground))]">
+                        ℹ 该节点 NodeGate 暂无路由（未监听）。保存后将自动下发并启用；如仍未生效，请到 NodeGate 页面查看节点错误。
+                      </p>
+                    )}
+                  </div>
+
+                  {form.relay_node_id && (
+                    <>
+                      {portConflict && (
+                        <p className="text-xs text-[hsl(var(--destructive))]">
+                          该端口已被同一前置节点的其他连接地址占用
+                        </p>
+                      )}
+                      <div className="grid gap-3 grid-cols-2">
+                        <div className="space-y-1">
+                          <Label>NodeGate HTTPS 端口</Label>
+                          <Input
+                            type="number"
+                            min={0}
+                            max={65535}
+                            value={form.https_port}
+                            onChange={(e) => updateField("https_port", e.target.value)}
+                            placeholder="443"
+                            className="font-mono text-xs"
+                          />
+                          <p className="text-xs text-[hsl(var(--muted-foreground))]">
+                            落地节点 NodeGate 监听端口，0 = 节点默认
+                          </p>
+                        </div>
+                        <div className="space-y-1">
+                          <Label>SNI / 落地域名</Label>
+                          <Input
+                            value={form.sni}
+                            onChange={(e) => updateField("sni", e.target.value)}
+                            placeholder="落地节点的域名"
+                            className="font-mono text-xs"
+                          />
+                          <p className="text-xs text-[hsl(var(--muted-foreground))]">
+                            客户端 TLS SNI，同时用于落地节点 NodeGate 路由和证书申请
+                          </p>
+                        </div>
+                      </div>
+                    </>
+                  )}
+                </div>
+              );
+            })()}
           </div>
 
           <DialogFooter className="mt-6">
@@ -1866,6 +1858,7 @@ function HostsDialog({ open, onOpenChange, inbound, nodeIp = "", nodeId, nodes, 
           inboundId={inbound.id}
           inboundTag={`${inbound.protocol}:${inbound.port}`}
           inboundProtocol={inbound.protocol}
+          inboundPort={inbound.port}
           nodeIp={nodeIp}
           nodeId={nodeId}
           nodes={nodes}
@@ -2424,21 +2417,20 @@ export default function InboundsPage() {
                       </button>
                     </TableCell>
                     <TableCell className="px-4">
-                      <Popover>
-                        <PopoverTrigger asChild>
-                          <button
-                            type="button"
-                            className="cursor-pointer text-sm text-[hsl(var(--foreground))] hover:underline"
-                          >
-                            {nodeNameMap.get(ib.node_id) || ib.node_id}
-                          </button>
-                        </PopoverTrigger>
-                        <PopoverContent side="top" className="w-auto p-2">
-                          <span className="font-mono text-xs select-all">
-                            {nodeIpMap.get(ib.node_id) ?? "无 IP 信息"}
-                          </span>
-                        </PopoverContent>
-                      </Popover>
+                      <TooltipProvider delayDuration={200}>
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <span className="cursor-default text-sm text-[hsl(var(--foreground))]">
+                              {nodeNameMap.get(ib.node_id) || ib.node_id}
+                            </span>
+                          </TooltipTrigger>
+                          <TooltipContent side="top">
+                            <span className="font-mono text-xs select-all">
+                              {nodeIpMap.get(ib.node_id) ?? "无 IP 信息"}
+                            </span>
+                          </TooltipContent>
+                        </Tooltip>
+                      </TooltipProvider>
                       <span className="ml-1.5 font-mono text-xs text-[hsl(var(--muted-foreground))]">
                         :{ib.port}
                       </span>

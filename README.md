@@ -28,8 +28,7 @@ curl -fsSL https://raw.githubusercontent.com/0xUnixIO/pulse/main/scripts/install
 
 **安装 node：**
 
-在控制面板「节点」页面点击「添加节点」，填写节点名称后会生成包含一次性 enroll token 的完整
-安装命令，复制到节点机器上运行即可。节点不监听任何端口，启动后会自动连接控制面 gRPC（默认 `:8082`）。
+面板「节点」→「添加节点」，复制生成的安装命令到节点机器运行即可。节点主动连控制面，无需开放任何入站端口，NAT 机器同样适用。
 
 完整安装步骤、环境变量配置、NodeGate 设置详见 [INSTALL.md](INSTALL.md)。
 

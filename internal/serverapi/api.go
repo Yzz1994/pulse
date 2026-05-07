@@ -252,6 +252,12 @@ func (a *API) handleNodeRoutes(w http.ResponseWriter, r *http.Request) {
 		a.handleNodeSNIProxySync(w, r, nodeID)
 	case "sniproxy/status":
 		a.handleNodeSNIProxyStatus(w, r, nodeID)
+	case "traffic":
+		a.handleNodeTraffic(w, r, nodeID)
+	case "checks":
+		a.handleNodeChecksGet(w, r, nodeID)
+	case "speedtest":
+		a.handleNodeSpeedTestGet(w, r, nodeID)
 	default:
 		writeJSON(w, http.StatusNotFound, map[string]any{"error": "route not found"})
 	}

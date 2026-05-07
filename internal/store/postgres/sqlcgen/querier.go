@@ -105,6 +105,7 @@ type Querier interface {
 	ListInboundsByNode(ctx context.Context, nodeID string) ([]Inbound, error)
 	ListLatestTracerouteSnapshots(ctx context.Context) ([]TracerouteSnapshot, error)
 	ListNodeDailyUsage(ctx context.Context, date string) ([]NodeDailyUsage, error)
+	ListNodeDailyUsageRange(ctx context.Context, arg ListNodeDailyUsageRangeParams) ([]ListNodeDailyUsageRangeRow, error)
 	ListNodeDomains(ctx context.Context) ([]NodeDomain, error)
 	ListNodeDomainsByCFDomain(ctx context.Context, cfDomainID string) ([]NodeDomain, error)
 	ListNodeTracerouteSnapshots(ctx context.Context, arg ListNodeTracerouteSnapshotsParams) ([]TracerouteSnapshot, error)

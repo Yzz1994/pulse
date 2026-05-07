@@ -170,9 +170,6 @@ func BuildLinks(accesses []users.UserInbound, ibStore inbounds.InboundStore, use
 		}
 		addr := e.host.Address
 		port := e.host.Port
-		if port == 0 {
-			port = e.ib.Port
-		}
 		name := buildName(e.ib, e.host, addr, num)
 		acc := effectiveAccess(e.acc, user)
 		var link string
@@ -210,10 +207,6 @@ func Link(nodeInbound inbounds.Inbound, host inbounds.Host, access users.UserInb
 	// 连接地址和端口
 	addr := host.Address
 	port := host.Port
-	if port == 0 {
-		port = nodeInbound.Port
-	}
-
 	name := buildName(nodeInbound, host, addr, 0)
 
 	switch nodeInbound.Protocol {

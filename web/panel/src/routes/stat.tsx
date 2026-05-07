@@ -613,6 +613,7 @@ function NodeDetailDialog({ node, onClose }: { node: Node; onClose: () => void }
   const latencyData = buildLatencyChartData(node.latency ?? []);
   const hasLatency = latencyData.length > 0;
   const hasTraceroute = (node.traceroutes ?? []).length > 0;
+  const hasChecks = (node.direct_checks?.length ?? 0) > 0 || (node.proxied_checks?.length ?? 0) > 0;
 
   return (
     <div
@@ -646,6 +647,42 @@ function NodeDetailDialog({ node, onClose }: { node: Node; onClose: () => void }
         </div>
 
         <div className="space-y-5 p-5">
+          {/* 解锁情况 */}
+          {hasChecks && (
+            <div>
+              <p className="mb-2 text-xs font-semibold text-[hsl(var(--muted-foreground))] uppercase tracking-wide">解锁情况</p>
+              <div className="space-y-3">
+                {(["direct_checks", "proxied_checks"] as const).map((key) => {
+                  const checks = node[key];
+                  if (!checks?.length) return null;
+                  const label = key === "direct_checks" ? "直连" : "代理";
+                  return (
+                    <div key={key}>
+                      <p className="mb-1.5 text-[11px] font-medium text-zinc-500">{label}</p>
+                      <div className="grid grid-cols-2 gap-1 sm:grid-cols-3">
+                        {checks.map((c) => (
+                          <div
+                            key={c.service}
+                            className={`flex items-center justify-between rounded-md px-2.5 py-1.5 text-xs ${
+                              c.unlocked
+                                ? "bg-emerald-500/10 text-emerald-400"
+                                : "bg-[hsl(var(--muted))] text-zinc-500"
+                            }`}
+                          >
+                            <span className="truncate font-medium">{c.service}</span>
+                            <span className="ml-2 shrink-0 tabular-nums">
+                              {c.unlocked ? (c.region || "✓") : "✗"}
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
           {/* 延迟折线图 */}
           {hasLatency ? (
             <div>
@@ -749,7 +786,8 @@ function NodeCard({ node, metrics, prevMetrics }: { node: Node; metrics?: NodeMe
   const hasSpeed = metrics && (metrics.upload_speed > 0 || metrics.download_speed > 0);
   const [dialogOpen, setDialogOpen] = useState(false);
   const closeDialog = useCallback(() => setDialogOpen(false), []);
-  const hasDetail = (node.latency?.length ?? 0) > 0 || (node.traceroutes?.length ?? 0) > 0;
+  const hasDetail = (node.latency?.length ?? 0) > 0 || (node.traceroutes?.length ?? 0) > 0
+    || (node.direct_checks?.length ?? 0) > 0 || (node.proxied_checks?.length ?? 0) > 0;
   return (
     <>
     {dialogOpen && <NodeDetailDialog node={node} onClose={closeDialog} />}

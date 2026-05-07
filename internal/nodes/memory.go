@@ -66,6 +66,10 @@ func (s *MemoryStore) ListNodeDailyUsage(days int) ([]NodeDailyUsage, error) {
 	return nil, nil
 }
 
+func (s *MemoryStore) ListNodeDailyUsageRange(nodeID, since, until string) ([]NodeDailyUsage, error) {
+	return nil, nil
+}
+
 func (s *MemoryStore) CleanupOldDailyUsage(retainDays int) error {
 	return nil // 内存 store 不持久化日统计，无需清理
 }

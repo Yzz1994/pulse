@@ -127,6 +127,27 @@ func (s *NodeStore) ListNodeDailyUsage(days int) ([]nodes.NodeDailyUsage, error)
 	return out, nil
 }
 
+func (s *NodeStore) ListNodeDailyUsageRange(nodeID, since, until string) ([]nodes.NodeDailyUsage, error) {
+	rows, err := sqlcgen.New(s.db).ListNodeDailyUsageRange(context.Background(), sqlcgen.ListNodeDailyUsageRangeParams{
+		NodeID: nodeID,
+		Date:   since,
+		Date_2: until,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("list node daily usage range: %w", err)
+	}
+	out := make([]nodes.NodeDailyUsage, len(rows))
+	for i, r := range rows {
+		out[i] = nodes.NodeDailyUsage{
+			NodeID:        nodeID,
+			Date:          r.Date,
+			UploadBytes:   r.UploadBytes,
+			DownloadBytes: r.DownloadBytes,
+		}
+	}
+	return out, nil
+}
+
 func (s *NodeStore) CleanupOldDailyUsage(retainDays int) error {
 	cutoff := time.Now().UTC().AddDate(0, 0, -retainDays).Format("2006-01-02")
 	if err := sqlcgen.New(s.db).DeleteOldNodeDailyUsage(context.Background(), cutoff); err != nil {

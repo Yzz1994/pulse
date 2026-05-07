@@ -1,4 +1,5 @@
 import { useEffect, useState, useCallback, useRef, useMemo } from "react";
+import { Link } from "@tanstack/react-router";
 import {
   Card,
   CardHeader,
@@ -2000,7 +2001,13 @@ function NodeCard({ node, runtime, metrics, onEdit, onDelete, onOpenDetail, onRe
       <CardHeader className="flex flex-row items-start justify-between space-y-0 pb-2 pt-3">
         <div className="min-w-0 flex-1">
           <CardTitle className="truncate text-base font-semibold">
-            {node.name}
+            <Link
+              to="/panel/nodes/$nodeId"
+              params={{ nodeId: node.id }}
+              className="hover:underline"
+            >
+              {node.name}
+            </Link>
           </CardTitle>
           <CardDescription className="mt-1 truncate font-mono text-xs">
             {node.base_url}
