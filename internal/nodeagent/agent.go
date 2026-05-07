@@ -14,7 +14,6 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
-	"net"
 	"os"
 	"time"
 
@@ -185,20 +184,34 @@ func loadTLSCreds(cfg Config) (credentials.TransportCredentials, error) {
 	if !pool.AppendCertsFromPEM(caPEM) {
 		return nil, errors.New("invalid CA PEM")
 	}
-	serverName := cfg.ServerName
-	if serverName == "" {
-		host, _, err := net.SplitHostPort(cfg.ServerAddr)
-		if err != nil {
-			// ServerAddr 可能没有端口，原样作为 SNI。
-			host = cfg.ServerAddr
-		}
-		serverName = host
-	}
+	// 只校验 server 证书是否由受信任的 NodeCA 签发（CA pinning），
+	// 不校验 hostname/IP SAN，使控制面 IP 变动后无需重签证书。
 	return credentials.NewTLS(&tls.Config{
-		ServerName:   serverName,
-		RootCAs:      pool,
-		Certificates: []tls.Certificate{clientCert},
-		MinVersion:   tls.VersionTLS12,
+		InsecureSkipVerify: true, //nolint:gosec // 见下方 VerifyPeerCertificate
+		Certificates:       []tls.Certificate{clientCert},
+		MinVersion:         tls.VersionTLS12,
+		VerifyPeerCertificate: func(rawCerts [][]byte, _ [][]*x509.Certificate) error {
+			certs := make([]*x509.Certificate, 0, len(rawCerts))
+			for _, raw := range rawCerts {
+				c, err := x509.ParseCertificate(raw)
+				if err != nil {
+					return err
+				}
+				certs = append(certs, c)
+			}
+			if len(certs) == 0 {
+				return errors.New("server sent no certificates")
+			}
+			intermediates := x509.NewCertPool()
+			for _, c := range certs[1:] {
+				intermediates.AddCert(c)
+			}
+			_, err := certs[0].Verify(x509.VerifyOptions{
+				Roots:         pool,
+				Intermediates: intermediates,
+			})
+			return err
+		},
 	}), nil
 }
 
