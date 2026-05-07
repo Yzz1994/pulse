@@ -1,41 +1,30 @@
 # Pulse
 
-分布式边缘节点编排与管理平台。单仓双进制：`pulse-server`（控制面）和 `pulse-node`（节点面）。
-节点通过一次性 enroll token 取得 mTLS 证书后，主动连控制面 gRPC（`:8082`）建立长连接，
-所有控制指令、流量上报、日志尾随、self-sync 均复用这条流。
+分布式边缘节点编排与管理平台。`pulse-server` + `pulse-node` 双进程，节点通过 mTLS gRPC 长连接被控制面纳管，配置 push 秒级生效。
 
-## 功能特性
+## 功能
 
-- **多节点编排** — 控制面通过 mTLS gRPC 长连接统一纳管任意数量的边缘节点，配置变更走 push 模型秒级生效
-- **资源配额与访问控制** — 流量配额、有效期、多状态机（active / disabled / limited / expired / on_hold）、按入站维度配置流量倍率
-- **客户端配置分发** — 自动生成标准化配置端点，兼容主流客户端
-- **NodeGate（内置网关）** — 节点进程内置 TLS 终止、ACME 自动证书（支持 Cloudflare DNS-01）与 HTTP 反向代理，无需额外部署 Nginx/Caddy
-- **出站路由策略** — 在面板配置出站节点，实现多级流量转发
-- **套餐与商店** — 套餐管理 + Stripe 付款，用户自助购买服务
-- **用户分组** — 将用户划分至不同分组，批量管控节点访问权限
-- **IP Sentinel** — 基于 IP 的连接频率限制与访问控制
-- **GeoIP 路由规则** — 内置 GeoIP 数据库，支持按地区路由分流
-- **审计日志** — 管理操作全程记录
-- **工单系统** — 用户与管理员的消息通道
+- 多节点 mTLS 编排，配置 push 下发
+- 用户额度 / 有效期 / 状态机 / 流量倍率
+- 标准订阅链接生成
+- 节点内置 TLS 网关（NodeGate）+ ACME（Cloudflare DNS-01）
+- 多级出站路由 / GeoIP 分流
+- 套餐 + Stripe 付款 / 用户分组 / 工单 / 审计日志 / IP 限频
 
-## 快速开始
+## 安装
 
-**安装 server：**
+**Server**
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/0xUnixIO/pulse/main/scripts/install.sh | sh -s -- server
 ```
 
-**安装 node：**
+**Node**
 
-面板「节点」→「添加节点」，复制生成的安装命令到节点机器运行即可。节点主动连控制面，无需开放任何入站端口，NAT 机器同样适用。
+面板「节点」→「添加节点」复制安装命令到节点机器运行。节点主动外连，NAT 机器可用。
 
-完整安装步骤、环境变量配置、NodeGate 设置详见 [INSTALL.md](INSTALL.md)。
+详见 [INSTALL.md](INSTALL.md) · 开发参见 [DEVELOPMENT.md](DEVELOPMENT.md)。
 
-## 开发
+## License
 
-详见 [DEVELOPMENT.md](DEVELOPMENT.md)。
-
-## 许可证
-
-[GNU Affero General Public License v3.0](LICENSE)
+[AGPL-3.0](LICENSE)
