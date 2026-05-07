@@ -281,8 +281,11 @@ func BuildXrayConfig(nodeInbounds []inbounds.Inbound, userAccesses []users.UserI
 			continue
 		}
 
-		// NodeGate 模式下由 NodeGate 转发，仅监听本地
-		listenAddr := "127.0.0.1"
+		// trojan 由 NodeGate 终止 TLS 后转发明文，监听本地；vless/shadowsocks 协议自带加密，直接监听公网
+		listenAddr := "0.0.0.0"
+		if ib.Protocol == "trojan" {
+			listenAddr = "127.0.0.1"
+		}
 
 		xib := xrayInbound{
 			Tag:      tag,
