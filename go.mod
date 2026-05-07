@@ -45,6 +45,7 @@ require (
 	github.com/rogpeppe/go-internal v1.13.1 // indirect
 	github.com/sagernet/sing v0.8.4 // indirect
 	github.com/sagernet/sing-shadowsocks v0.2.8 // indirect
+	github.com/soheilhy/cmux v0.1.5 // indirect
 	github.com/vishvananda/netlink v1.3.1 // indirect
 	github.com/vishvananda/netns v0.0.5 // indirect
 	github.com/xtls/reality v0.0.0-20260322125925-9234c772ba8f // indirect

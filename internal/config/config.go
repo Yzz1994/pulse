@@ -15,8 +15,8 @@ NodeCACertFile string // PULSE_NODE_CA_CERT_FILE
 NodeCAKeyFile  string // PULSE_NODE_CA_KEY_FILE
 
 // 节点 gRPC（控制面）
-NodeGRPCURL  string // PULSE_NODE_GRPC_URL，节点侧通过 enrollment 响应得知后用于 gRPC 长连接
-NodeGRPCAddr string // PULSE_NODE_GRPC_ADDR，控制面 gRPC 监听地址，默认 :8082
+// gRPC 与面板共用同一 TLS 端口（单端口模式），节点通过 enrollment 响应得知连接地址。
+NodeGRPCURL string // PULSE_NODE_GRPC_URL
 
 // 节点侧 gRPC 客户端配置（节点进程使用，由 enroll 写入）
 NodeID            string // PULSE_NODE_ID
@@ -46,8 +46,7 @@ DatabaseURL:         envOrDefault("PULSE_DATABASE_URL", ""),
 WebDir:              envOrDefault("PULSE_WEB_DIR", ""),
 NodeCACertFile:      envOrDefault("PULSE_NODE_CA_CERT_FILE", "./node_ca_cert.pem"),
 NodeCAKeyFile:       envOrDefault("PULSE_NODE_CA_KEY_FILE", "./node_ca_key.pem"),
-NodeGRPCURL:         envOrDefault("PULSE_NODE_GRPC_URL", "https://localhost:8082"),
-NodeGRPCAddr:        envOrDefault("PULSE_NODE_GRPC_ADDR", ":8082"),
+NodeGRPCURL:         envOrDefault("PULSE_NODE_GRPC_URL", ""),
 NodeID:              envOrDefault("PULSE_NODE_ID", ""),
 NodeServerAddr:      envOrDefault("PULSE_NODE_SERVER_ADDR", ""),
 NodeClientCert:      envOrDefault("PULSE_NODE_CLIENT_CERT_FILE", "./node_cert.pem"),

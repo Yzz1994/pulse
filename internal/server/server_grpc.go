@@ -2,28 +2,36 @@ package server
 
 import (
 	"context"
+	"crypto/tls"
 	"fmt"
 	"log"
-	"strings"
+	"net"
 	"time"
+
+	"google.golang.org/grpc"
 
 	"pulse/internal/cert"
 	"pulse/internal/nodehub"
 	"pulse/internal/nodes"
 )
 
-// startNodeHub 实例化 nodehub.Hub，启动 reaper，并在 ctx 后台启动 gRPC 服务。
-// 返回的 hub 可注入到 nodes.NewClientWithHub 用作短调用通道。
+// nodeHubResult 包含 startNodeHub 的启动结果。
+type nodeHubResult struct {
+	Hub        *nodehub.Hub
+	GRPCServer *grpc.Server    // nil 表示 gRPC 未启用（证书颁发失败等）
+	TLSCert    tls.Certificate // 服务器 TLS 证书，供外层单端口 TLS 使用
+}
+
+// startNodeHub 实例化 nodehub.Hub 并构造 gRPC server（单端口 cmux 模式）。
 //
-// addr 是 gRPC 监听地址（如 ":8082"）。serverCN/serverSANs 用于自签 server 证书
-// （nodes 已通过 NodeCA 信任链验证，因此用同一 CA 签发即可）。
+// TLS 监听和 cmux 分流由调用方负责；gRPC server 通过 Serve(grpcSubListener)
+// 启动，keepalive 参数完全有效。
 //
-// pushHandler 当 nil 时使用 NoopPushHandler；调用方一般传入 MultiPushHandler
-// 以扇出 hello/usage_push/log/traceroute_hop 事件到不同业务模块。
+// serverCN/serverSANs 用于自签服务器证书（节点 CA 信任链，节点无需额外配置）。
+// pushHandler 为 nil 时使用 NoopPushHandler。
 //
-// 失败仅打印 log，不阻断 server 启动：HTTP API 仍可工作，nodes.Client 会因 hub
-// 离线而走 ErrNodeOffline 路径。
-func startNodeHub(ctx context.Context, addr, serverCN string, serverSANs []string, nodeCA *cert.NodeCA, nodeStore nodes.Store, pushHandler nodehub.PushHandler) *nodehub.Hub {
+// 失败仅打印 log：GRPCServer 为 nil 时不启用 gRPC 功能。
+func startNodeHub(ctx context.Context, serverCN string, serverSANs []string, nodeCA *cert.NodeCA, nodeStore nodes.Store, pushHandler nodehub.PushHandler) *nodeHubResult {
 	if pushHandler == nil {
 		pushHandler = nodehub.NoopPushHandler{}
 	}
@@ -37,25 +45,21 @@ func startNodeHub(ctx context.Context, addr, serverCN string, serverSANs []strin
 	serverTLS, err := nodeCA.IssueServerCert(serverCN, serverSANs, 365*24*time.Hour)
 	if err != nil {
 		log.Printf("nodehub: issue server cert failed: %v; gRPC disabled", err)
-		return hub
+		return &nodeHubResult{Hub: hub}
 	}
 
-	go func() {
-		err := nodehub.ListenAndServe(ctx, nodehub.ServerOptions{
-			Addr:                addr,
-			Hub:                 hub,
-			CA:                  nodeCA,
-			ServerCert:          serverTLS,
-			KeepaliveTime:       30 * time.Second,
-			KeepaliveTimeout:    10 * time.Second,
-			PermitWithoutStream: true,
-		})
-		if err != nil {
-			log.Printf("nodehub: gRPC server exited: %v", err)
-		}
-	}()
+	grpcSrv, err := nodehub.NewGRPCServer(ctx, nodehub.ServerOptions{
+		Hub:                 hub,
+		KeepaliveTime:       30 * time.Second,
+		KeepaliveTimeout:    10 * time.Second,
+		PermitWithoutStream: true,
+	})
+	if err != nil {
+		log.Printf("nodehub: create gRPC server failed: %v; gRPC disabled", err)
+		return &nodeHubResult{Hub: hub}
+	}
 
-	return hub
+	return &nodeHubResult{Hub: hub, GRPCServer: grpcSrv, TLSCert: serverTLS}
 }
 
 // onNodeConnected 返回节点建连回调：用 gRPC 对端 IP 更新 node.BaseURL。
@@ -69,7 +73,6 @@ func onNodeConnected(store nodes.Store) func(nodeID, peerIP string) {
 		if err != nil {
 			return
 		}
-		// 已有非 loopback 地址（管理员手动配置的域名/IP）则不覆盖
 		existing := node.BaseURL
 		if existing != "" && !isLoopbackURL(existing) {
 			return
@@ -82,7 +85,22 @@ func onNodeConnected(store nodes.Store) func(nodeID, peerIP string) {
 }
 
 func isLoopbackURL(u string) bool {
-	trimmed := strings.TrimPrefix(strings.TrimPrefix(u, "https://"), "http://")
-	host := strings.SplitN(trimmed, ":", 2)[0]
+	// 支持 http://host:port、http://host、https://[::1]:port 等格式
+	for _, scheme := range []string{"https://", "http://"} {
+		u = trimPrefixFold(u, scheme)
+	}
+	host, _, err := net.SplitHostPort(u)
+	if err != nil {
+		// 没有端口号，整个字符串是 host
+		host = u
+	}
 	return host == "localhost" || host == "127.0.0.1" || host == "::1"
 }
+
+func trimPrefixFold(s, prefix string) string {
+	if len(s) >= len(prefix) && s[:len(prefix)] == prefix {
+		return s[len(prefix):]
+	}
+	return s
+}
+

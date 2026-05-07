@@ -3,16 +3,24 @@ package server
 import (
 	"bytes"
 	"context"
+	"crypto/tls"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"io/fs"
 	"log"
 	"net/http"
+	"net/url"
 	"os"
+	"os/signal"
 	"strconv"
 	"strings"
+	"syscall"
 	"time"
+
+	"github.com/soheilhy/cmux"
+	"golang.org/x/sync/errgroup"
 
 	"pulse/internal/alert"
 	"pulse/internal/announcements"
@@ -40,6 +48,10 @@ import (
 )
 
 func Run() error {
+	// 在函数最顶部创建信号 context，使整个 server 生命周期统一受 SIGTERM/Ctrl-C 控制。
+	sigCtx, stop := signal.NotifyContext(context.Background(), syscall.SIGTERM, syscall.SIGINT)
+	defer stop()
+
 	cfg := config.Load()
 
 	db, err := pgStore.Open(cfg.DatabaseURL)
@@ -1108,7 +1120,7 @@ func Run() error {
 	// 实例化 nodehub.Hub 并在后台启动 gRPC 监听（mTLS by NodeCA）。
 	// 先通过 SetupSelfSync 构建 MultiPushHandler（hello → self-sync + usage_push），
 	// 再启动 hub，最后回填 HubCaller（两步初始化，打破互相依赖）。
-	selfSyncHandler, hubPushHandler := SetupSelfSync(context.Background(), SelfSyncDeps{
+	selfSyncHandler, hubPushHandler := SetupSelfSync(sigCtx, SelfSyncDeps{
 		UserStore:     userStore,
 		InboundStore:  inboundStore,
 		OutboundStore: outboundStore,
@@ -1125,19 +1137,26 @@ func Run() error {
 			return usageBuf.Append(nodeID, seq, stats)
 		},
 	})
-	nodeHub := startNodeHub(context.Background(), cfg.NodeGRPCAddr, "pulse-grpc-server", []string{"localhost", "127.0.0.1"}, nodeCA, db.NodeStore(), hubPushHandler)
-	if nodeHub != nil {
-		serverapi.RegisterNodeHubMetrics(protectedV1, nodeHub)
-		// 让 serverapi 的 clientFactory 优先用 hub 构造 Client。
-		nodeAPI.SetNodeHub(nodeHub)
-		nodeAPI2.SetNodeHub(nodeHub)
-		// 回填 HubCaller 并注入 hub-aware client 工厂，使 self-sync 触发的 ApplyNode
-		// 能通过已建立的 gRPC 流下发配置（而非尝试直连，节点已不再监听端口）。
-		SetupSelfSyncHubCaller(selfSyncHandler, nodeHub)
-		jobs.SetNodesHubClientFactory(func(nodeID string, _ jobs.HubCaller) *nodes.Client {
-			return nodes.NewClientWithHub(nodeID, nodeHub)
-		})
+	// 解析 NodeGRPCURL 中的 host 添加为服务器证书 SAN，确保节点连接时 TLS 验证通过。
+	grpcSANs := []string{"localhost", "127.0.0.1"}
+	if u, parseErr := url.Parse(cfg.NodeGRPCURL); parseErr == nil && u.Hostname() != "" {
+		h := u.Hostname()
+		if h != "localhost" && h != "127.0.0.1" {
+			grpcSANs = append(grpcSANs, h)
+		}
 	}
+	nhResult := startNodeHub(sigCtx, "pulse-grpc-server", grpcSANs, nodeCA, db.NodeStore(), hubPushHandler)
+	nodeHub := nhResult.Hub
+	serverapi.RegisterNodeHubMetrics(protectedV1, nodeHub)
+	// 让 serverapi 的 clientFactory 优先用 hub 构造 Client。
+	nodeAPI.SetNodeHub(nodeHub)
+	nodeAPI2.SetNodeHub(nodeHub)
+	// 回填 HubCaller 并注入 hub-aware client 工厂，使 self-sync 触发的 ApplyNode
+	// 能通过已建立的 gRPC 流下发配置（而非尝试直连，节点已不再监听端口）。
+	SetupSelfSyncHubCaller(selfSyncHandler, nodeHub)
+	jobs.SetNodesHubClientFactory(func(nodeID string, _ jobs.HubCaller) *nodes.Client {
+		return nodes.NewClientWithHub(nodeID, nodeHub)
+	})
 	mux.Handle("/v1/system/nodehub/", authManager.Middleware(protectedV1))
 	mux.Handle("/v1/tools/", authManager.Middleware(protectedV1))
 	mux.Handle("/v1/system/info", authManager.Middleware(protectedV1))
@@ -1197,27 +1216,77 @@ func Run() error {
 	// SPA catch-all: must be registered last
 	mux.Handle("/", spaHandler)
 
-	srv := &http.Server{
-		Addr:              cfg.ServerAddr,
+	httpSrv := &http.Server{
 		Handler:           accessLog(mux),
 		ReadHeaderTimeout: 5 * time.Second,
 		// WriteTimeout 不设：系统日志等 SSE 长连接会被强制断流
-		IdleTimeout: 120 * time.Second, // keep-alive 空闲连接最长保留时间
+		IdleTimeout: 120 * time.Second,
 	}
 
-	log.Printf("pulse-server listening on %s", cfg.ServerAddr)
-	err = srv.ListenAndServe()
-	if err == nil || err == http.ErrServerClosed {
-		return shutdown(srv)
+	if nhResult.GRPCServer != nil {
+		// 单端口 TLS 模式：cmux 在 tls.Listener 之上按 content-type 分流。
+		// gRPC server 通过 Serve(grpcL) 运行，keepalive 完全有效。
+		tlsCfg := &tls.Config{
+			Certificates: []tls.Certificate{nhResult.TLSCert},
+			ClientAuth:   tls.RequestClientCert,
+			ClientCAs:    nodeCA.ClientCAPool(),
+			NextProtos:   []string{"h2", "http/1.1"},
+			MinVersion:   tls.VersionTLS12,
+		}
+		lis, err := tls.Listen("tcp", cfg.ServerAddr, tlsCfg)
+		if err != nil {
+			return fmt.Errorf("tls listen on %s: %w", cfg.ServerAddr, err)
+		}
+
+		m := cmux.New(lis)
+		// HTTP/2 + content-type: application/grpc → gRPC server
+		grpcL := m.MatchWithWriters(cmux.HTTP2MatchHeaderFieldSendSettings("content-type", "application/grpc"))
+		// 其余（HTTP/1.1 面板、HTTP/2 非 gRPC）→ http.Server
+		httpL := m.Match(cmux.Any())
+
+		log.Printf("pulse-server listening on %s (TLS, panel+gRPC single port)", cfg.ServerAddr)
+
+		grpcSrv := nhResult.GRPCServer
+		g, gctx := errgroup.WithContext(sigCtx)
+
+		// 关闭协程：收到信号后依次关闭 cmux、gRPC、HTTP。
+		g.Go(func() error {
+			<-gctx.Done()
+			m.Close()
+			grpcSrv.GracefulStop()
+			shutCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			defer cancel()
+			return httpSrv.Shutdown(shutCtx)
+		})
+		g.Go(func() error { return grpcSrv.Serve(grpcL) })
+		g.Go(func() error { return httpSrv.Serve(httpL) })
+		g.Go(func() error { return m.Serve() })
+
+		err = g.Wait()
+		if err != nil && !errors.Is(err, http.ErrServerClosed) && !errors.Is(err, cmux.ErrServerClosed) {
+			return err
+		}
+		return nil
 	}
 
-	return err
-}
+	// gRPC 初始化失败，退化为纯 HTTP 面板模式（无 gRPC 功能）。
+	httpSrv.Addr = cfg.ServerAddr
+	log.Printf("pulse-server listening on %s (HTTP, gRPC disabled)", cfg.ServerAddr)
 
-func shutdown(srv *http.Server) error {
-	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
-	defer cancel()
-	return srv.Shutdown(ctx)
+	g, gctx := errgroup.WithContext(sigCtx)
+	g.Go(func() error {
+		<-gctx.Done()
+		shutCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		return httpSrv.Shutdown(shutCtx)
+	})
+	g.Go(func() error { return httpSrv.ListenAndServe() })
+
+	err = g.Wait()
+	if err != nil && !errors.Is(err, http.ErrServerClosed) {
+		return err
+	}
+	return nil
 }
 
 // accessLog 记录每次 HTTP 请求的方法、路径、状态码和耗时。
