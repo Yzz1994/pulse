@@ -1165,13 +1165,8 @@ function HostFormDialog({
         port: Number(form.port) || 0,
         remark: "",
         sni: form.sni,
-        host: form.host,
-        path: form.path,
-        security: form.security,
-        alpn: form.alpn,
         fingerprint: form.fingerprint,
-        allow_insecure: form.allow_insecure,
-        mux_enable: form.mux_enable,
+        security: form.security,
         reality_public_key: form.security === "reality" ? form.reality_public_key : "",
         reality_short_id: form.security === "reality" ? form.reality_short_id : "",
         reality_spider_x: form.security === "reality" ? form.reality_spider_x : "",
@@ -1206,7 +1201,7 @@ function HostFormDialog({
   return (
     <>
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-lg">
+      <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-2xl">
         <form onSubmit={handleSubmit}>
           <DialogHeader>
             <DialogTitle>{isEdit ? "编辑连接地址" : "添加连接地址"}</DialogTitle>
@@ -1216,179 +1211,184 @@ function HostFormDialog({
           </DialogHeader>
 
           <div className="mt-4 space-y-4">
-            {/* ── 节点命名 ──────────────────────────── */}
-            <div className="space-y-3 rounded-md border border-[hsl(var(--border))] p-3">
-              <div className="flex items-center justify-between">
-                <p className="text-xs font-medium text-[hsl(var(--muted-foreground))]">
-                  节点命名（留空则回退到订阅名/标签）
-                </p>
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  className="h-6 px-2 text-xs"
-                  disabled={!nodeIp || geoLooking}
-                  onClick={handleGeoLookup}
-                  title="根据连接地址自动填入国家、地区、网络（需在设置中配置 MaxMind License Key）"
-                >
-                  {geoLooking ? "查询中…" : "IP 自动填入"}
-                </Button>
-              </div>
-              <div className="grid grid-cols-2 gap-3">
-                <div className="space-y-1">
-                  <Label className="text-xs">国家</Label>
-                  <Input
-                    value={form.country}
-                    onChange={(e) => updateField("country", e.target.value)}
-                    placeholder="HK"
-                    className="h-8 text-sm"
-                  />
-                </div>
-                <div className="space-y-1">
-                  <Label className="text-xs">地区</Label>
-                  <Input
-                    value={form.region}
-                    onChange={(e) => updateField("region", e.target.value)}
-                    placeholder="香港"
-                    className="h-8 text-sm"
-                  />
-                </div>
-                <div className="space-y-1">
-                  <Label className="text-xs">网络</Label>
-                  <Input
-                    value={form.network}
-                    onChange={(e) => updateField("network", e.target.value)}
-                    placeholder="GIA"
-                    className="h-8 text-sm"
-                  />
-                </div>
-                <div className="space-y-1">
-                  <Label className="text-xs">入口</Label>
-                  <Input
-                    value={form.entry}
-                    onChange={(e) => updateField("entry", e.target.value)}
-                    placeholder="深圳（选填）"
-                    className="h-8 text-sm"
-                  />
-                </div>
-              </div>
-              <div className="space-y-1">
-                <Label className="text-xs">业务标签</Label>
-                <Input
-                  value={form.tags}
-                  onChange={(e) => updateField("tags", e.target.value)}
-                  placeholder="NF·GPT（选填，多个用 · 分隔）"
-                  className="h-8 text-sm"
-                />
-              </div>
-              <p className="text-xs text-[hsl(var(--muted-foreground))]">
-                编号自动生成，倍率来自入站配置，均无需手动填写。
-              </p>
-            </div>
-
-            {/* ── Address (required) ────────────────────────── */}
-            <div className="space-y-2">
-              <Label>地址 *</Label>
-              <div className="flex items-center gap-2">
-                <Input
-                  value={form.address}
-                  onChange={(e) => updateField("address", e.target.value)}
-                  placeholder="域名或 IP"
-                  required
-                  className="flex-1"
-                />
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="icon"
-                  className="shrink-0"
-                  title="从 CF 域名选择"
-                  onClick={() => setPickerOpen(true)}
-                >
-                  <IconCloudPick className="h-4 w-4" />
-                </Button>
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="icon"
-                  className="shrink-0"
-                  title="自动生成域名"
-                  onClick={handleAutoGen}
-                >
-                  <IconWand className="h-4 w-4" />
-                </Button>
-              </div>
-
-              {/* ── 自动生成确认区 ─────────────────────────── */}
-              {autoGen && (
-                <div className="rounded-md border border-[hsl(var(--border))] bg-[hsl(var(--muted)/0.4)] p-3 space-y-3">
-                  <p className="text-xs text-[hsl(var(--muted-foreground))]">将创建 DNS A 记录</p>
+            {/* ── 两列主体：左=地址/端口，右=节点命名 ──── */}
+            <div className="grid grid-cols-2 gap-4 items-start">
+              {/* 左列：地址 + 端口 */}
+              <div className="space-y-4">
+                {/* Address (required) */}
+                <div className="space-y-2">
+                  <Label>地址 *</Label>
                   <div className="flex items-center gap-2">
                     <Input
-                      value={autoGen.subdomain}
-                      onChange={(e) =>
-                        setAutoGen((prev) => prev ? { ...prev, subdomain: e.target.value } : null)
-                      }
-                      className="flex-1 font-mono text-sm"
-                      placeholder="子域名"
+                      value={form.address}
+                      onChange={(e) => {
+                        const v = e.target.value;
+                        setForm((prev) => ({
+                          ...prev,
+                          address: v,
+                          sni: (!prev.sni || prev.sni === prev.address) ? v : prev.sni,
+                          host: (!prev.host || prev.host === prev.address) ? v : prev.host,
+                        }));
+                      }}
+                      placeholder="域名或 IP"
+                      required
+                      className="flex-1"
                     />
-                    <span className="shrink-0 text-sm text-[hsl(var(--muted-foreground))]">
-                      .{autoGen.zone.zone_name}
-                    </span>
-                    <span className="shrink-0 text-xs text-[hsl(var(--muted-foreground))]">
-                      → {nodeIp || "?"}
-                    </span>
-                  </div>
-                  <div className="space-y-1">
-                    <Label className="text-xs">订阅名（同步到 CF 记录 comment）</Label>
-                    <Input
-                      value={autoGen.remark}
-                      onChange={(e) =>
-                        setAutoGen((prev) => prev ? { ...prev, remark: e.target.value } : null)
-                      }
-                      placeholder="订阅显示名 / CF comment"
-                    />
-                  </div>
-                  <div className="flex justify-end gap-2">
-                    <Button type="button" variant="outline" size="sm" onClick={() => setAutoGen(null)}>
-                      取消
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="icon"
+                      className="shrink-0"
+                      title="从 CF 域名选择"
+                      onClick={() => setPickerOpen(true)}
+                    >
+                      <IconCloudPick className="h-4 w-4" />
                     </Button>
                     <Button
                       type="button"
-                      size="sm"
-                      disabled={autoGenApplying || !autoGen.subdomain.trim() || !nodeIp}
-                      onClick={handleAutoGenConfirm}
+                      variant="outline"
+                      size="icon"
+                      className="shrink-0"
+                      title="自动生成域名"
+                      onClick={handleAutoGen}
                     >
-                      {autoGenApplying ? "创建中…" : "确认"}
+                      <IconWand className="h-4 w-4" />
                     </Button>
                   </div>
+
+                  {/* 自动生成确认区 */}
+                  {autoGen && (
+                    <div className="rounded-md border border-[hsl(var(--border))] bg-[hsl(var(--muted)/0.4)] p-3 space-y-3">
+                      <p className="text-xs text-[hsl(var(--muted-foreground))]">将创建 DNS A 记录</p>
+                      <div className="flex items-center gap-2">
+                        <Input
+                          value={autoGen.subdomain}
+                          onChange={(e) =>
+                            setAutoGen((prev) => prev ? { ...prev, subdomain: e.target.value } : null)
+                          }
+                          className="flex-1 font-mono text-sm"
+                          placeholder="子域名"
+                        />
+                        <span className="shrink-0 text-sm text-[hsl(var(--muted-foreground))]">
+                          .{autoGen.zone.zone_name}
+                        </span>
+                        <span className="shrink-0 text-xs text-[hsl(var(--muted-foreground))]">
+                          → {nodeIp || "?"}
+                        </span>
+                      </div>
+                      <div className="space-y-1">
+                        <Label className="text-xs">订阅名（同步到 CF 记录 comment）</Label>
+                        <Input
+                          value={autoGen.remark}
+                          onChange={(e) =>
+                            setAutoGen((prev) => prev ? { ...prev, remark: e.target.value } : null)
+                          }
+                          placeholder="订阅显示名 / CF comment"
+                        />
+                      </div>
+                      <div className="flex justify-end gap-2">
+                        <Button type="button" variant="outline" size="sm" onClick={() => setAutoGen(null)}>
+                          取消
+                        </Button>
+                        <Button
+                          type="button"
+                          size="sm"
+                          disabled={autoGenApplying || !autoGen.subdomain.trim() || !nodeIp}
+                          onClick={handleAutoGenConfirm}
+                        >
+                          {autoGenApplying ? "创建中…" : "确认"}
+                        </Button>
+                      </div>
+                    </div>
+                  )}
                 </div>
-              )}
+
+                {/* Port */}
+                <div className="space-y-2">
+                  <Label>端口</Label>
+                  <Input
+                    type="number"
+                    min={1}
+                    max={65535}
+                    value={form.port}
+                    onChange={(e) => updateField("port", e.target.value)}
+                    placeholder="端口"
+                  />
+                </div>
+              </div>
+
+              {/* 右列：节点命名 */}
+              <div className="space-y-3 rounded-md border border-[hsl(var(--border))] p-3">
+                <div className="flex items-center justify-between">
+                  <p className="text-xs font-medium text-[hsl(var(--muted-foreground))]">
+                    节点命名（留空则回退到订阅名/标签）
+                  </p>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    className="h-6 px-2 text-xs"
+                    disabled={!nodeIp || geoLooking}
+                    onClick={handleGeoLookup}
+                    title="根据连接地址自动填入国家、地区、网络（需在设置中配置 MaxMind License Key）"
+                  >
+                    {geoLooking ? "查询中…" : "IP 自动填入"}
+                  </Button>
+                </div>
+                <div className="grid grid-cols-2 gap-2">
+                  <div className="space-y-1">
+                    <Label className="text-xs">国家</Label>
+                    <Input
+                      value={form.country}
+                      onChange={(e) => updateField("country", e.target.value)}
+                      placeholder="HK"
+                      className="h-8 text-sm"
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <Label className="text-xs">地区</Label>
+                    <Input
+                      value={form.region}
+                      onChange={(e) => updateField("region", e.target.value)}
+                      placeholder="香港"
+                      className="h-8 text-sm"
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <Label className="text-xs">网络</Label>
+                    <Input
+                      value={form.network}
+                      onChange={(e) => updateField("network", e.target.value)}
+                      placeholder="GIA"
+                      className="h-8 text-sm"
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <Label className="text-xs">入口</Label>
+                    <Input
+                      value={form.entry}
+                      onChange={(e) => updateField("entry", e.target.value)}
+                      placeholder="深圳（选填）"
+                      className="h-8 text-sm"
+                    />
+                  </div>
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-xs">业务标签</Label>
+                  <Input
+                    value={form.tags}
+                    onChange={(e) => updateField("tags", e.target.value)}
+                    placeholder="NF·GPT（选填，多个用 · 分隔）"
+                    className="h-8 text-sm"
+                  />
+                </div>
+                <p className="text-xs text-[hsl(var(--muted-foreground))]">
+                  编号自动生成，倍率来自入站配置，均无需手动填写。
+                </p>
+              </div>
             </div>
 
-            {/* ── Port ──────────────────────────────────────── */}
-            <div className="space-y-2">
-              <Label>端口</Label>
-              <Input
-                type="number"
-                min={1}
-                max={65535}
-                value={form.port}
-                onChange={(e) => updateField("port", e.target.value)}
-                placeholder="端口"
-              />
-            </div>
-
-            {/* ── Advanced toggle ───────────────────────────── */}
-            <button
-              type="button"
-              className="flex items-center gap-1 text-sm font-medium text-[hsl(var(--primary))] hover:underline"
-              onClick={() => setShowAdvanced((v) => !v)}
-            >
-              {showAdvanced ? "▾ 高级设置" : "▸ 高级设置"}
-            </button>
-
-            {showAdvanced && (
+            {showAdvanced && false && (
               <div className="space-y-4 rounded-lg border border-[hsl(var(--border))] p-4">
                 {/* SNI */}
                 <div className="space-y-2">
@@ -1400,75 +1400,14 @@ function HostFormDialog({
                   />
                 </div>
 
-                {/* Host header */}
-                <div className="space-y-2">
-                  <Label>Host</Label>
-                  <Input
-                    value={form.host}
-                    onChange={(e) => updateField("host", e.target.value)}
-                    placeholder="HTTP Host header"
-                  />
-                </div>
-
-                {/* Path */}
-                <div className="space-y-2">
-                  <Label>路径</Label>
-                  <Input
-                    value={form.path}
-                    onChange={(e) => updateField("path", e.target.value)}
-                    placeholder="/"
-                  />
-                </div>
-
-                {/* Security (只读，跟随入站) */}
-                <div className="space-y-2">
-                  <Label>安全</Label>
-                  <p className="text-sm text-[hsl(var(--muted-foreground))]">
-                    <span className="font-mono text-[hsl(var(--foreground))]">{inboundSecurity || "none"}</span>
-                    <span className="ml-2 text-xs">（跟随入站）</span>
-                  </p>
-                </div>
-
-                {/* ALPN */}
-                <div className="space-y-2">
-                  <Label>ALPN</Label>
-                  <Input
-                    value={form.alpn}
-                    onChange={(e) => updateField("alpn", e.target.value)}
-                    placeholder="如 h2,http/1.1"
-                  />
-                </div>
-
-                {/* Fingerprint */}
+                {/* Fingerprint（VLESS+Reality / Trojan 使用） */}
                 <div className="space-y-2">
                   <Label>TLS 指纹</Label>
                   <Input
                     value={form.fingerprint}
                     onChange={(e) => updateField("fingerprint", e.target.value)}
-                    placeholder="chrome / firefox / safari 等"
+                    placeholder="chrome（留空默认）"
                   />
-                </div>
-
-                {/* Checkboxes */}
-                <div className="flex items-center gap-6">
-                  <label className="flex items-center gap-2 text-sm">
-                    <Checkbox
-                      checked={form.allow_insecure}
-                      onCheckedChange={(checked) =>
-                        updateField("allow_insecure", checked === true)
-                      }
-                    />
-                    跳过证书验证
-                  </label>
-                  <label className="flex items-center gap-2 text-sm">
-                    <Checkbox
-                      checked={form.mux_enable}
-                      onCheckedChange={(checked) =>
-                        updateField("mux_enable", checked === true)
-                      }
-                    />
-                    启用多路复用
-                  </label>
                 </div>
 
                 {/* Reality fields */}
