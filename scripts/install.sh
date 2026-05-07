@@ -473,15 +473,23 @@ if [ "$component" = "server" ]; then
   if [ "${PULSE_STRIPE_WEBHOOK_SECRET+x}" = "x" ]; then
     set_env_file_value "$env_target" "PULSE_STRIPE_WEBHOOK_SECRET" "$PULSE_STRIPE_WEBHOOK_SECRET"
   fi
-  # 新安装时自动填写 PULSE_NODE_GRPC_URL，避免节点 enroll 拿到 localhost:8082
-  if [ "$is_new_install" = "1" ] && [ "${PULSE_NODE_GRPC_URL+x}" != "x" ]; then
-    _grpc_addr="${PULSE_NODE_GRPC_ADDR:-:8082}"
-    _grpc_port="${_grpc_addr#:}"
-    _public_ip="$(ip -4 addr show scope global 2>/dev/null | awk '/inet/{gsub(/\/.*/, "", $2); print $2; exit}' \
-                || hostname -I 2>/dev/null | awk '{print $1}')"
-    if [ -n "$_public_ip" ]; then
-      PULSE_NODE_GRPC_URL="https://${_public_ip}:${_grpc_port}"
-    fi
+  # 自动推断 PULSE_NODE_GRPC_URL：
+  # 优先使用环境变量；否则读取已有配置；若未配置或为 localhost，用公网 IP 自动填写。
+  if [ "${PULSE_NODE_GRPC_URL+x}" != "x" ]; then
+    # 环境变量未传入，读取配置文件中的现有值
+    _existing_grpc="$(grep '^PULSE_NODE_GRPC_URL=' "$env_target" 2>/dev/null | cut -d= -f2- | tr -d "'" | tr -d '"')"
+    # 未配置或仍是 localhost 则自动推断
+    case "$_existing_grpc" in
+      *localhost*|*127.0.0.1*|"")
+        _grpc_addr="${PULSE_NODE_GRPC_ADDR:-:8082}"
+        _grpc_port="${_grpc_addr#:}"
+        _public_ip="$(ip -4 addr show scope global 2>/dev/null | awk '/inet/{gsub(/\/.*/, "", $2); print $2; exit}' \
+                    || hostname -I 2>/dev/null | awk '{print $1}')"
+        if [ -n "$_public_ip" ]; then
+          PULSE_NODE_GRPC_URL="https://${_public_ip}:${_grpc_port}"
+        fi
+        ;;
+    esac
   fi
   if [ "${PULSE_NODE_GRPC_URL+x}" = "x" ]; then
     set_env_file_value "$env_target" "PULSE_NODE_GRPC_URL" "$PULSE_NODE_GRPC_URL"
