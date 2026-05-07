@@ -478,20 +478,24 @@ if [ "$component" = "server" ]; then
   if [ "${PULSE_NODE_GRPC_URL+x}" != "x" ]; then
     # 环境变量未传入，读取配置文件中的现有值
     _existing_grpc="$(grep '^PULSE_NODE_GRPC_URL=' "$env_target" 2>/dev/null | cut -d= -f2- | tr -d "'" | tr -d '"')"
-    # 未配置或仍是 localhost 则自动推断
-    case "$_existing_grpc" in
-      *localhost*|*127.0.0.1*|"")
-        # gRPC 与面板共用同一端口（单端口 TLS 模式），从 PULSE_SERVER_ADDR 取端口号。
-        # 用 ## 取最后一个 ":" 之后的部分，兼容 "0.0.0.0:8443" 和 ":8080" 格式。
-        _srv_addr="${PULSE_SERVER_ADDR:-:8080}"
-        _grpc_port="${_srv_addr##*:}"
-        _public_ip="$(ip -4 addr show scope global 2>/dev/null | awk '/inet/{gsub(/\/.*/, "", $2); print $2; exit}' \
-                    || hostname -I 2>/dev/null | awk '{print $1}')"
-        if [ -n "$_public_ip" ]; then
-          PULSE_NODE_GRPC_URL="https://${_public_ip}:${_grpc_port}"
-        fi
-        ;;
-    esac
+    # gRPC 与面板共用同一端口（单端口 TLS 模式），从 PULSE_SERVER_ADDR 取端口号。
+    # 优先从 env 文件读取（安装时已写入但未 source），再 fallback 到 shell 环境变量。
+    _srv_addr_file="$(grep '^PULSE_SERVER_ADDR=' "$env_target" 2>/dev/null | cut -d= -f2- | tr -d "'\"")"
+    _srv_addr="${_srv_addr_file:-${PULSE_SERVER_ADDR:-:8080}}"
+    _grpc_port="${_srv_addr##*:}"
+    _public_ip="$(ip -4 addr show scope global 2>/dev/null | awk '/inet/{gsub(/\/.*/, "", $2); print $2; exit}' \
+                || hostname -I 2>/dev/null | awk '{print $1}')"
+    if [ -n "$_public_ip" ]; then
+      _auto_grpc="https://${_public_ip}:${_grpc_port}"
+      # 未配置、localhost、或端口与当前配置不符（升级场景）时自动更新。
+      _existing_port="${_existing_grpc##*:}"
+      case "$_existing_grpc" in
+        *localhost*|*127.0.0.1*|"")
+          PULSE_NODE_GRPC_URL="$_auto_grpc" ;;
+        *)
+          [ "$_existing_port" != "$_grpc_port" ] && PULSE_NODE_GRPC_URL="$_auto_grpc" ;;
+      esac
+    fi
   fi
   if [ "${PULSE_NODE_GRPC_URL+x}" = "x" ]; then
     set_env_file_value "$env_target" "PULSE_NODE_GRPC_URL" "$PULSE_NODE_GRPC_URL"
