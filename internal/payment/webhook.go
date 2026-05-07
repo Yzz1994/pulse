@@ -203,19 +203,31 @@ func (d *WebhookDeps) renewExistingUser(order orders.Order, plan plans.Plan, now
 	expireAt := now.Add(time.Duration(plan.DurationDays) * 24 * time.Hour)
 	user.ExpireAt = &expireAt
 
-	// 流量：未过期则叠加，已过期则重置为套餐额度
-	if plan.TrafficLimit > 0 {
-		if notExpired {
+	// 流量：未过期则叠加，已过期则重置为套餐额度并清零已用量
+	if notExpired {
+		if plan.TrafficLimit > 0 {
 			user.TrafficLimit += plan.TrafficLimit
-		} else {
-			user.TrafficLimit = plan.TrafficLimit
 		}
+	} else {
+		user.TrafficLimit = plan.TrafficLimit
+		user.UploadBytes = 0
+		user.DownloadBytes = 0
+		user.UsedBytes = 0
+		user.RawUploadBytes = 0
+		user.RawDownloadBytes = 0
+		user.LastTrafficResetAt = &now
 	}
+	user.DataLimitResetStrategy = plan.DataLimitResetStrategy
 	user.CurrentPlanID = plan.ID
 	user.Status = users.StatusActive
 
 	if _, err := d.UserStore.UpsertUser(user); err != nil {
 		return fmt.Errorf("update user %s: %w", user.ID, err)
+	}
+	if !notExpired {
+		if err := d.UserStore.ClearUserNodeDailyUsage(user.ID); err != nil {
+			log.Printf("payment: renew clear daily usage user %s: %v", user.ID, err)
+		}
 	}
 
 	// 加入套餐绑定的用户组
