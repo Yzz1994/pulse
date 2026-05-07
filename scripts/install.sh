@@ -518,6 +518,22 @@ else
     run_as_root install -m 0644 "${package_dir}/etc/pulse/pulse-node.env.example" "$env_target"
   fi
 
+  # 升级模式判定：当节点已经 enroll 过（env + 三件套证书齐全）且本次未提供
+  # --server/--node-id/--token 时，跳过 enroll，仅替换二进制并重启服务。
+  # 控制面板的"更新节点"按钮（DoUpdate）会以 `install.sh node`（无参数）方式
+  # 触发本路径。
+  upgrade_only=0
+  if [ -z "$server_url" ] && [ -z "$node_id" ] && [ -z "$token" ] && [ -z "$token_file" ]; then
+    if [ -f "$env_target" ] \
+       && [ -s "${etc_dir}/node_cert.pem" ] \
+       && [ -s "${etc_dir}/node_key.pem" ] \
+       && [ -s "${etc_dir}/node_ca.pem" ]; then
+      upgrade_only=1
+      echo "检测到已 enroll 的节点，进入升级模式：仅替换二进制并重启服务。"
+    fi
+  fi
+
+  if [ "$upgrade_only" != "1" ]; then
   # 校验新流程必需参数（--server/--node-id/--token 由控制面板生成的命令带入；
   # 也允许通过 --token-file 从文件或 stdin 读取 token）
   if [ -z "$server_url" ]; then
@@ -599,6 +615,7 @@ else
 
   # PULSE_NODE_ID 由脚本写入（enroll 不知道这个值）
   set_env_file_value "$env_target" "PULSE_NODE_ID" "$node_id"
+  fi  # end: if upgrade_only != 1
 
   # 移除已废弃的环境变量（HTTP listener / 旧 mTLS 流程残留）
   for legacy_var in PULSE_NODE_TLS_CERT_FILE PULSE_NODE_TLS_KEY_FILE \
