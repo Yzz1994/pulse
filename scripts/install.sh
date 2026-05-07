@@ -660,8 +660,5 @@ else
   echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
   echo "  节点 ID:   ${node_id}"
   echo "  节点出口:  ${_ip}"
-  echo "  控制面 gRPC: ${grpc_url:-(见 ${env_target} 中的 PULSE_NODE_GRPC_URL)}"
-  echo ""
-  echo "  pulse-node 不再监听 HTTP 端口，所有指令通过 gRPC 长连接由控制面下发。"
   echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 fi
