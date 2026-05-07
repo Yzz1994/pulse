@@ -473,6 +473,19 @@ if [ "$component" = "server" ]; then
   if [ "${PULSE_STRIPE_WEBHOOK_SECRET+x}" = "x" ]; then
     set_env_file_value "$env_target" "PULSE_STRIPE_WEBHOOK_SECRET" "$PULSE_STRIPE_WEBHOOK_SECRET"
   fi
+  # 新安装时自动填写 PULSE_NODE_GRPC_URL，避免节点 enroll 拿到 localhost:8082
+  if [ "$is_new_install" = "1" ] && [ "${PULSE_NODE_GRPC_URL+x}" != "x" ]; then
+    _grpc_addr="${PULSE_NODE_GRPC_ADDR:-:8082}"
+    _grpc_port="${_grpc_addr#:}"
+    _public_ip="$(ip -4 addr show scope global 2>/dev/null | awk '/inet/{gsub(/\/.*/, "", $2); print $2; exit}' \
+                || hostname -I 2>/dev/null | awk '{print $1}')"
+    if [ -n "$_public_ip" ]; then
+      PULSE_NODE_GRPC_URL="https://${_public_ip}:${_grpc_port}"
+    fi
+  fi
+  if [ "${PULSE_NODE_GRPC_URL+x}" = "x" ]; then
+    set_env_file_value "$env_target" "PULSE_NODE_GRPC_URL" "$PULSE_NODE_GRPC_URL"
+  fi
   if [ "$init_system" = "systemd" ]; then
     run_as_root install -m 0644 "${package_dir}/lib/systemd/system/pulse-server.service" "${lib_dir}/pulse-server.service"
     run_as_root systemctl daemon-reload

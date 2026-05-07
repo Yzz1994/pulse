@@ -381,7 +381,6 @@ function InstallCmdDialog({
   const [enroll, setEnroll] = useState<EnrollTokenResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
-  const [showManual, setShowManual] = useState(false);
   const [registered, setRegistered] = useState(false);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
@@ -389,7 +388,6 @@ function InstallCmdDialog({
     if (!open || !node) return;
     setEnroll(null);
     setError(null);
-    setShowManual(false);
     setRegistered(!!node.base_url);
     api
       .post<EnrollTokenResponse>(`/nodes/${node.id}/enroll-token`, {})
@@ -408,7 +406,6 @@ function InstallCmdDialog({
   }, [open, node, registered]);
 
   const installCmd = enroll?.install_command ?? (error ?? "正在生成安装 token…");
-  const manualCmd = enroll?.manual_command ?? "";
 
   const handleCopy = (text: string) => {
     if (!text) return;
@@ -448,28 +445,7 @@ function InstallCmdDialog({
                 </>
               )}
             </button>
-            {manualCmd && (
-              <button
-                onClick={() => setShowManual((v) => !v)}
-                className="inline-flex items-center gap-1.5 rounded-md border border-[hsl(var(--border))] bg-transparent px-3 py-1.5 text-xs font-medium transition-colors hover:bg-[hsl(var(--accent))]"
-              >
-                {showManual ? "隐藏手动命令" : "已安装 pulse-node？查看手动命令"}
-              </button>
-            )}
           </div>
-          {showManual && manualCmd && (
-            <div className="space-y-2">
-              <ScrollArea className="h-20 rounded-md border bg-[hsl(var(--muted))]">
-                <pre className="whitespace-pre-wrap break-all p-3 text-xs font-mono">{manualCmd}</pre>
-              </ScrollArea>
-              <button
-                onClick={() => handleCopy(manualCmd)}
-                className="inline-flex items-center gap-1.5 rounded-md border border-[hsl(var(--border))] bg-transparent px-3 py-1.5 text-xs font-medium transition-colors hover:bg-[hsl(var(--accent))]"
-              >
-                复制手动命令
-              </button>
-            </div>
-          )}
         </div>
         <DialogFooter>
           <div className="flex w-full items-center justify-between">
