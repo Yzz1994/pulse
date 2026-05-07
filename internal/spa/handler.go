@@ -66,6 +66,14 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 	p = strings.TrimPrefix(p, "/")
 
+	// API paths must be handled by registered routes; do not fall through to SPA.
+	// If we're here it means no route matched — return 404 instead of serving
+	// index.html (which would be misinterpreted as a 200 success by API clients).
+	if strings.HasPrefix(r.URL.Path, "/v1/") || strings.HasPrefix(r.URL.Path, "/api/") {
+		http.NotFound(w, r)
+		return
+	}
+
 	// Try to open the file if the path has an extension (static asset)
 	if p != "" && filepath.Ext(p) != "" {
 		f, err := h.fsys.Open(p)
@@ -87,7 +95,11 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	// Fallback: serve index.html for SPA client-side routing
+	// Fallback: serve index.html for SPA client-side routing (GET/HEAD only)
+	if r.Method != http.MethodGet && r.Method != http.MethodHead {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.Header().Set("Cache-Control", "no-cache")
 	serve(w, r, strings.NewReader(string(h.index)))

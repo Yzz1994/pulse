@@ -112,7 +112,15 @@ func Run(ctx context.Context, req Request) (Result, error) {
 		tr := &http.Transport{
 			TLSClientConfig: &tls.Config{InsecureSkipVerify: req.Insecure}, // #nosec G402
 		}
-		client = &http.Client{Timeout: 30 * time.Second, Transport: tr}
+		client = &http.Client{
+			Timeout:   30 * time.Second,
+			Transport: tr,
+			// 不跟随重定向：enroll 端点若被反向代理（如 Cloudflare Access）拦截会返回 302，
+			// 跟随后会得到 200 HTML 登录页，导致 JSON 解析失败且错误信息极不直观。
+			CheckRedirect: func(req *http.Request, via []*http.Request) error {
+				return http.ErrUseLastResponse
+			},
+		}
 	}
 
 	body, err := json.Marshal(enrollRequestBody{
@@ -149,6 +157,9 @@ func Run(ctx context.Context, req Request) (Result, error) {
 			return Result{}, fmt.Errorf("server rejected enrollment (400): %s", msg)
 		case http.StatusUnauthorized:
 			return Result{}, fmt.Errorf("server rejected enrollment (401): %s", msg)
+		case http.StatusFound, http.StatusMovedPermanently, http.StatusTemporaryRedirect, http.StatusPermanentRedirect:
+			loc := resp.Header.Get("Location")
+			return Result{}, fmt.Errorf("enroll 端点被重定向（状态 %d → %s）\n请检查服务器前是否有反向代理（如 Cloudflare Access）拦截了 /v1/node-enroll，需要将该路径设置为 Bypass/放行", resp.StatusCode, loc)
 		default:
 			return Result{}, fmt.Errorf("enroll failed: status=%d body=%s", resp.StatusCode, msg)
 		}
@@ -156,6 +167,9 @@ func Run(ctx context.Context, req Request) (Result, error) {
 
 	var parsed enrollResponseBody
 	if err := json.Unmarshal(respBytes, &parsed); err != nil {
+		if len(respBytes) > 0 && respBytes[0] == '<' {
+			return Result{}, fmt.Errorf("服务器返回了 HTML 页面而非 JSON（可能是反向代理拦截或服务器版本过旧，请确认 %s 的 /v1/node-enroll 端点正常）", req.ServerURL)
+		}
 		return Result{}, fmt.Errorf("decode response: %w", err)
 	}
 	if err := validatePEM(parsed.CertPEM, "CERTIFICATE"); err != nil {

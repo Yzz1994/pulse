@@ -570,11 +570,14 @@ else
     grpc_url=""
   else
     # shellcheck disable=SC2086 # 我们故意拆词以便把多个 flag 传给 enroll
-    if ! run_as_root "${bin_dir}/pulse-node" enroll $enroll_args | tee "$enroll_log"; then
-      rm -f "$token_tmp"
+    # 用临时文件捕获输出，避免 pipe 使 tee 的退出码掩盖 enroll 本身的错误。
+    if ! run_as_root "${bin_dir}/pulse-node" enroll $enroll_args > "$enroll_log" 2>&1; then
+      cat "$enroll_log" >&2
+      rm -f "$token_tmp" "$enroll_log"
       echo "pulse-node enroll 失败，安装终止" >&2
       exit 1
     fi
+    cat "$enroll_log"
     cert_target="${etc_dir}/node_cert.pem"
     key_target="${etc_dir}/node_key.pem"
     ca_target="${etc_dir}/node_ca.pem"
