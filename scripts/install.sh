@@ -166,24 +166,16 @@ setup_database() {
   [ -n "$_existing" ] && return 0
 
   echo ""
-  echo "【数据库】pulse-server 需要 PostgreSQL。"
-
-  # 询问是否已有实例
-  _has_pg=""
+  _url=""
   if tty_available; then
-    printf "是否已有可用的 PostgreSQL？直接回车=没有 [y/N]: " >/dev/tty
-    read -r _has_pg </dev/tty
+    printf "PostgreSQL 连接串（留空自动安装）: " >/dev/tty
+    read -r _url </dev/tty
   fi
 
-  case "$_has_pg" in
-    [Yy]*)
-      printf "连接串（postgres://user:pass@host:5432/db?sslmode=disable）: " >/dev/tty
-      read -r _url </dev/tty
-      [ -z "$_url" ] && { echo "连接串不能为空" >&2; exit 1; }
-      set_env_file_value "$_env_file" "PULSE_DATABASE_URL" "$_url"
-      return 0
-      ;;
-  esac
+  if [ -n "$_url" ]; then
+    set_env_file_value "$_env_file" "PULSE_DATABASE_URL" "$_url"
+    return 0
+  fi
 
   # 选择安装方式
   _method="1"
