@@ -40,8 +40,6 @@ export default function SettingsPage() {
   const [dbStats, setDbStats] = useState<DBStats | null>(null);
   const [dbStatsLoading, setDbStatsLoading] = useState(true);
 
-  // Node certificate (legacy, removed in gRPC push model)
-
   // Bark alert
   const [barkURL, setBarkURL] = useState("");
   const [barkLoading, setBarkLoading] = useState(true);

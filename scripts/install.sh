@@ -13,7 +13,6 @@ usage() {
   --token-file <PATH> 从文件读取 token，'-' 表示 stdin（与 --token 二选一）
   --insecure          enroll 时跳过控制面 TLS 校验（默认开启，首次 enroll 必需；
                       TODO: 待实现 --server-fingerprint 后改为默认关闭）
-  --cert <BASE64>     [已废弃] 旧的 server 客户端证书 base64，仅向后兼容（会被忽略）
 
 环境变量:
   PULSE_INSTALL_BIN     二进制安装目录，默认 /usr/local/bin
@@ -28,11 +27,10 @@ usage() {
 
 示例:
   # 安装控制面板（server）
-  curl -fsSL https://raw.githubusercontent.com/0xUnixIO/pulse/main/scripts/install.sh | sh -s -- server
+  bash <(curl -fsSL https://raw.githubusercontent.com/0xUnixIO/pulse/main/scripts/install.sh) server
 
   # 重置密码
-  curl -fsSL https://raw.githubusercontent.com/0xUnixIO/pulse/main/scripts/install.sh | \
-    sh -s -- server --reset-password
+  bash <(curl -fsSL https://raw.githubusercontent.com/0xUnixIO/pulse/main/scripts/install.sh) server --reset-password
 
   # 安装节点（推荐：从控制面板"添加节点"页面复制生成的命令）
   bash <(curl -fsSL https://raw.githubusercontent.com/0xUnixIO/pulse/main/scripts/install.sh) node \
@@ -49,14 +47,6 @@ EOF
 
 tty_available() {
   [ -r /dev/tty ] && [ -w /dev/tty ]
-}
-
-prompt_node_client_cert_pem() {
-  # Deprecated stub: pre-pasted client cert flow has been replaced by
-  # `pulse-node enroll`. Kept only to avoid breaking older copies of the
-  # script that may still source/call this function.
-  echo "[deprecated] prompt_node_client_cert_pem 已废弃，新流程请使用 'pulse-node enroll'。" >&2
-  return 0
 }
 
 random_password() {
@@ -267,11 +257,9 @@ server_url=""
 node_id=""
 token=""
 token_file=""
-cert_b64=""
 insecure=1
 _next_is_server=0
 _next_is_node_id=0
-_next_is_cert=0
 _next_is_token=0
 _next_is_token_file=0
 for _arg in "$@"; do
@@ -279,7 +267,6 @@ for _arg in "$@"; do
   case "$_arg" in
     --server=*)     server_url="${_arg#*=}";    continue ;;
     --node-id=*)    node_id="${_arg#*=}";       continue ;;
-    --cert=*)       cert_b64="${_arg#*=}";      continue ;;
     --token=*)      token="${_arg#*=}";         continue ;;
     --token-file=*) token_file="${_arg#*=}";    continue ;;
   esac
@@ -291,11 +278,6 @@ for _arg in "$@"; do
   if [ "$_next_is_node_id" = "1" ]; then
     node_id="$_arg"
     _next_is_node_id=0
-    continue
-  fi
-  if [ "$_next_is_cert" = "1" ]; then
-    cert_b64="$_arg"
-    _next_is_cert=0
     continue
   fi
   if [ "$_next_is_token" = "1" ]; then
@@ -313,7 +295,6 @@ for _arg in "$@"; do
     -h|--help) usage; exit 0 ;;
     --server) _next_is_server=1 ;;
     --node-id) _next_is_node_id=1 ;;
-    --cert) _next_is_cert=1 ;;
     --token) _next_is_token=1 ;;
     --token-file) _next_is_token_file=1 ;;
     --insecure) insecure=1 ;;
@@ -336,15 +317,6 @@ done
 # Silence shellcheck SC2034: force is referenced indirectly when callers
 # adopt new flow but legacy --force semantics remain reserved.
 : "${force}"
-
-if [ -n "$cert_b64" ]; then
-  cat >&2 <<'EOF'
-[deprecated] --cert 已废弃，新流程不再需要预粘贴 server 客户端证书。
-  请改用控制面板"添加节点"生成的新命令（包含 --token <ENROLL_TOKEN>）。
-  本次将忽略 --cert 的值，继续按新流程执行。
-EOF
-  cert_b64=""
-fi
 
 if [ -z "$component" ]; then
   usage
@@ -573,13 +545,6 @@ else
     exit 1
   fi
 
-  # 旧的 server 客户端证书不再使用；若残留则重命名为 .deprecated 防止混淆
-  legacy_cert="${etc_dir}/server_client_cert.pem"
-  if [ -e "$legacy_cert" ]; then
-    echo "[notice] 发现旧的 ${legacy_cert}，重命名为 ${legacy_cert}.deprecated" >&2
-    run_as_root mv "$legacy_cert" "${legacy_cert}.deprecated"
-  fi
-
   enroll_args="--server=$server_url --node-id=$node_id --token-file=$token_tmp --out=$etc_dir --env-out=$env_target"
   if [ "$insecure" = "1" ]; then
     # TODO: 待 pulse-node enroll 支持 --server-fingerprint 后，把默认改为 fingerprint pinning
@@ -616,18 +581,6 @@ else
   # PULSE_NODE_ID 由脚本写入（enroll 不知道这个值）
   set_env_file_value "$env_target" "PULSE_NODE_ID" "$node_id"
   fi  # end: if upgrade_only != 1
-
-  # 移除已废弃的环境变量（HTTP listener / 旧 mTLS 流程残留）
-  for legacy_var in PULSE_NODE_TLS_CERT_FILE PULSE_NODE_TLS_KEY_FILE \
-                    PULSE_NODE_TLS_CLIENT_CERT_FILE PULSE_NODE_CA_FILE \
-                    PULSE_NODE_ADDR PULSE_NODE_PORT; do
-    if grep -q "^${legacy_var}=" "$env_target" 2>/dev/null; then
-      tmp_env="$(mktemp)"
-      grep -v "^${legacy_var}=" "$env_target" > "$tmp_env" || true
-      run_as_root install -m 0644 "$tmp_env" "$env_target"
-      rm -f "$tmp_env"
-    fi
-  done
 
   if [ "$init_system" = "systemd" ]; then
     run_as_root install -m 0644 "${package_dir}/lib/systemd/system/pulse-node.service" "${lib_dir}/pulse-node.service"

@@ -122,9 +122,6 @@ func (a *portalAPI) handlePortal(w http.ResponseWriter, r *http.Request) {
 		subPath = parts[1]
 	}
 
-	// auth-status / auth / logout 旧的 portal 密码流程已废弃；
-	// 改用 /v1/user/login（账号密码登录返回 sub_token）。
-
 	userID, authed := a.portalAuth(r, subToken)
 	if !authed {
 		writeJSON(w, http.StatusNotFound, map[string]any{"error": "invalid token"})
@@ -172,9 +169,6 @@ func (a *portalAPI) handlePortalPost(w http.ResponseWriter, r *http.Request) {
 	if len(parts) == 2 {
 		subPath = parts[1]
 	}
-
-	// 旧的 portal 密码登录端点已废弃。
-	// /v1/user/login 在独立 handler 中处理（见 handleUserLogin）。
 
 	userID, authed := a.portalAuth(r, subToken)
 	if !authed {

@@ -12,24 +12,22 @@ Pulse 由两个二进制组成：
 最简形式（脚本会自动检测并安装本机 PostgreSQL，使用本地 socket 创建数据库）：
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/0xUnixIO/pulse/main/scripts/install.sh | sh -s -- server
+bash <(curl -fsSL https://raw.githubusercontent.com/0xUnixIO/pulse/main/scripts/install.sh) server
 ```
 
 使用已有 PostgreSQL（强烈推荐用于生产）：
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/0xUnixIO/pulse/main/scripts/install.sh | \
-  PULSE_DATABASE_URL='postgres://user:pass@host:5432/pulse?sslmode=disable' \
-  sh -s -- server
+PULSE_DATABASE_URL='postgres://user:pass@host:5432/pulse?sslmode=disable' \
+  bash <(curl -fsSL https://raw.githubusercontent.com/0xUnixIO/pulse/main/scripts/install.sh) server
 ```
 
 启用 Stripe 商店：
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/0xUnixIO/pulse/main/scripts/install.sh | \
-  PULSE_STRIPE_SECRET_KEY='sk_live_xxx' \
+PULSE_STRIPE_SECRET_KEY='sk_live_xxx' \
   PULSE_STRIPE_WEBHOOK_SECRET='whsec_xxx' \
-  sh -s -- server
+  bash <(curl -fsSL https://raw.githubusercontent.com/0xUnixIO/pulse/main/scripts/install.sh) server
 ```
 
 安装完成后会打印：
@@ -37,24 +35,21 @@ curl -fsSL https://raw.githubusercontent.com/0xUnixIO/pulse/main/scripts/install
 ```
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   面板地址: http://<IP>:<随机端口>
-  节点 gRPC: https://<面板域名>:8082
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 ```
 
 **首次访问面板会进入「初始化向导」**：在向导里设置第一个管理员用户名和密码（不通过环境变量）。
 
-> 控制面对外需要开放两个端口：HTTP（`PULSE_SERVER_ADDR`，默认随机或 `:8080`）
-> 与 gRPC（`PULSE_NODE_GRPC_ADDR`，默认 `:8082`）。前者面向用户/管理员/订阅客户端，
-> 后者面向节点。
+> 控制面只需开放一个端口（`PULSE_SERVER_ADDR`，默认随机端口）。面板 HTTP 与节点 gRPC
+> 通过 cmux 共用该端口：Cloudflare 配置为 Flexible 模式（HTTP 到源站），节点直连走 TLS。
 
 **server 安装脚本环境变量：**
 
 | 变量 | 默认值 | 说明 |
 |------|--------|------|
 | `PULSE_DATABASE_URL` | 自动检测本机 PostgreSQL | PostgreSQL 连接串，格式 `postgres://user:pass@host:5432/db?sslmode=disable` |
-| `PULSE_SERVER_ADDR` | 随机端口 | HTTP 监听地址（API + 面板 + 订阅 + enroll），格式 `:端口` |
-| `PULSE_NODE_GRPC_ADDR` | `:8082` | 节点 gRPC Hub 监听地址 |
-| `PULSE_NODE_GRPC_URL` | `https://<面板域名>:8082` | enroll 时返回给节点的 gRPC 拨号 URL；公网部署需改为可达地址 |
+| `PULSE_SERVER_ADDR` | 随机端口 | 监听地址（面板 + API + 订阅 + enroll + 节点 gRPC 共用），格式 `:端口` |
+| `PULSE_NODE_GRPC_URL` | 脚本自动推断（`https://<公网IP>:<PULSE_SERVER_ADDR端口>`） | enroll 时返回给节点的 gRPC 拨号 URL；域名部署需手动设置 |
 | `PULSE_NODE_CA_CERT_FILE` | `/etc/pulse/node_ca_cert.pem` | NodeCA 证书（首次启动自动生成） |
 | `PULSE_NODE_CA_KEY_FILE` | `/etc/pulse/node_ca_key.pem` | NodeCA 私钥 |
 | `PULSE_DATA_DIR` | `/var/lib/pulse` | 数据目录（geoip / 上传文件等） |
@@ -112,7 +107,7 @@ echo "$ENROLL_TOKEN" | bash <(curl -fsSL https://raw.githubusercontent.com/0xUni
    写入 `pulse-node.env`
 4. 启动 systemd / OpenRC 服务
 
-启动后 pulse-node 会主动连控制面 gRPC（默认 `:8082`）建立长连接，**节点本身不监听任何端口**。
+启动后 pulse-node 会主动连控制面 gRPC（与面板同端口，enroll 时写入 `PULSE_NODE_GRPC_URL`）建立长连接，**节点本身不监听任何端口**。
 
 安装完成后显示：
 
@@ -120,7 +115,7 @@ echo "$ENROLL_TOKEN" | bash <(curl -fsSL https://raw.githubusercontent.com/0xUni
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   节点 ID:     <node-id>
   节点出口:    <node-ip>
-  控制面 gRPC: https://<控制面板地址>:8082
+  控制面 gRPC: https://<控制面板地址>:<面板端口>
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 ```
