@@ -495,16 +495,29 @@ function ManualUpdateDialog({
   const [enroll, setEnroll] = useState<EnrollTokenResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
+  const [updated, setUpdated] = useState(false);
+  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   useEffect(() => {
     if (!open || !node) return;
     setEnroll(null);
     setError(null);
+    setUpdated(false);
     api
       .post<EnrollTokenResponse>(`/nodes/${node.id}/enroll-token`, {})
       .then(setEnroll)
       .catch((e: Error) => setError(e.message || "生成安装 token 失败"));
   }, [open, node]);
+
+  useEffect(() => {
+    if (!open || !node || updated) return;
+    pollRef.current = setInterval(() => {
+      api.get<Node>(`/nodes/${node.id}`)
+        .then((n) => { if (n.online) setUpdated(true); })
+        .catch(() => {});
+    }, 3000);
+    return () => { if (pollRef.current) clearInterval(pollRef.current); };
+  }, [open, node, updated]);
 
   const installCmd = enroll?.install_command ?? (error ?? "正在获取安装信息…");
 
@@ -547,7 +560,22 @@ function ManualUpdateDialog({
           </button>
         </div>
         <DialogFooter>
-          <Button onClick={onClose}>关闭</Button>
+          <div className="flex w-full items-center justify-between">
+            <div className="flex items-center gap-2 text-sm">
+              {updated ? (
+                <>
+                  <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 text-emerald-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" /></svg>
+                  <span className="text-emerald-500">节点已就绪</span>
+                </>
+              ) : (
+                <>
+                  <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 animate-spin text-[hsl(var(--muted-foreground))]" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" /><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" /></svg>
+                  <span className="text-[hsl(var(--muted-foreground))]">等待节点上线…</span>
+                </>
+              )}
+            </div>
+            <Button onClick={onClose}>完成</Button>
+          </div>
         </DialogFooter>
       </DialogContent>
     </Dialog>
