@@ -656,6 +656,12 @@ if [ "$component" = "server" ]; then
   echo "  面板地址: http://${_ip}:${_port}"
   if [ -n "$_grpc_url" ]; then
     echo "  节点 gRPC: ${_grpc_url}"
+  else
+    echo ""
+    echo "  ⚠  PULSE_NODE_GRPC_URL 未配置，节点 enroll 后将使用 localhost:8082。"
+    echo "     请编辑 ${env_target}，设置:"
+    echo "     PULSE_NODE_GRPC_URL=https://${_ip}:8082"
+    echo "     然后执行: pulse-server restart"
   fi
   echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 else
