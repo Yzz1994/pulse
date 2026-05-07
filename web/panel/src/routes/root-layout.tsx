@@ -23,7 +23,6 @@ const navItems = [
   { to: "/panel/routerules", label: "Route Rules", icon: RouteRuleIcon },
   { to: "/panel/domains", label: "Domains", icon: DomainIcon },
   { to: "/panel/sniproxy", label: "NodeGate", icon: GlobeIcon },
-  { to: "/panel/traceroute", label: "Traceroute", icon: TracerouteIcon },
   { to: "/panel/latency", label: "Latency", icon: LatencyIcon },
   { to: "/panel/audit", label: "Audit Logs", icon: ShieldIcon },
   { to: "/panel/plans", label: "Plans", icon: TagIcon },
@@ -593,28 +592,6 @@ function GroupIcon(props: React.SVGProps<SVGSVGElement>) {
   );
 }
 
-
-function TracerouteIcon(props: React.SVGProps<SVGSVGElement>) {
-  return (
-    <svg
-      xmlns="http://www.w3.org/2000/svg"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth={2}
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      {...props}
-    >
-      <circle cx="12" cy="12" r="2" />
-      <path d="M12 2a10 10 0 0 1 7.39 16.76" />
-      <path d="M12 2a10 10 0 0 0-7.39 16.76" />
-      <path d="M12 22v-2" />
-      <path d="M5 19l1.5-1.5" />
-      <path d="M19 19l-1.5-1.5" />
-    </svg>
-  );
-}
 
 function LatencyIcon(props: React.SVGProps<SVGSVGElement>) {
   return (

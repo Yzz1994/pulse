@@ -122,6 +122,17 @@ func (s *MemoryStore) GetPasswordBySubToken(subToken string) (string, string, er
 	return "", "", ErrUserNotFound
 }
 
+func (s *MemoryStore) GetPasswordByUsername(username string) (string, string, string, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	for _, u := range s.users {
+		if u.Username == username {
+			return u.ID, u.Password, u.SubToken, nil
+		}
+	}
+	return "", "", "", ErrUserNotFound
+}
+
 func (s *MemoryStore) GetAdminUser() (User, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()

@@ -826,56 +826,6 @@ func ApplyNodeUsers(ctx context.Context, client *nodes.Client, nodeInbounds []in
 		}
 	}
 
-	// direct 模式：为每个 Trojan/AnyTLS inbound 收集 Host SNI，供 Xray 生成证书配置
-	inboundSNIs := make(map[string][]string)
-	if node.TLSMode == "direct" && ibStore != nil {
-		for _, ib := range nodeInbounds {
-			if ib.Protocol != "trojan" && ib.Protocol != "anytls" {
-				continue
-			}
-			hosts, _ := ibStore.ListHostsByInbound(ib.ID)
-			seen := make(map[string]struct{})
-			for _, h := range hosts {
-				sni := h.SNI
-				if sni == "" {
-					sni = h.Address
-				}
-				if sni != "" {
-					if _, dup := seen[sni]; !dup {
-						seen[sni] = struct{}{}
-						inboundSNIs[ib.ID] = append(inboundSNIs[ib.ID], sni)
-					}
-				}
-			}
-		}
-	}
-
-	// direct 模式：先推 NodeGate 配置触发 certmgr 申请证书，等证书 Ready 再启动 Xray
-	if node.TLSMode == "direct" && ibStore != nil {
-		cfToken := ""
-		if applyOpts.Settings != nil {
-			cfToken = getCFToken(applyOpts.Settings)
-		}
-		sniReq := BuildSNIProxySyncReq(node, nodeInbounds, ibStore, allNodeMap, cfToken, applyOpts.PanelPort)
-		var allSNIs []string
-		seen := make(map[string]struct{})
-		for _, sns := range inboundSNIs {
-			for _, s := range sns {
-				if _, dup := seen[s]; !dup {
-					seen[s] = struct{}{}
-					allSNIs = append(allSNIs, s)
-				}
-			}
-		}
-		if nodeGateOK, err := waitForDirectTLSCerts(ctx, client, sniReq, allSNIs, 5*time.Minute); err != nil {
-			if !nodeGateOK {
-				return nodes.Status{}, "", fmt.Errorf("direct TLS NodeGate 同步失败: %w", err)
-			}
-			// NodeGate 已更新，cert 等待被 ctx 取消或超时：继续推 Xray（证书可能已就绪）
-			log.Printf("warn: direct TLS cert wait: %v，NodeGate 已更新，继续推 Xray", err)
-		}
-	}
-
 	cfg, err := proxycfg.Build(nodeInbounds, userAccesses, userMap, proxycfg.BuildOptions{
 		OutboundMap:    outboundMap,
 		RouteRules:     globalRouteRules,
@@ -883,7 +833,6 @@ func ApplyNodeUsers(ctx context.Context, client *nodes.Client, nodeInbounds []in
 		AllInboundMap:  allInboundMap,
 		AllNodeMap:     allNodeMap,
 		UserInboundMap: userInboundMap,
-		InboundSNIs:    inboundSNIs,
 	})
 	if err != nil {
 		return nodes.Status{}, "", err
@@ -894,17 +843,15 @@ func ApplyNodeUsers(ctx context.Context, client *nodes.Client, nodeInbounds []in
 		return status, cfg, err
 	}
 
-	// 同步路由到 NodeGate（direct 模式的 NodeGate sync 已在上方提前完成）
+	// 同步路由到 NodeGate
 	if ibStore != nil {
-		if node.TLSMode != "direct" {
-			cfToken := ""
-			if applyOpts.Settings != nil {
-				cfToken = getCFToken(applyOpts.Settings)
-			}
-			sniReq := BuildSNIProxySyncReq(node, nodeInbounds, ibStore, allNodeMap, cfToken, applyOpts.PanelPort)
-			if syncErr := client.SyncSNIProxy(ctx, sniReq); syncErr != nil {
-				log.Printf("warn: sniproxy sync: %v", syncErr)
-			}
+		cfToken := ""
+		if applyOpts.Settings != nil {
+			cfToken = getCFToken(applyOpts.Settings)
+		}
+		sniReq := BuildSNIProxySyncReq(node, nodeInbounds, ibStore, allNodeMap, cfToken, applyOpts.PanelPort)
+		if syncErr := client.SyncSNIProxy(ctx, sniReq); syncErr != nil {
+			log.Printf("warn: sniproxy sync: %v", syncErr)
 		}
 	}
 
@@ -1035,60 +982,3 @@ func PortforwardTargetPort(ib inbounds.Inbound, httpsPort int) int {
 	}
 }
 
-// waitForDirectTLSCerts 在 direct TLS 模式下，先推送 NodeGate 配置触发 certmgr 申请证书，
-// 然后轮询 sniproxy status 直到所有 domains 的证书均 Ready，或超时返回错误。
-// 返回 (nodeGateOK, err)：nodeGateOK=false 表示 NodeGate sync 本身失败（配置未下发），
-// nodeGateOK=true+err!=nil 表示配置已下发但 cert 等待被取消/超时。
-func waitForDirectTLSCerts(ctx context.Context, client *nodes.Client, sniReq nodes.SNIProxySyncRequest, domains []string, timeout time.Duration) (nodeGateOK bool, err error) {
-	if err := client.SyncSNIProxy(ctx, sniReq); err != nil {
-		return false, fmt.Errorf("nodegate sync: %w", err)
-	}
-	if len(domains) == 0 {
-		return true, nil
-	}
-
-	deadline := time.Now().Add(timeout)
-	for {
-		status, err := client.SNIProxyStatus(ctx)
-		if err == nil {
-			if directTLSCertsReady(status, domains) {
-				return true, nil
-			}
-		}
-		if time.Now().After(deadline) {
-			return true, fmt.Errorf("证书申请超时（%s），请检查 Cloudflare Token 或在 NodeGate 页面查看详情", timeout)
-		}
-		select {
-		case <-ctx.Done():
-			return true, ctx.Err()
-		case <-time.After(5 * time.Second):
-		}
-	}
-}
-
-// directTLSCertsReady 从 sniproxy status 响应中检查所有 domains 的证书是否均 Ready。
-func directTLSCertsReady(status map[string]any, domains []string) bool {
-	s, _ := status["status"].(map[string]any)
-	if s == nil {
-		return false
-	}
-	certsRaw, _ := s["certs"].([]any)
-	ready := make(map[string]bool, len(certsRaw))
-	for _, c := range certsRaw {
-		cm, ok := c.(map[string]any)
-		if !ok {
-			continue
-		}
-		domain, _ := cm["domain"].(string)
-		isReady, _ := cm["ready"].(bool)
-		if domain != "" {
-			ready[domain] = isReady
-		}
-	}
-	for _, d := range domains {
-		if !ready[d] {
-			return false
-		}
-	}
-	return true
-}

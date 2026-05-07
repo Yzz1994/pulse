@@ -706,6 +706,9 @@ func (db *DB) init() error {
 		`ALTER TABLE users ADD COLUMN IF NOT EXISTS password TEXT NOT NULL DEFAULT ''`,
 		`ALTER TABLE users ADD COLUMN IF NOT EXISTS is_admin BOOLEAN NOT NULL DEFAULT FALSE`,
 		`CREATE UNIQUE INDEX IF NOT EXISTS users_one_admin ON users(is_admin) WHERE is_admin = TRUE`,
+		// sub_token 唯一约束：避免手动改写或迁移导入造成重复，导致订阅链接错位。
+		// 空字符串不参与唯一性（部分老用户可能历史无 token）。
+		`CREATE UNIQUE INDEX IF NOT EXISTS idx_users_sub_token ON users(sub_token) WHERE sub_token <> ''`,
 		// portal_sessions：用户门户密码登录 session
 		`CREATE TABLE IF NOT EXISTS portal_sessions (
 			token      TEXT PRIMARY KEY,

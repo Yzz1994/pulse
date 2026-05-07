@@ -8,8 +8,6 @@ import (
 	"fmt"
 	"net"
 	"net/url"
-	"path/filepath"
-	"regexp"
 	"sort"
 	"strconv"
 	"strings"
@@ -49,12 +47,6 @@ type BuildOptions struct {
 	AllInboundMap  map[string]inbounds.Inbound
 	AllNodeMap     map[string]nodes.Node
 	UserInboundMap map[string]users.UserInbound
-	// CertStoragePath certmgr 证书存储根目录，direct TLS 模式下用于定位证书文件。
-	// 为空时使用默认值 /var/lib/pulse-node/certs。
-	CertStoragePath string
-	// InboundSNIs direct 模式下各 inbound 对应的域名列表（inboundID → SNI 列表）。
-	// 由调用方从 Host 配置自动收集，Xray 会为每个 SNI 加载一条证书。
-	InboundSNIs map[string][]string
 }
 
 // Xray 配置顶层结构
@@ -253,7 +245,7 @@ func BuildXrayConfig(nodeInbounds []inbounds.Inbound, userAccesses []users.UserI
 			continue
 		}
 
-		// AnyTLS：NodeGate 模式下 NodeGate 终止 TLS 转发明文，仅监听本地；direct 模式下 NodeGate passthrough，需要监听公网
+		// AnyTLS：NodeGate 终止 TLS，转发明文给 Xray，仅监听本地
 		if ib.Protocol == "anytls" {
 			anytlsUsers := make([]xrayAnyTLSUser, 0, len(ibAccesses))
 			for _, acc := range ibAccesses {
@@ -276,10 +268,7 @@ func BuildXrayConfig(nodeInbounds []inbounds.Inbound, userAccesses []users.UserI
 			if err != nil {
 				return "", err
 			}
-			anytlsListen := "127.0.0.1"
-			if opts.AllNodeMap[opts.NodeID].TLSMode == "direct" {
-				anytlsListen = "0.0.0.0"
-			}
+			const anytlsListen = "127.0.0.1"
 			xib := xrayInbound{
 				Tag:            tag,
 				Listen:         anytlsListen,
@@ -292,11 +281,8 @@ func BuildXrayConfig(nodeInbounds []inbounds.Inbound, userAccesses []users.UserI
 			continue
 		}
 
-		// trojan NodeGate 模式下由 NodeGate 转发，仅监听本地；direct 模式下 NodeGate passthrough，需要监听公网
-		listenAddr := "0.0.0.0"
-		if ib.Protocol == "trojan" && opts.AllNodeMap[opts.NodeID].TLSMode != "direct" {
-			listenAddr = "127.0.0.1"
-		}
+		// NodeGate 模式下由 NodeGate 转发，仅监听本地
+		listenAddr := "127.0.0.1"
 
 		xib := xrayInbound{
 			Tag:      tag,
@@ -769,45 +755,9 @@ func buildXrayOutboundBlock(ob outbounds.Outbound, tag string) xrayOutbound {
 	}
 }
 
-const defaultCertStoragePath = "/var/lib/pulse-node/certs"
-
-// domainRe 校验 TLSCertDomain 是合法域名，防止路径拼接时 ../ 逃逸
-var domainRe = regexp.MustCompile(`^[a-zA-Z0-9]([a-zA-Z0-9\-]{0,61}[a-zA-Z0-9])?(\.[a-zA-Z0-9]([a-zA-Z0-9\-]{0,61}[a-zA-Z0-9])?)*$`)
-
-// tlsStreamForNode 根据节点 TLSMode 生成 Trojan / AnyTLS 的 StreamSettings。
-//
-//   - NodeGate（默认）：Trojan 使用 WS transport，AnyTLS 使用裸 TCP；均无 TLS（由 NodeGate 终止）。
-//   - direct：裸 TCP + TLS，Xray 自持 certmgr 证书；NodeGate 做 TCP passthrough。
+// tlsStreamForNode 生成 Trojan / AnyTLS 的 StreamSettings。
+// NodeGate 终止 TLS：Trojan 使用 WS transport，AnyTLS 使用裸 TCP；均无 TLS（由 NodeGate 终止）。
 func tlsStreamForNode(ib inbounds.Inbound, opts BuildOptions) (*xrayStream, error) {
-	node := opts.AllNodeMap[opts.NodeID]
-	if node.TLSMode == "direct" {
-		sns := opts.InboundSNIs[ib.ID]
-		if len(sns) == 0 {
-			return nil, fmt.Errorf("node %s inbound %s: tls_mode=direct 但未找到任何 Host SNI，无法生成证书配置", opts.NodeID, ib.Tag)
-		}
-		storagePath := opts.CertStoragePath
-		if storagePath == "" {
-			storagePath = defaultCertStoragePath
-		}
-		var certs []xrayCertificate
-		for _, domain := range sns {
-			if !domainRe.MatchString(domain) {
-				return nil, fmt.Errorf("node %s inbound %s: SNI %q 格式非法", opts.NodeID, ib.Tag, domain)
-			}
-			acmeDir := filepath.Join(storagePath, "certificates", "acme-v02.api.letsencrypt.org-directory", domain)
-			certs = append(certs, xrayCertificate{
-				CertificateFile: filepath.Join(acmeDir, domain+".crt"),
-				KeyFile:         filepath.Join(acmeDir, domain+".key"),
-			})
-		}
-		return &xrayStream{
-			Network:  "tcp",
-			Security: "tls",
-			TLSSettings: &xrayTLSSettings{
-				Certificates: certs,
-			},
-		}, nil
-	}
 	return tlsStreamNodeGateFallback(ib.Protocol), nil
 }
 

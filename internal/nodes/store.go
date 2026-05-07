@@ -22,10 +22,6 @@ type Node struct {
 	Remark            string     `json:"remark"`     // 备注
 	IPOverride        string     `json:"ip_override"` // GeoIP 查询用的 IP/域名（base_url 为内网时填写公网地址）
 	Disabled          bool       `json:"disabled"`   // 禁用后跳过流量同步和配置下发
-	// TLSMode 服务端 TLS 模式（节点级别）：
-	//   ""        — NodeGate 终止 TLS，Xray 收明文（默认）
-	//   "direct"  — NodeGate TCP passthrough，Xray 自持证书（域名从 inbound Host SNI 自动收集）
-	TLSMode string `json:"tls_mode,omitempty"`
 	// IsLanding 标记该节点为落地机（默认 true）。
 	// 落地机不采集 access log、不做延迟检测和路由追踪。
 	// 设为 false 表示线路机，启用上述功能。

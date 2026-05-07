@@ -33,10 +33,6 @@ type ManagerConfig struct {
 
 	// Routes SNI → 后端的路由表。
 	Routes []Route `json:"routes"`
-
-	// CertDomains 需要由 certmgr 申请和续期、但不在 Terminating 路由中的额外域名。
-	// direct TLS 模式下 Xray 自持证书，NodeGate 做透明转发，证书仍由 certmgr 统一管理。
-	CertDomains []string `json:"cert_domains,omitempty"`
 }
 
 // Manager 是 pulse-node 上的 SNI 代理运行实例：
@@ -174,9 +170,8 @@ func (m *Manager) applyLocked(cfg ManagerConfig, persist bool) error {
 	// 让接下来走重启分支而不是"往死的 proxy 热更新"。
 	m.checkLivenessLocked()
 
-	// 情况 1：无路由且无 CertDomains = 完全停止
-	// 有 CertDomains 但无路由（如 direct 模式落地节点）= 只跑 certmgr，不启动 proxy
-	if (cfg.Listen == "" || len(cfg.Routes) == 0) && len(cfg.CertDomains) == 0 {
+	// 情况 1：无路由 = 完全停止
+	if cfg.Listen == "" || len(cfg.Routes) == 0 {
 		m.stopLocked()
 		m.cfg = cfg
 		if persist {
@@ -195,7 +190,7 @@ func (m *Manager) applyLocked(cfg ManagerConfig, persist bool) error {
 		m.cfg.CertStoragePath != cfg.CertStoragePath ||
 		m.cfg.ACMEStaging != cfg.ACMEStaging
 
-	// 重建 certmgr（Terminating/HTTPReverse 路由或 CertDomains 非空时均需要）
+	// 重建 certmgr（Terminating/HTTPReverse 路由时需要）
 	hasCertRoutes := false
 	for _, r := range cfg.Routes {
 		if r.Mode == ModeTerminating || r.Mode == ModeHTTPReverse {
@@ -203,7 +198,7 @@ func (m *Manager) applyLocked(cfg ManagerConfig, persist bool) error {
 			break
 		}
 	}
-	needCerts := hasCertRoutes || len(cfg.CertDomains) > 0
+	needCerts := hasCertRoutes
 
 	if needCerts && needCertRestart {
 		if m.certs != nil {
@@ -211,10 +206,10 @@ func (m *Manager) applyLocked(cfg ManagerConfig, persist bool) error {
 			m.certs = nil
 		}
 		if cfg.CloudflareToken == "" {
-			return fmt.Errorf("sniproxy: cloudflare_token required when certs are needed (terminating routes or cert_domains)")
+			return fmt.Errorf("sniproxy: cloudflare_token required when certs are needed (terminating routes)")
 		}
 		if cfg.CertStoragePath == "" {
-			return fmt.Errorf("sniproxy: cert_storage_path required when certs are needed (terminating routes or cert_domains)")
+			return fmt.Errorf("sniproxy: cert_storage_path required when certs are needed (terminating routes)")
 		}
 		c, err := certmgr.New(certmgr.Config{
 			StoragePath:        cfg.CertStoragePath,
@@ -231,7 +226,7 @@ func (m *Manager) applyLocked(cfg ManagerConfig, persist bool) error {
 		m.certs = nil
 	}
 
-	// 同步 certmgr 管理的域名：terminating 路由的 SNI + 额外 CertDomains
+	// 同步 certmgr 管理的域名：terminating/http-reverse 路由的 SNI
 	if m.certs != nil {
 		seen := make(map[string]struct{})
 		var domains []string
@@ -243,27 +238,9 @@ func (m *Manager) applyLocked(cfg ManagerConfig, persist bool) error {
 				}
 			}
 		}
-		for _, d := range cfg.CertDomains {
-			if d != "" {
-				if _, dup := seen[d]; !dup {
-					seen[d] = struct{}{}
-					domains = append(domains, d)
-				}
-			}
-		}
 		if err := m.certs.Replace(domains); err != nil {
 			log.Printf("sniproxy: certmgr replace: %v", err)
 		}
-	}
-
-	// 无路由时只跑 certmgr（direct 模式落地节点：证书需要但不需要 proxy 监听）
-	if cfg.Listen == "" || len(cfg.Routes) == 0 {
-		m.stopProxyLocked()
-		m.cfg = cfg
-		if persist {
-			_ = m.persistLocked()
-		}
-		return nil
 	}
 
 	// 启动或重启 proxy

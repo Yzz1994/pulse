@@ -51,7 +51,6 @@ type updateUserRequest struct {
 	ExpireAt               *time.Time `json:"expire_at,omitempty"`
 	DataLimitResetStrategy string     `json:"data_limit_reset_strategy"`
 	TrafficLimit           int64      `json:"traffic_limit_bytes"`
-	SubToken               string     `json:"sub_token,omitempty"`
 	Note                   *string    `json:"note,omitempty"`
 	OnHoldExpireAt         *time.Time `json:"on_hold_expire_at,omitempty"`
 	ClearOnHoldExpireAt    bool       `json:"clear_on_hold_expire_at,omitempty"`
@@ -176,6 +175,8 @@ func (a *userAPI) handleUserRoutes(w http.ResponseWriter, r *http.Request) {
 			a.handleNodeUsage(w, r, userID)
 		case "credentials":
 			a.handleUserCredentials(w, r, userID)
+		case "regenerate-sub-token":
+			a.handleRegenerateSubToken(w, r, userID)
 		default:
 			writeJSON(w, http.StatusNotFound, map[string]any{"error": "route not found"})
 		}
@@ -269,9 +270,6 @@ func (a *userAPI) handleUpdateUser(w http.ResponseWriter, r *http.Request, userI
 	}
 	if req.TrafficLimit >= 0 && req.TrafficLimit != user.TrafficLimit {
 		user.TrafficLimit = req.TrafficLimit
-	}
-	if req.SubToken != "" {
-		user.SubToken = req.SubToken
 	}
 	if req.Note != nil {
 		user.Note = strings.TrimSpace(*req.Note)
@@ -422,6 +420,27 @@ func (a *userAPI) handleUserInbound(w http.ResponseWriter, r *http.Request, user
 
 // handleUserCredentials 管理用户全局凭证（UUID / Secret）。
 // GET 返回当前凭证；PUT 更新凭证（留空则重新随机生成），随后触发全节点配置下发。
+// handleRegenerateSubToken 重新生成用户的 sub_token，使老的订阅链接失效。
+// 仅接受 POST，token 由服务端用 crypto/rand 生成。
+func (a *userAPI) handleRegenerateSubToken(w http.ResponseWriter, r *http.Request, userID string) {
+	if r.Method != http.MethodPost {
+		writeJSON(w, http.StatusMethodNotAllowed, map[string]any{"error": "method not allowed"})
+		return
+	}
+	user, err := a.users.GetUser(userID)
+	if err != nil {
+		writeUserError(w, err)
+		return
+	}
+	user.SubToken = randomToken(16)
+	updated, err := a.users.UpsertUser(user)
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]any{"error": err.Error()})
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"sub_token": updated.SubToken})
+}
+
 func (a *userAPI) handleUserCredentials(w http.ResponseWriter, r *http.Request, userID string) {
 	user, err := a.users.GetUser(userID)
 	if err != nil {

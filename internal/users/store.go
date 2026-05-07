@@ -100,6 +100,8 @@ type Store interface {
 	SetPassword(userID, hash string) error
 	// GetPasswordBySubToken 根据 sub_token 返回用户 ID 和门户密码 hash，供登录验证使用。
 	GetPasswordBySubToken(subToken string) (userID string, hash string, err error)
+	// GetPasswordByUsername 根据 username 返回用户 ID、密码 hash、sub_token，供 /user 账号登录使用。
+	GetPasswordByUsername(username string) (userID string, hash string, subToken string, err error)
 	// GetAdminUser 返回第一个 is_admin=true 的用户，没找到返回 ErrUserNotFound。
 	GetAdminUser() (User, error)
 	// SetIsAdmin 设置指定用户的管理员标记。

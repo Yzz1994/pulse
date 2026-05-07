@@ -22,8 +22,8 @@ func (a *API) DoSyncSNIProxy(req sniproxy.ManagerConfig) (SNIProxySyncResponse, 
 if a.sniManager == nil {
 return SNIProxySyncResponse{}, ErrSNIProxyNotConfigured
 }
-log.Printf("sniproxy apply: listen=%q routes=%d cert_domains=%v cf_token_set=%v",
-req.Listen, len(req.Routes), req.CertDomains, req.CloudflareToken != "")
+log.Printf("sniproxy apply: listen=%q routes=%d cf_token_set=%v",
+req.Listen, len(req.Routes), req.CloudflareToken != "")
 if err := a.sniManager.Apply(req); err != nil {
 return SNIProxySyncResponse{}, err
 }

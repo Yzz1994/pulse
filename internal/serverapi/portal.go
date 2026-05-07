@@ -1,8 +1,6 @@
 package serverapi
 
 import (
-	"crypto/rand"
-	"encoding/hex"
 	"encoding/json"
 	"io"
 	"net/http"
@@ -21,8 +19,6 @@ import (
 	"pulse/internal/tickets"
 	"pulse/internal/users"
 )
-
-const portalCookieName = "pulse_portal_token"
 
 // SettingsGetter reads settings from the store.
 type SettingsGetter interface {
@@ -55,28 +51,61 @@ func RegisterPortalAPI(mux *http.ServeMux, us users.Store, ns nodes.Store, ibs i
 	a := &portalAPI{users: us, nodes: ns, inbounds: ibs, outbounds: obs, settings: settings, plans: planStore, announcements: annStore, tickets: ticketStore, sessions: sesStore, uploadsDir: uploadsDir}
 	mux.HandleFunc("GET /v1/portal/", a.handlePortal)
 	mux.HandleFunc("POST /v1/portal/", a.handlePortalPost)
+	// 账号密码登录端点（独立于 sub_token 路由）：返回 sub_token，前端跳转到 /user/:token。
+	mux.HandleFunc("POST /v1/user/login", a.handleUserLogin)
 }
 
-// portalAuth 从 Cookie 验证门户 session，返回用户 ID。
-// 用户无密码时直接返回 subToken 对应用户的 ID（允许无 session 访问）。
-func (a *portalAPI) portalAuth(r *http.Request, subToken string) (userID string, ok bool) {
-	expectedUserID, hash, err := a.users.GetPasswordBySubToken(subToken)
+// handleUserLogin 处理 /v1/user/login：账号密码登录，成功返回 sub_token。
+// 前端拿到后跳转到 /user/:sub_token。无 cookie / session，纯 stateless。
+func (a *portalAPI) handleUserLogin(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		Username string `json:"username"`
+		Password string `json:"password"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]any{"error": "invalid json"})
+		return
+	}
+	req.Username = strings.TrimSpace(req.Username)
+	if req.Username == "" || req.Password == "" {
+		writeJSON(w, http.StatusBadRequest, map[string]any{"error": "username and password are required"})
+		return
+	}
+	if len(req.Password) > 72 {
+		writeJSON(w, http.StatusBadRequest, map[string]any{"error": "password too long"})
+		return
+	}
+
+	_, hash, subToken, err := a.users.GetPasswordByUsername(req.Username)
 	if err != nil {
-		return "", false
+		writeJSON(w, http.StatusUnauthorized, map[string]any{"error": "invalid credentials"})
+		return
 	}
 	if hash == "" {
-		return expectedUserID, true
+		writeJSON(w, http.StatusUnauthorized, map[string]any{"error": "password not set, please contact admin"})
+		return
 	}
-	// 有密码，验证 session cookie 并确认归属
-	cookie, err := r.Cookie(portalCookieName)
+	if err := bcrypt.CompareHashAndPassword([]byte(hash), []byte(req.Password)); err != nil {
+		writeJSON(w, http.StatusUnauthorized, map[string]any{"error": "invalid credentials"})
+		return
+	}
+	if subToken == "" {
+		writeJSON(w, http.StatusInternalServerError, map[string]any{"error": "user has no sub_token"})
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"sub_token": subToken})
+}
+
+// portalAuth 通过 sub_token 解析用户 ID。
+// 新模型：sub_token 即凭证，不再使用密码 cookie session。
+// 账号密码登录走独立端点 /v1/user/login，登录成功后跳转到 /user/:sub_token。
+func (a *portalAPI) portalAuth(r *http.Request, subToken string) (userID string, ok bool) {
+	_ = r
+	user, err := a.users.GetUserBySubToken(subToken)
 	if err != nil {
 		return "", false
 	}
-	uid, exists := a.sessions.GetUserID(cookie.Value)
-	if !exists || uid != expectedUserID {
-		return "", false
-	}
-	return uid, true
+	return user.ID, true
 }
 
 func (a *portalAPI) handlePortal(w http.ResponseWriter, r *http.Request) {
@@ -93,15 +122,12 @@ func (a *portalAPI) handlePortal(w http.ResponseWriter, r *http.Request) {
 		subPath = parts[1]
 	}
 
-	// auth 子路由无需已登录
-	if subPath == "auth-status" {
-		a.handlePortalAuthStatus(w, r, subToken)
-		return
-	}
+	// auth-status / auth / logout 旧的 portal 密码流程已废弃；
+	// 改用 /v1/user/login（账号密码登录返回 sub_token）。
 
 	userID, authed := a.portalAuth(r, subToken)
 	if !authed {
-		writeJSON(w, http.StatusUnauthorized, map[string]any{"error": "unauthorized", "requires_password": true})
+		writeJSON(w, http.StatusNotFound, map[string]any{"error": "invalid token"})
 		return
 	}
 
@@ -147,19 +173,12 @@ func (a *portalAPI) handlePortalPost(w http.ResponseWriter, r *http.Request) {
 		subPath = parts[1]
 	}
 
-	// 登录 / 登出无需已登录
-	switch subPath {
-	case "auth":
-		a.handlePortalLogin(w, r, subToken)
-		return
-	case "logout":
-		a.handlePortalLogout(w, r)
-		return
-	}
+	// 旧的 portal 密码登录端点已废弃。
+	// /v1/user/login 在独立 handler 中处理（见 handleUserLogin）。
 
 	userID, authed := a.portalAuth(r, subToken)
 	if !authed {
-		writeJSON(w, http.StatusUnauthorized, map[string]any{"error": "unauthorized", "requires_password": true})
+		writeJSON(w, http.StatusNotFound, map[string]any{"error": "invalid token"})
 		return
 	}
 
@@ -180,97 +199,6 @@ func (a *portalAPI) handlePortalPost(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusNotFound, map[string]any{"error": "route not found"})
 	}
 }
-
-// handlePortalAuthStatus 返回该 sub_token 是否需要密码，以及当前是否已认证。
-func (a *portalAPI) handlePortalAuthStatus(w http.ResponseWriter, r *http.Request, subToken string) {
-	expectedUserID, hash, err := a.users.GetPasswordBySubToken(subToken)
-	if err != nil {
-		writeJSON(w, http.StatusNotFound, map[string]any{"error": "user not found"})
-		return
-	}
-	requiresPassword := hash != ""
-	authed := false
-	if requiresPassword {
-		if cookie, cErr := r.Cookie(portalCookieName); cErr == nil {
-			uid, exists := a.sessions.GetUserID(cookie.Value)
-			authed = exists && uid == expectedUserID
-		}
-	} else {
-		authed = true
-	}
-	writeJSON(w, http.StatusOK, map[string]any{
-		"requires_password": requiresPassword,
-		"authenticated":     authed,
-	})
-}
-
-func (a *portalAPI) handlePortalLogin(w http.ResponseWriter, r *http.Request, subToken string) {
-	var req struct {
-		Password string `json:"password"`
-	}
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]any{"error": "invalid json"})
-		return
-	}
-	if len(req.Password) > 72 {
-		writeJSON(w, http.StatusBadRequest, map[string]any{"error": "password too long"})
-		return
-	}
-
-	userID, hash, err := a.users.GetPasswordBySubToken(subToken)
-	if err != nil {
-		writeJSON(w, http.StatusNotFound, map[string]any{"error": "user not found"})
-		return
-	}
-	if hash == "" {
-		writeJSON(w, http.StatusBadRequest, map[string]any{"error": "no password set"})
-		return
-	}
-	if err := bcrypt.CompareHashAndPassword([]byte(hash), []byte(req.Password)); err != nil {
-		writeJSON(w, http.StatusUnauthorized, map[string]any{"error": "invalid password"})
-		return
-	}
-
-	buf := make([]byte, 32)
-	if _, err := rand.Read(buf); err != nil {
-		internalError(w, r, err)
-		return
-	}
-	sessionToken := hex.EncodeToString(buf)
-	expiresAt := time.Now().Add(7 * 24 * time.Hour)
-	if err := a.sessions.Create(sessionToken, userID, expiresAt); err != nil {
-		writeJSON(w, http.StatusInternalServerError, map[string]any{"error": "create session failed"})
-		return
-	}
-
-	http.SetCookie(w, &http.Cookie{
-		Name:     portalCookieName,
-		Value:    sessionToken,
-		Path:     "/",
-		MaxAge:   86400 * 7, // 7 天
-		HttpOnly: true,
-		Secure:   true,
-		SameSite: http.SameSiteLaxMode,
-	})
-	writeJSON(w, http.StatusOK, map[string]any{"ok": true})
-}
-
-func (a *portalAPI) handlePortalLogout(w http.ResponseWriter, r *http.Request) {
-	if cookie, err := r.Cookie(portalCookieName); err == nil {
-		_ = a.sessions.Delete(cookie.Value)
-	}
-	http.SetCookie(w, &http.Cookie{
-		Name:     portalCookieName,
-		Value:    "",
-		Path:     "/",
-		MaxAge:   -1,
-		HttpOnly: true,
-		Secure:   true,
-		SameSite: http.SameSiteLaxMode,
-	})
-	writeJSON(w, http.StatusOK, map[string]any{"ok": true})
-}
-
 func (a *portalAPI) handlePortalInfo(w http.ResponseWriter, r *http.Request, user users.User) {
 	scheme := "https"
 	if r.TLS == nil && r.Header.Get("X-Forwarded-Proto") != "https" {

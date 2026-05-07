@@ -647,9 +647,13 @@ if [ "$component" = "server" ]; then
   _ip="$(ip -4 addr show scope global 2>/dev/null | awk '/inet/{gsub(/\/.*/, "", $2); print $2; exit}' \
         || hostname -I 2>/dev/null | awk '{print $1}' \
         || echo "<your-ip>")"
+  _grpc_url="$(grep '^PULSE_NODE_GRPC_URL=' "$env_target" 2>/dev/null | cut -d= -f2- | tr -d "'" | tr -d '"')"
   echo ""
   echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
   echo "  面板地址: http://${_ip}:${_port}"
+  if [ -n "$_grpc_url" ]; then
+    echo "  节点 gRPC: ${_grpc_url}"
+  fi
   echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 else
   _ip="$(ip -4 addr show scope global 2>/dev/null | awk '/inet/{gsub(/\/.*/, "", $2); print $2; exit}' \

@@ -84,15 +84,32 @@ SELECT id, name, base_url, upload_bytes, download_bytes,
        expire_at, panel_url, remark,
        COALESCE(ip_override, '') AS ip_override,
        COALESCE(disabled, 0) AS disabled,
-       COALESCE(tls_mode, '') AS tls_mode,
        COALESCE(is_landing, TRUE) AS is_landing
 FROM nodes
 WHERE id = $1
 `
 
-func (q *Queries) GetNodeByID(ctx context.Context, id string) (Node, error) {
+type GetNodeByIDRow struct {
+	ID            string
+	Name          string
+	BaseUrl       string
+	UploadBytes   int64
+	DownloadBytes int64
+	AcmeEmail     string
+	PanelDomain   string
+	ExtraProxies  string
+	HttpsPort     int32
+	ExpireAt      *string
+	PanelUrl      string
+	Remark        string
+	IpOverride    string
+	Disabled      int32
+	IsLanding     bool
+}
+
+func (q *Queries) GetNodeByID(ctx context.Context, id string) (GetNodeByIDRow, error) {
 	row := q.db.QueryRow(ctx, getNodeByID, id)
-	var i Node
+	var i GetNodeByIDRow
 	err := row.Scan(
 		&i.ID,
 		&i.Name,
@@ -108,7 +125,6 @@ func (q *Queries) GetNodeByID(ctx context.Context, id string) (Node, error) {
 		&i.Remark,
 		&i.IpOverride,
 		&i.Disabled,
-		&i.TlsMode,
 		&i.IsLanding,
 	)
 	return i, err
@@ -472,21 +488,38 @@ SELECT id, name, base_url, upload_bytes, download_bytes,
        expire_at, panel_url, remark,
        COALESCE(ip_override, '') AS ip_override,
        COALESCE(disabled, 0) AS disabled,
-       COALESCE(tls_mode, '') AS tls_mode,
        COALESCE(is_landing, TRUE) AS is_landing
 FROM nodes
 ORDER BY id
 `
 
-func (q *Queries) ListNodes(ctx context.Context) ([]Node, error) {
+type ListNodesRow struct {
+	ID            string
+	Name          string
+	BaseUrl       string
+	UploadBytes   int64
+	DownloadBytes int64
+	AcmeEmail     string
+	PanelDomain   string
+	ExtraProxies  string
+	HttpsPort     int32
+	ExpireAt      *string
+	PanelUrl      string
+	Remark        string
+	IpOverride    string
+	Disabled      int32
+	IsLanding     bool
+}
+
+func (q *Queries) ListNodes(ctx context.Context) ([]ListNodesRow, error) {
 	rows, err := q.db.Query(ctx, listNodes)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	items := []Node{}
+	items := []ListNodesRow{}
 	for rows.Next() {
-		var i Node
+		var i ListNodesRow
 		if err := rows.Scan(
 			&i.ID,
 			&i.Name,
@@ -502,7 +535,6 @@ func (q *Queries) ListNodes(ctx context.Context) ([]Node, error) {
 			&i.Remark,
 			&i.IpOverride,
 			&i.Disabled,
-			&i.TlsMode,
 			&i.IsLanding,
 		); err != nil {
 			return nil, err
@@ -519,8 +551,8 @@ const upsertNode = `-- name: UpsertNode :exec
 
 INSERT INTO nodes (id, name, base_url, expire_at, panel_url, remark, ip_override, disabled,
                    acme_email, panel_domain, extra_proxies, https_port,
-                   tls_mode, is_landing)
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
+                   is_landing)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
 ON CONFLICT(id) DO UPDATE SET
     name          = excluded.name,
     base_url      = excluded.base_url,
@@ -533,7 +565,6 @@ ON CONFLICT(id) DO UPDATE SET
     panel_domain  = excluded.panel_domain,
     extra_proxies = excluded.extra_proxies,
     https_port    = excluded.https_port,
-    tls_mode      = excluded.tls_mode,
     is_landing    = excluded.is_landing
 `
 
@@ -550,7 +581,6 @@ type UpsertNodeParams struct {
 	PanelDomain  string
 	ExtraProxies string
 	HttpsPort    int32
-	TlsMode      string
 	IsLanding    bool
 }
 
@@ -569,7 +599,6 @@ func (q *Queries) UpsertNode(ctx context.Context, arg UpsertNodeParams) error {
 		arg.PanelDomain,
 		arg.ExtraProxies,
 		arg.HttpsPort,
-		arg.TlsMode,
 		arg.IsLanding,
 	)
 	return err

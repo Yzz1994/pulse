@@ -169,7 +169,7 @@ function IconLoader({ className }: { className?: string }) {
 
 // ── Constants ────────────────────────────────────────────────────
 
-const PROTOCOLS: InboundProtocol[] = ["vless", "trojan", "shadowsocks", "anytls"];
+const PROTOCOLS: InboundProtocol[] = ["anytls", "vless", "shadowsocks", "trojan"];
 
 const PROTOCOL_BADGE_VARIANT: Record<InboundProtocol, "default" | "secondary" | "outline"> = {
   vless: "default",
@@ -237,14 +237,14 @@ interface InboundFormState {
 
 const EMPTY_FORM: InboundFormState = {
   node_id: "",
-  protocol: "vless",
+  protocol: "anytls",
   port: "",
   traffic_rate: "1",
   outbound_id: "",
-  security: "reality",
+  security: "tls",
   reality_private_key: "",
   reality_public_key: "",
-  reality_handshake_addr: "",
+  reality_handshake_addr: "www.microsoft.com",
   reality_short_id: "",
   method: "2022-blake3-aes-128-gcm",
   password: "",
@@ -557,7 +557,7 @@ function InboundFormDialog({
                   if (protocol === "vless") {
                     updateField("security", "reality");
                     generateRealityKeys();
-                  } else if (protocol === "trojan") {
+                  } else if (protocol === "trojan" || protocol === "anytls") {
                     updateField("security", "tls");
                   } else {
                     updateField("security", "none");
@@ -691,6 +691,18 @@ function InboundFormDialog({
                     onChange={(e) => updateField("reality_handshake_addr", e.target.value)}
                     placeholder="www.microsoft.com"
                   />
+                  <p className="text-xs text-[hsl(var(--muted-foreground))]">
+                    建议用{" "}
+                    <a
+                      href="https://github.com/XTLS/RealiTLScanner"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="underline underline-offset-2 hover:text-[hsl(var(--foreground))]"
+                    >
+                      RealiTLScanner
+                    </a>{" "}
+                    扫描节点 IP 获取最佳目标站点。
+                  </p>
                 </div>
                 <div className="space-y-2">
                   <Label>Short ID</Label>
@@ -1033,7 +1045,6 @@ function HostFormDialog({
   const [relaySniproxyEnabled, setRelaySniproxyEnabled] = useState<boolean | null>(null);
 
   const isEdit = !!host;
-  const isDirectMode = nodes.find((n) => n.id === nodeId)?.tls_mode === "direct";
 
   useEffect(() => {
     if (!open) return;
@@ -1064,10 +1075,10 @@ function HostFormDialog({
       setShowAdvanced(true);
     } else {
       const defaultPort = (inboundProtocol === "anytls" || inboundProtocol === "trojan") ? "443" : "0";
-      setForm({ ...EMPTY_HOST_FORM, port: defaultPort, remark: inboundTag || "" });
+      setForm({ ...EMPTY_HOST_FORM, address: nodeIp || "", port: defaultPort, remark: inboundTag || "" });
       setShowAdvanced(false);
     }
-  }, [open, host, inboundTag, inboundProtocol]);
+  }, [open, host, inboundTag, inboundProtocol, nodeIp]);
 
   // 前置节点变化时实时查询 NodeGate (sniproxy) 运行状态
   useEffect(() => {
@@ -1194,7 +1205,7 @@ function HostFormDialog({
       // 显式提交 relay 字段，含清空场景（relay_node_id="" relay_port=0）
       body.relay_node_id = form.relay_node_id || "";
       body.relay_port = form.relay_node_id ? (Number(form.port) || 0) : 0;
-      body.https_port = (!isDirectMode && form.relay_node_id && form.https_port) ? Number(form.https_port) : 0;
+      body.https_port = (form.relay_node_id && form.https_port) ? Number(form.https_port) : 0;
 
       if (isEdit) {
         await api.put<Host>(`/hosts/${host.id}`, body);
@@ -1279,13 +1290,13 @@ function HostFormDialog({
                     </span>
                   </div>
                   <div className="space-y-1">
-                    <Label className="text-xs">备注（同步到 CF 记录 comment）</Label>
+                    <Label className="text-xs">订阅名（同步到 CF 记录 comment）</Label>
                     <Input
                       value={autoGen.remark}
                       onChange={(e) =>
                         setAutoGen((prev) => prev ? { ...prev, remark: e.target.value } : null)
                       }
-                      placeholder="Host 备注 / CF comment"
+                      placeholder="订阅显示名 / CF comment"
                     />
                   </div>
                   <div className="flex justify-end gap-2">
@@ -1361,10 +1372,10 @@ function HostFormDialog({
                         ))}
                       </SelectContent>
                     </Select>
-                    {/* NodeGate 未启用警告 */}
+                    {/* NodeGate 未启用提示 */}
                     {nodeGateDisabled && (
-                      <p className="text-xs text-[hsl(var(--destructive))]">
-                        ⚠ 该节点未启用 NodeGate，端口转发将不会生效
+                      <p className="text-xs text-[hsl(var(--muted-foreground))]">
+                        ℹ 该节点 NodeGate 暂无路由（未监听）。保存后将自动下发并启用；如仍未生效，请到 NodeGate 页面查看节点错误。
                       </p>
                     )}
                   </div>
@@ -1376,29 +1387,22 @@ function HostFormDialog({
                           该端口已被同一前置节点的其他连接地址占用
                         </p>
                       )}
-                      {isDirectMode && (
-                        <p className="text-xs text-[hsl(var(--muted-foreground))]">
-                          direct 模式：落地端口由系统自动推导（使用入站端口），无需手动填写。
-                        </p>
-                      )}
-                      <div className={`grid gap-3 ${isDirectMode ? "" : "grid-cols-2"}`}>
-                        {!isDirectMode && (
-                          <div className="space-y-1">
-                            <Label>NodeGate HTTPS 端口</Label>
-                            <Input
-                              type="number"
-                              min={0}
-                              max={65535}
-                              value={form.https_port}
-                              onChange={(e) => updateField("https_port", e.target.value)}
-                              placeholder="443"
-                              className="font-mono text-xs"
-                            />
-                            <p className="text-xs text-[hsl(var(--muted-foreground))]">
-                              落地节点 NodeGate 监听端口，0 = 节点默认
-                            </p>
-                          </div>
-                        )}
+                      <div className="grid gap-3 grid-cols-2">
+                        <div className="space-y-1">
+                          <Label>NodeGate HTTPS 端口</Label>
+                          <Input
+                            type="number"
+                            min={0}
+                            max={65535}
+                            value={form.https_port}
+                            onChange={(e) => updateField("https_port", e.target.value)}
+                            placeholder="443"
+                            className="font-mono text-xs"
+                          />
+                          <p className="text-xs text-[hsl(var(--muted-foreground))]">
+                            落地节点 NodeGate 监听端口，0 = 节点默认
+                          </p>
+                        </div>
                         <div className="space-y-1">
                           <Label>SNI / 落地域名</Label>
                           <Input
@@ -1408,9 +1412,7 @@ function HostFormDialog({
                             className="font-mono text-xs"
                           />
                           <p className="text-xs text-[hsl(var(--muted-foreground))]">
-                            {isDirectMode
-                              ? "客户端 TLS SNI，同时用于落地节点证书申请"
-                              : "客户端 TLS SNI，同时用于落地节点 NodeGate 路由和证书申请"}
+                            客户端 TLS SNI，同时用于落地节点 NodeGate 路由和证书申请
                           </p>
                         </div>
                       </div>
@@ -1433,11 +1435,11 @@ function HostFormDialog({
               <div className="space-y-4 rounded-lg border border-[hsl(var(--border))] p-4">
                 {/* Remark */}
                 <div className="space-y-2">
-                  <Label>备注</Label>
+                  <Label>订阅名</Label>
                   <Input
                     value={form.remark}
                     onChange={(e) => updateField("remark", e.target.value)}
-                    placeholder="备注"
+                    placeholder="留空自动使用：国家+地区+运营商+入口"
                   />
                 </div>
 
@@ -1445,7 +1447,7 @@ function HostFormDialog({
                 <div className="space-y-3 rounded-md border border-[hsl(var(--border))] p-3">
                   <div className="flex items-center justify-between">
                     <p className="text-xs font-medium text-[hsl(var(--muted-foreground))]">
-                      节点命名（留空则回退到备注/标签）
+                      节点命名（留空则回退到订阅名/标签）
                     </p>
                     <Button
                       type="button"
@@ -1784,7 +1786,7 @@ function HostsDialog({ open, onOpenChange, inbound, nodeIp = "", nodeId, nodes, 
                 <Table>
                   <TableHeader>
                     <TableRow>
-                      <TableHead className="px-3">备注</TableHead>
+                      <TableHead className="px-3">订阅名</TableHead>
                       <TableHead className="px-3">地址</TableHead>
                       <TableHead className="px-3">端口</TableHead>
                       <TableHead className="px-3">安全</TableHead>

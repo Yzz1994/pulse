@@ -162,7 +162,6 @@ export interface Node {
   panel_domain: string;
   extra_proxies: string;
   https_port: number;
-  tls_mode: string;
   expire_at: string | null;
   panel_url: string;
   remark: string;
@@ -185,7 +184,6 @@ export interface CreateNodeRequest {
   ip_override?: string;
   disabled?: boolean;
   is_landing?: boolean;
-  tls_mode?: string;
 }
 
 // ── Inbound types ────────────────────────────────────────────────

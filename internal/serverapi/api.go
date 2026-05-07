@@ -43,20 +43,19 @@ type API struct {
 }
 
 type upsertNodeRequest struct {
-	ID                string  `json:"id"`
-	Name              string  `json:"name"`
-	BaseURL           string  `json:"base_url"`
-	ExpireAt          *string `json:"expire_at"`
-	PanelURL          string  `json:"panel_url"`
-	Remark            string  `json:"remark"`
-	IPOverride        string  `json:"ip_override"`
-	Disabled          bool    `json:"disabled"`
+	ID           string  `json:"id"`
+	Name         string  `json:"name"`
+	BaseURL      string  `json:"base_url"`
+	ExpireAt     *string `json:"expire_at"`
+	PanelURL     string  `json:"panel_url"`
+	Remark       string  `json:"remark"`
+	IPOverride   string  `json:"ip_override"`
+	Disabled     bool    `json:"disabled"`
 	ACMEEmail    string  `json:"acme_email"`
 	PanelDomain  string  `json:"panel_domain"`
 	ExtraProxies string  `json:"extra_proxies"`
 	HTTPSPort    int     `json:"https_port"`
-	TLSMode           string  `json:"tls_mode"`
-	IsLanding         bool    `json:"is_landing"`
+	IsLanding    bool    `json:"is_landing"`
 }
 
 type configRequest struct {
@@ -173,19 +172,18 @@ func (a *API) handleNodes(w http.ResponseWriter, r *http.Request) {
 			req.ID = idgen.NextString()
 		}
 		node, err := a.store.Upsert(nodes.Node{
-			ID:                req.ID,
-			Name:              req.Name,
-			BaseURL:           strings.TrimRight(req.BaseURL, "/"),
-			ExpireAt:          parseExpireAt(req.ExpireAt),
-			PanelURL:          req.PanelURL,
-			Remark:            req.Remark,
-			IPOverride:        strings.TrimSpace(req.IPOverride),
-			Disabled:          req.Disabled,
+			ID:           req.ID,
+			Name:         req.Name,
+			BaseURL:      strings.TrimRight(req.BaseURL, "/"),
+			ExpireAt:     parseExpireAt(req.ExpireAt),
+			PanelURL:     req.PanelURL,
+			Remark:       req.Remark,
+			IPOverride:   strings.TrimSpace(req.IPOverride),
+			Disabled:     req.Disabled,
 			ACMEEmail:    req.ACMEEmail,
 			PanelDomain:  req.PanelDomain,
 			ExtraProxies: req.ExtraProxies,
 			HTTPSPort:    req.HTTPSPort,
-			TLSMode:           req.TLSMode,
 		})
 		if err != nil {
 			writeJSON(w, http.StatusInternalServerError, map[string]any{"error": err.Error()})
@@ -279,20 +277,19 @@ func (a *API) handleNode(w http.ResponseWriter, r *http.Request, nodeID string) 
 			return
 		}
 		node, err := a.store.Upsert(nodes.Node{
-			ID:                nodeID,
-			Name:              req.Name,
-			BaseURL:           strings.TrimRight(req.BaseURL, "/"),
-			ExpireAt:          parseExpireAt(req.ExpireAt),
-			PanelURL:          req.PanelURL,
-			Remark:            req.Remark,
-			IPOverride:        strings.TrimSpace(req.IPOverride),
-			Disabled:          req.Disabled,
+			ID:           nodeID,
+			Name:         req.Name,
+			BaseURL:      strings.TrimRight(req.BaseURL, "/"),
+			ExpireAt:     parseExpireAt(req.ExpireAt),
+			PanelURL:     req.PanelURL,
+			Remark:       req.Remark,
+			IPOverride:   strings.TrimSpace(req.IPOverride),
+			Disabled:     req.Disabled,
 			ACMEEmail:    req.ACMEEmail,
 			PanelDomain:  req.PanelDomain,
 			ExtraProxies: req.ExtraProxies,
 			HTTPSPort:    req.HTTPSPort,
-			TLSMode:           req.TLSMode,
-			IsLanding:         req.IsLanding,
+			IsLanding:    req.IsLanding,
 		})
 		if err != nil {
 			writeNodeError(w, err)

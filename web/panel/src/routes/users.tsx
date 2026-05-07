@@ -496,10 +496,6 @@ export default function UsersPage() {
         inbound_ids: editInboundIds,
       };
 
-      if (editSubToken) {
-        body.sub_token = editSubToken;
-      }
-
       if (editStatus === "on_hold") {
         if (editOnHoldExpireAt) {
           body.on_hold_expire_at = dateInputToIso(editOnHoldExpireAt);
@@ -1188,7 +1184,22 @@ export default function UsersPage() {
                   variant="outline"
                   size="sm"
                   className="shrink-0"
-                  onClick={() => setEditSubToken(generateHexToken())}
+                  onClick={async () => {
+                    if (!editingUser) return;
+                    try {
+                      const res = await api.post<{ sub_token: string }>(
+                        `/users/${editingUser.id}/regenerate-sub-token`,
+                        {},
+                      );
+                      setEditSubToken(res.sub_token);
+                      toast("sub_token 已重新生成", "success");
+                    } catch (err) {
+                      toast(
+                        `重生成失败：${err instanceof Error ? err.message : "未知错误"}`,
+                        "error",
+                      );
+                    }
+                  }}
                 >
                   重新生成
                 </Button>

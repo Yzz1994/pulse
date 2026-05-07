@@ -473,36 +473,6 @@ export default function UserPage() {
   const [resetTokenConfirmOpen, setResetTokenConfirmOpen] = useState(false);
   const [repliedTicketCount, setRepliedTicketCount] = useState(0);
 
-  // 门户密码相关
-  const [needsPassword, setNeedsPassword] = useState(false);
-  const [passwordInput, setPasswordInput] = useState("");
-  const [passwordError, setPasswordError] = useState("");
-  const [loginLoading, setLoginLoading] = useState(false);
-
-  async function submitPassword() {
-    setLoginLoading(true);
-    setPasswordError("");
-    try {
-      const res = await fetch(`/v1/portal/${token}/auth`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ password: passwordInput }),
-      });
-      if (!res.ok) {
-        setPasswordError("密码错误");
-        return;
-      }
-      setNeedsPassword(false);
-      setPasswordInput("");
-      // 重新加载页面数据
-      window.location.reload();
-    } catch {
-      setPasswordError("网络错误，请重试");
-    } finally {
-      setLoginLoading(false);
-    }
-  }
-
   /* ── Fetch all data ──────────────────────────────────────────── */
 
   useEffect(() => {
@@ -518,11 +488,9 @@ export default function UserPage() {
         ]);
 
         if (!infoRes.ok) {
-          if (infoRes.status === 401) {
-            if (!cancelled) { setNeedsPassword(true); setLoading(false); }
-            return;
+          if (infoRes.status === 401 || infoRes.status === 404) {
+            throw new Error("链接无效或已过期");
           }
-          if (infoRes.status === 404) throw new Error("链接无效或已过期");
           throw new Error(`HTTP ${infoRes.status}`);
         }
 
@@ -618,38 +586,6 @@ export default function UserPage() {
       <PageShell>
         <div className="flex justify-center py-20">
           <div className="h-8 w-8 animate-spin rounded-full border-4 border-[hsl(var(--muted))] border-t-[hsl(var(--primary))]" />
-        </div>
-      </PageShell>
-    );
-  }
-
-  if (needsPassword) {
-    return (
-      <PageShell>
-        <div className="mx-auto max-w-sm py-20">
-          <div className="rounded-xl border border-[hsl(var(--border))] bg-[hsl(var(--card))] p-6 shadow-sm space-y-4">
-            <div className="text-center space-y-1">
-              <div className="text-2xl">🔒</div>
-              <h2 className="text-base font-semibold">需要密码</h2>
-              <p className="text-xs text-[hsl(var(--muted-foreground))]">此页面受密码保护</p>
-            </div>
-            <div className="space-y-2">
-              <Input
-                type="password"
-                placeholder="输入密码"
-                value={passwordInput}
-                onChange={(e) => setPasswordInput(e.target.value)}
-                onKeyDown={(e) => e.key === "Enter" && !loginLoading && submitPassword()}
-                autoFocus
-              />
-              {passwordError && (
-                <p className="text-xs text-[hsl(var(--destructive))]">{passwordError}</p>
-              )}
-            </div>
-            <Button className="w-full" onClick={submitPassword} disabled={loginLoading || !passwordInput}>
-              {loginLoading ? "验证中…" : "进入"}
-            </Button>
-          </div>
         </div>
       </PageShell>
     );

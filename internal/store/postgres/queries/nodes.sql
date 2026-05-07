@@ -3,8 +3,8 @@
 -- name: UpsertNode :exec
 INSERT INTO nodes (id, name, base_url, expire_at, panel_url, remark, ip_override, disabled,
                    acme_email, panel_domain, extra_proxies, https_port,
-                   tls_mode, is_landing)
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
+                   is_landing)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
 ON CONFLICT(id) DO UPDATE SET
     name          = excluded.name,
     base_url      = excluded.base_url,
@@ -17,7 +17,6 @@ ON CONFLICT(id) DO UPDATE SET
     panel_domain  = excluded.panel_domain,
     extra_proxies = excluded.extra_proxies,
     https_port    = excluded.https_port,
-    tls_mode      = excluded.tls_mode,
     is_landing    = excluded.is_landing;
 
 -- name: DeleteNodeByID :execresult
@@ -32,7 +31,6 @@ SELECT id, name, base_url, upload_bytes, download_bytes,
        expire_at, panel_url, remark,
        COALESCE(ip_override, '') AS ip_override,
        COALESCE(disabled, 0) AS disabled,
-       COALESCE(tls_mode, '') AS tls_mode,
        COALESCE(is_landing, TRUE) AS is_landing
 FROM nodes
 WHERE id = $1;
@@ -46,7 +44,6 @@ SELECT id, name, base_url, upload_bytes, download_bytes,
        expire_at, panel_url, remark,
        COALESCE(ip_override, '') AS ip_override,
        COALESCE(disabled, 0) AS disabled,
-       COALESCE(tls_mode, '') AS tls_mode,
        COALESCE(is_landing, TRUE) AS is_landing
 FROM nodes
 ORDER BY id;

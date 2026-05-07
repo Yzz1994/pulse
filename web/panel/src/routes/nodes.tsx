@@ -82,6 +82,29 @@ interface TracerouteHop {
   timeout?: boolean;
 }
 
+interface TracerouteResult {
+  id: string;
+  node_id: string;
+  direction: "inbound" | "outbound";
+  target: string;
+  hops: string;
+  quality: string;
+  created_at: string;
+}
+
+function traceQualityColor(quality: string): string {
+  if (quality === "CN2 GIA") return "text-emerald-600 bg-emerald-500/10";
+  if (quality === "CN2 GT")  return "text-blue-600 bg-blue-500/10";
+  return "text-amber-600 bg-amber-500/10";
+}
+
+function traceFormatTime(iso: string): string {
+  try {
+    return new Date(iso).toLocaleString("zh-CN", {
+      month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit",
+    });
+  } catch { return iso; }
+}
 
 // ── Icons (inline SVG) ───────────────────────────────────────────
 
@@ -194,7 +217,6 @@ function NodeFormDialog({ open, onOpenChange, node, onSubmit, submitting }: Node
   const [ipOverride, setIpOverride] = useState("");
   const [disabled, setDisabled] = useState(false);
   const [isLanding, setIsLanding] = useState(true);
-  const [tlsMode, setTlsMode] = useState("");
 
   useEffect(() => {
     if (open) {
@@ -206,7 +228,6 @@ function NodeFormDialog({ open, onOpenChange, node, onSubmit, submitting }: Node
       setIpOverride(node?.ip_override ?? "");
       setDisabled(node?.disabled ?? false);
       setIsLanding(node?.is_landing ?? true);
-      setTlsMode(node?.tls_mode || "caddy");
     }
   }, [open, node]);
 
@@ -225,7 +246,6 @@ function NodeFormDialog({ open, onOpenChange, node, onSubmit, submitting }: Node
       ip_override: ipOverride.trim(),
       disabled,
       is_landing: isLanding,
-      tls_mode: tlsMode === "caddy" ? "" : tlsMode,
     });
   };
 
@@ -324,18 +344,6 @@ function NodeFormDialog({ open, onOpenChange, node, onSubmit, submitting }: Node
                     checked={disabled}
                     onCheckedChange={setDisabled}
                   />
-                </div>
-                <div className="space-y-2">
-                  <Label>TLS 模式</Label>
-                  <Select value={tlsMode} onValueChange={setTlsMode}>
-                    <SelectTrigger>
-                      <SelectValue placeholder="NodeGate（默认）" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="caddy">NodeGate 终止 TLS（默认）</SelectItem>
-                      <SelectItem value="direct">direct（Xray 自持证书，NodeGate passthrough）</SelectItem>
-                    </SelectContent>
-                  </Select>
                 </div>
               </>
             )}
@@ -764,61 +772,6 @@ function NodeDetailDialog({ open, onOpenChange, node, mode, handleAuthError }: N
   );
 }
 
-// ── Node Inbounds Button ─────────────────────────────────────────
-
-function NodeInboundsButton({ nodeId }: { nodeId: string }) {
-  const [open, setOpen] = useState(false);
-  const [inbounds, setInbounds] = useState<{ id: string; tag: string; protocol: string; port: number }[]>([]);
-  const [loading, setLoading] = useState(false);
-
-  const fetch = () => {
-    setLoading(true);
-    api.get<{ inbounds: { id: string; tag: string; protocol: string; port: number }[] }>(`/inbounds?node_id=${nodeId}`)
-      .then((r) => setInbounds(r.inbounds ?? []))
-      .catch(() => {})
-      .finally(() => setLoading(false));
-  };
-
-  return (
-    <>
-      <Button variant="ghost" size="sm" className="h-8 px-2 text-xs" onClick={() => { setOpen(true); fetch(); }}>
-        入站
-      </Button>
-      <Dialog open={open} onOpenChange={setOpen}>
-        <DialogContent className="sm:max-w-sm">
-          <DialogHeader>
-            <DialogTitle>节点入站</DialogTitle>
-            <DialogDescription>该节点上配置的所有入站。</DialogDescription>
-          </DialogHeader>
-          <ScrollArea className="max-h-72">
-            {loading ? (
-              <p className="py-6 text-center text-sm text-[hsl(var(--muted-foreground))]">加载中…</p>
-            ) : inbounds.length === 0 ? (
-              <p className="py-6 text-center text-sm text-[hsl(var(--muted-foreground))]">暂无入站</p>
-            ) : (
-              <div className="divide-y divide-[hsl(var(--border))]">
-                {inbounds.map((ib) => (
-                  <div key={ib.id} className="flex items-center justify-between py-2 px-1">
-                    <div className="flex items-center gap-2">
-                      <Badge variant="outline" className="text-xs">{ib.protocol}</Badge>
-                      <span className="font-mono text-xs text-[hsl(var(--muted-foreground))]">{ib.port}</span>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-          </ScrollArea>
-          <DialogFooter>
-            <DialogClose asChild>
-              <Button variant="outline" size="sm">关闭</Button>
-            </DialogClose>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-    </>
-  );
-}
-
 // ── Node Card ────────────────────────────────────────────────────
 
 interface GeoInfo {
@@ -907,7 +860,26 @@ function TracerouteDialog({ node, open, onOpenChange }: {
   onOpenChange: (open: boolean) => void;
 }) {
   // ── 回程状态 ──────────────────────────────────────────────────
-  const [activeTab, setActiveTab] = useState<"inbound" | "outbound">("inbound");
+  const [activeTab, setActiveTab] = useState<"inbound" | "outbound" | "history">("inbound");
+
+  // ── 历史记录状态 ──────────────────────────────────────────────
+  const [histResults, setHistResults] = useState<TracerouteResult[]>([]);
+  const [histLoading, setHistLoading] = useState(false);
+  const [histExpandedId, setHistExpandedId] = useState<string | null>(null);
+
+  const fetchHistory = useCallback(async () => {
+    setHistLoading(true);
+    try {
+      const res = await api.get<{ results: TracerouteResult[] }>(
+        `/nodes/${node.id}/traceroute/results?limit=50`
+      );
+      setHistResults(res.results ?? []);
+    } catch {
+      // 静默失败
+    } finally {
+      setHistLoading(false);
+    }
+  }, [node.id]);
   const [host, setHost] = useState("8.8.8.8");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -1075,7 +1047,7 @@ function TracerouteDialog({ node, open, onOpenChange }: {
           target: target.trim(),
           hops: JSON.stringify(collectedHops),
           quality,
-        }).catch(() => {});
+        }).then(() => fetchHistory()).catch(() => {});
       }
     } catch (err: any) {
       if (err?.name !== "AbortError") {
@@ -1114,7 +1086,10 @@ function TracerouteDialog({ node, open, onOpenChange }: {
     if (activeTab === "outbound" && gpCities.length === 0 && !gpCitiesLoading) {
       loadGpCities();
     }
-  }, [activeTab, gpCities.length, gpCitiesLoading, loadGpCities]);
+    if (activeTab === "history") {
+      fetchHistory();
+    }
+  }, [activeTab, gpCities.length, gpCitiesLoading, loadGpCities, fetchHistory]);
 
   const handleGpStart = async () => {
     if (!selectedCity || gpLoading) return;
@@ -1172,7 +1147,7 @@ function TracerouteDialog({ node, open, onOpenChange }: {
               target: nodeTarget,
               hops: JSON.stringify(converted),
               quality,
-            }).catch(() => {});
+            }).then(() => fetchHistory()).catch(() => {});
           }
           break;
         }
@@ -1198,6 +1173,9 @@ function TracerouteDialog({ node, open, onOpenChange }: {
       setGpError(null);
       setGpProbeInfo(null);
       setGeoMap(new Map());
+      setHistResults([]);
+      setHistExpandedId(null);
+      setActiveTab("inbound");
     }
     onOpenChange(v);
   };
@@ -1368,7 +1346,7 @@ function TracerouteDialog({ node, open, onOpenChange }: {
 
   const currentHops = activeTab === "inbound" ? hops : gpHops;
   const quality = detectQuality(currentHops);
-  const hasCopyable = activeTab === "inbound" ? (!error && hops.length > 0) : (!gpError && gpHops.length > 0);
+  const hasCopyable = activeTab !== "history" && (activeTab === "inbound" ? (!error && hops.length > 0) : (!gpError && gpHops.length > 0));
 
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
@@ -1380,7 +1358,7 @@ function TracerouteDialog({ node, open, onOpenChange }: {
 
         {/* ── Tab 切换 ── */}
         <div className="flex rounded-md border border-[hsl(var(--border))] overflow-hidden text-xs w-fit">
-          {([["inbound", "回程（节点出发）"], ["outbound", "去程（Globalping）"]] as const).map(([tab, label]) => (
+          {([["inbound", "回程（节点出发）"], ["outbound", "去程（Globalping）"], ["history", "历史记录"]] as const).map(([tab, label]) => (
             <button
               key={tab}
               onClick={() => setActiveTab(tab)}
@@ -1503,8 +1481,8 @@ function TracerouteDialog({ node, open, onOpenChange }: {
           </div>
         )}
 
-        {/* ── 结果表格 ── */}
-        {(() => {
+        {/* ── 结果表格（回程 / 去程）── */}
+        {activeTab !== "history" && (() => {
           const err = activeTab === "inbound" ? error : gpError;
           const targetHops = activeTab === "inbound" ? hops : gpHops;
           const isStreaming = activeTab === "inbound" ? loading : gpLoading;
@@ -1519,6 +1497,94 @@ function TracerouteDialog({ node, open, onOpenChange }: {
             </ScrollArea>
           );
         })()}
+
+        {/* ── 历史记录 Tab ── */}
+        {activeTab === "history" && (
+          <div className="rounded-md border border-[hsl(var(--border))] overflow-hidden">
+            {histLoading ? (
+              <div className="space-y-0">
+                {[1, 2, 3].map((i) => (
+                  <div key={i} className="flex items-center gap-3 border-b border-[hsl(var(--border))] px-4 py-3 last:border-0">
+                    <div className="h-4 w-10 animate-pulse rounded bg-[hsl(var(--muted))]" />
+                    <div className="h-4 flex-1 animate-pulse rounded bg-[hsl(var(--muted))]" />
+                    <div className="h-4 w-14 animate-pulse rounded bg-[hsl(var(--muted))]" />
+                    <div className="h-4 w-24 animate-pulse rounded bg-[hsl(var(--muted))]" />
+                  </div>
+                ))}
+              </div>
+            ) : histResults.length === 0 ? (
+              <div className="py-10 text-center text-sm text-[hsl(var(--muted-foreground))]">
+                暂无历史记录
+              </div>
+            ) : (
+              <ScrollArea className="max-h-96">
+                <div className="flex items-center gap-3 border-b border-[hsl(var(--border))] bg-[hsl(var(--muted)/0.5)] px-4 py-2 text-xs font-medium text-[hsl(var(--muted-foreground))]">
+                  <span className="w-10 shrink-0">方向</span>
+                  <span className="flex-1">目标</span>
+                  <span className="shrink-0">线路</span>
+                  <span className="shrink-0 w-28 text-right">时间</span>
+                  <span className="shrink-0 w-4" />
+                  <span className="shrink-0 w-4" />
+                </div>
+                {histResults.map((r) => {
+                  const isExpanded = histExpandedId === r.id;
+                  let parsedHops: TracerouteHop[] = [];
+                  try { parsedHops = JSON.parse(r.hops) as TracerouteHop[]; } catch {}
+                  return (
+                    <div key={r.id} className="border-b border-[hsl(var(--border))] last:border-0">
+                      <div
+                        className="flex cursor-pointer items-center gap-3 px-4 py-2.5 hover:bg-[hsl(var(--muted)/0.4)] transition-colors"
+                        onClick={() => setHistExpandedId(isExpanded ? null : r.id)}
+                      >
+                        <span className={`shrink-0 rounded px-1.5 py-0.5 text-[10px] font-medium ${
+                          r.direction === "inbound" ? "text-purple-600 bg-purple-500/10" : "text-sky-600 bg-sky-500/10"
+                        }`}>
+                          {r.direction === "inbound" ? "回程" : "去程"}
+                        </span>
+                        <span className="flex-1 truncate font-mono text-xs text-[hsl(var(--muted-foreground))]" title={r.target}>{r.target}</span>
+                        {r.quality ? (
+                          <span className={`shrink-0 rounded px-1.5 py-0.5 text-[10px] font-semibold ${traceQualityColor(r.quality)}`}>
+                            {r.quality}
+                          </span>
+                        ) : <span className="shrink-0 w-14" />}
+                        <span className="shrink-0 w-28 text-right text-xs text-[hsl(var(--muted-foreground))]">
+                          {traceFormatTime(r.created_at)}
+                        </span>
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            if (!confirm("确认删除这条追踪记录？")) return;
+                            api.del(`/nodes/${r.node_id}/traceroute/results/${r.id}`)
+                              .then(() => setHistResults((prev) => prev.filter((x) => x.id !== r.id)))
+                              .catch(() => {});
+                          }}
+                          className="shrink-0 rounded p-0.5 text-[hsl(var(--muted-foreground))] hover:text-[hsl(var(--destructive))] hover:bg-[hsl(var(--destructive)/0.1)] transition-colors"
+                          title="删除"
+                        >
+                          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" className="h-3.5 w-3.5">
+                            <polyline points="3 6 5 6 21 6" />
+                            <path d="M19 6l-1 14a2 2 0 01-2 2H8a2 2 0 01-2-2L5 6" />
+                            <path d="M10 11v6M14 11v6" />
+                            <path d="M9 6V4a1 1 0 011-1h4a1 1 0 011 1v2" />
+                          </svg>
+                        </button>
+                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round"
+                          className={`shrink-0 h-4 w-4 text-[hsl(var(--muted-foreground))] transition-transform duration-150 ${isExpanded ? "rotate-180" : ""}`}>
+                          <polyline points="6 9 12 15 18 9" />
+                        </svg>
+                      </div>
+                      {isExpanded && parsedHops.length > 0 && (
+                        <div className="border-t border-[hsl(var(--border))] bg-[hsl(var(--muted)/0.3)] overflow-x-auto">
+                          {renderTable(parsedHops, false)}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </ScrollArea>
+            )}
+          </div>
+        )}
 
         <DialogFooter className="flex-row items-center justify-between sm:justify-between">
           {hasCopyable ? (
@@ -2067,7 +2133,6 @@ function NodeCard({ node, runtime, metrics, onEdit, onDelete, onOpenDetail, onRe
         <div className="border-t border-[hsl(var(--border))] pt-2" />
 
         <div className="flex flex-wrap gap-1">
-          <NodeInboundsButton nodeId={node.id} />
           <Button variant="ghost" size="sm" className="h-8 px-2 text-xs" onClick={() => onOpenDetail(node, "config")} title="配置">
             配置
           </Button>

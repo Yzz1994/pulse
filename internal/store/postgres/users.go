@@ -677,6 +677,17 @@ func (s *UserStore) GetPasswordBySubToken(subToken string) (string, string, erro
 	return userID, hash, err
 }
 
+func (s *UserStore) GetPasswordByUsername(username string) (string, string, string, error) {
+	var userID, hash, subToken string
+	err := s.db.QueryRow(context.Background(),
+		`SELECT id, password, sub_token FROM users WHERE username = $1`, username,
+	).Scan(&userID, &hash, &subToken)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return "", "", "", users.ErrUserNotFound
+	}
+	return userID, hash, subToken, err
+}
+
 // GetAdminUser 返回第一个 is_admin=true 的用户。
 func (s *UserStore) GetAdminUser() (users.User, error) {
 	var id, username, password string

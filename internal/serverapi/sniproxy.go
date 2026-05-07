@@ -45,8 +45,8 @@ func (a *API) doSyncNodeSNIProxy(ctx context.Context, nodeID string) error {
 	}
 
 	req := jobs.BuildSNIProxySyncReq(node, nodeInbounds, a.inboundStore, allNodeMap, cfToken, ServerPort())
-	log.Printf("sniproxy sync node=%s tls_mode=%q routes=%d cert_domains=%v cf_token_set=%v",
-		nodeID, node.TLSMode, len(req.Routes), req.CertDomains, cfToken != "")
+	log.Printf("sniproxy sync node=%s routes=%d cf_token_set=%v",
+		nodeID, len(req.Routes), cfToken != "")
 	return client.SyncSNIProxy(ctx, req)
 }
 

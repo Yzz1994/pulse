@@ -28,16 +28,8 @@ func BuildSNIProxySyncReq(
 	var routes []nodes.SNIProxyRoute
 	hostHTTPSPort := 0
 
-	// 1. 本节点 AnyTLS/Trojan inbound 路由：
-	//    - NodeGate 模式（默认）：terminating，NodeGate 终止 TLS 转发明文给 Xray
-	//    - direct 模式：transparent，NodeGate TCP passthrough，Xray 自持证书
+	// 1. 本节点 AnyTLS/Trojan inbound 路由：terminating，NodeGate 终止 TLS 转发明文给 Xray
 	seenLocal := make(map[string]struct{})
-	directMode := node.TLSMode == "direct"
-	routeMode := "terminating"
-	if directMode {
-		routeMode = "transparent"
-	}
-	var relayCertDomains []string // direct 模式下 relay host 的 SNI：无路由但仍需证书
 	for _, ib := range nodeInbounds {
 		if ib.Protocol != "anytls" && ib.Protocol != "trojan" {
 			continue
@@ -47,22 +39,10 @@ func BuildSNIProxySyncReq(
 			continue
 		}
 		for _, h := range hosts {
-			// Relay 的 Host：路由由前置节点负责，但 direct 模式下落地节点仍需证书
+			// Relay 的 Host：路由由前置节点负责
 			if h.RelayNodeID != "" {
 				if h.HTTPSPort > 0 && hostHTTPSPort == 0 {
 					hostHTTPSPort = h.HTTPSPort
-				}
-				if directMode {
-					sni := h.SNI
-					if sni == "" {
-						sni = h.Address
-					}
-					if sni != "" {
-						if _, dup := seenLocal[sni]; !dup {
-							seenLocal[sni] = struct{}{}
-							relayCertDomains = append(relayCertDomains, sni)
-						}
-					}
 				}
 				continue
 			}
@@ -80,7 +60,7 @@ func BuildSNIProxySyncReq(
 			routes = append(routes, nodes.SNIProxyRoute{
 				SNI:     sni,
 				Backend: fmt.Sprintf("127.0.0.1:%d", ib.Port),
-				Mode:    routeMode,
+				Mode:    "terminating",
 			})
 		}
 	}
@@ -132,10 +112,6 @@ func BuildSNIProxySyncReq(
 			httpsPort := h.HTTPSPort
 			if httpsPort == 0 {
 				httpsPort = backendNode.HTTPSPort
-			}
-			// direct 模式下 NodeGate 透传，fallback 用 xray inbound 实际端口
-			if httpsPort == 0 && backendNode.TLSMode == "direct" {
-				httpsPort = ib.Port
 			}
 			targetPort := PortforwardTargetPort(ib, httpsPort)
 			routes = append(routes, nodes.SNIProxyRoute{
@@ -197,34 +173,11 @@ func BuildSNIProxySyncReq(
 		listenPort = 443
 	}
 
-	// direct 模式下 Xray 自持证书，certmgr 需要管理：
-	// 1. 所有透明路由 SNI（非 relay host）
-	// 2. relay host 的 SNI（无路由但落地节点仍需证书）
-	var certDomains []string
-	if directMode {
-		seen := make(map[string]struct{})
-		for _, r := range routes {
-			if r.Mode == "transparent" && r.SNI != "" {
-				if _, dup := seen[r.SNI]; !dup {
-					seen[r.SNI] = struct{}{}
-					certDomains = append(certDomains, r.SNI)
-				}
-			}
-		}
-		for _, d := range relayCertDomains {
-			if _, dup := seen[d]; !dup {
-				seen[d] = struct{}{}
-				certDomains = append(certDomains, d)
-			}
-		}
-	}
-
 	req := nodes.SNIProxySyncRequest{
 		ACMEEmail:       node.ACMEEmail,
 		CloudflareToken: cfToken,
 		CertStoragePath: "/var/lib/pulse-node/certs",
 		Routes:          routes,
-		CertDomains:     certDomains,
 	}
 	if listenPort > 0 && len(routes) > 0 {
 		req.Listen = fmt.Sprintf(":%d", listenPort)

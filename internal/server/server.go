@@ -26,7 +26,6 @@ import (
 	"pulse/internal/idgen"
 	"pulse/internal/inbounds"
 	"pulse/internal/jobs"
-	"pulse/internal/nodehub"
 	"pulse/internal/nodes"
 	"pulse/internal/outbounds"
 	"pulse/internal/panel"
@@ -1106,9 +1105,14 @@ func Run() error {
 	serverapi.RegisterIPSentinelAPI(protectedV1, db.IPSentinelStore(), nodeAPI, geoipDB, store)
 
 	// 实例化 nodehub.Hub 并在后台启动 gRPC 监听（mTLS by NodeCA）。
-	// PushHandler 当前订阅 usage_push（node 主动推送的流量帧 → UsageBuffer）；
-	// hello / log / traceroute_hop 待 self-sync 与 sse-bridge todo 接入。
-	hubPushHandler := &nodehub.MultiPushHandler{
+	// 先通过 SetupSelfSync 构建 MultiPushHandler（hello → self-sync + usage_push），
+	// 再启动 hub，最后回填 HubCaller（两步初始化，打破互相依赖）。
+	selfSyncHandler, hubPushHandler := SetupSelfSync(context.Background(), SelfSyncDeps{
+		UserStore:     userStore,
+		InboundStore:  inboundStore,
+		OutboundStore: outboundStore,
+		NodeStore:     store,
+		ApplyOpts:     applyOpts,
 		UsagePushHandler: func(nodeID string, seq uint64, body []byte) error {
 			var stats nodes.UsageStats
 			if len(body) > 0 {
@@ -1119,13 +1123,19 @@ func Run() error {
 			}
 			return usageBuf.Append(nodeID, seq, stats)
 		},
-	}
+	})
 	nodeHub := startNodeHub(context.Background(), cfg.NodeGRPCAddr, "pulse-grpc-server", []string{"localhost", "127.0.0.1"}, nodeCA, db.NodeStore(), hubPushHandler)
 	if nodeHub != nil {
 		serverapi.RegisterNodeHubMetrics(protectedV1, nodeHub)
 		// 让 serverapi 的 clientFactory 优先用 hub 构造 Client。
 		nodeAPI.SetNodeHub(nodeHub)
 		nodeAPI2.SetNodeHub(nodeHub)
+		// 回填 HubCaller 并注入 hub-aware client 工厂，使 self-sync 触发的 ApplyNode
+		// 能通过已建立的 gRPC 流下发配置（而非尝试直连，节点已不再监听端口）。
+		SetupSelfSyncHubCaller(selfSyncHandler, nodeHub)
+		jobs.SetNodesHubClientFactory(func(nodeID string, _ jobs.HubCaller) *nodes.Client {
+			return nodes.NewClientWithHub(nodeID, nodeHub)
+		})
 	}
 	mux.Handle("/v1/system/nodehub/", authManager.Middleware(protectedV1))
 	mux.Handle("/v1/tools/", authManager.Middleware(protectedV1))

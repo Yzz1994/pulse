@@ -41,7 +41,6 @@ func (s *NodeStore) Upsert(node nodes.Node) (nodes.Node, error) {
 		PanelDomain:  node.PanelDomain,
 		ExtraProxies: node.ExtraProxies,
 		HttpsPort:    int32(node.HTTPSPort),
-		TlsMode:      node.TLSMode,
 		IsLanding:    node.IsLanding,
 	})
 	if err != nil {
@@ -69,7 +68,7 @@ func (s *NodeStore) Get(id string) (nodes.Node, error) {
 	if err != nil {
 		return nodes.Node{}, fmt.Errorf("get node: %w", err)
 	}
-	return toNode(row), nil
+	return toNodeFromGet(row), nil
 }
 
 func (s *NodeStore) List() ([]nodes.Node, error) {
@@ -79,7 +78,7 @@ func (s *NodeStore) List() ([]nodes.Node, error) {
 	}
 	out := make([]nodes.Node, len(rows))
 	for i, r := range rows {
-		out[i] = toNode(r)
+		out[i] = toNodeFromList(r)
 	}
 	return out, nil
 }
@@ -392,23 +391,43 @@ func (s *NodeStore) DeleteTracerouteSnapshot(id string) error {
 
 // ─── 类型转换辅助 ─────────────────────────────────────────────────────────────
 
-func toNode(r sqlcgen.Node) nodes.Node {
+func toNodeFromGet(r sqlcgen.GetNodeByIDRow) nodes.Node {
 	n := nodes.Node{
-		ID:                r.ID,
-		Name:              r.Name,
-		BaseURL:           r.BaseUrl,
-		UploadBytes:       r.UploadBytes,
-		DownloadBytes:     r.DownloadBytes,
-		ACMEEmail:    r.AcmeEmail,
-		PanelDomain:  r.PanelDomain,
-		ExtraProxies: r.ExtraProxies,
-		HTTPSPort:    int(r.HttpsPort),
-		PanelURL:          r.PanelUrl,
-		Remark:            r.Remark,
-		IPOverride:        r.IpOverride,
-		Disabled:          r.Disabled != 0,
-		TLSMode:           r.TlsMode,
-		IsLanding:         r.IsLanding,
+		ID:            r.ID,
+		Name:          r.Name,
+		BaseURL:       r.BaseUrl,
+		UploadBytes:   r.UploadBytes,
+		DownloadBytes: r.DownloadBytes,
+		ACMEEmail:     r.AcmeEmail,
+		PanelDomain:   r.PanelDomain,
+		ExtraProxies:  r.ExtraProxies,
+		HTTPSPort:     int(r.HttpsPort),
+		PanelURL:      r.PanelUrl,
+		Remark:        r.Remark,
+		IPOverride:    r.IpOverride,
+		Disabled:      r.Disabled != 0,
+		IsLanding:     r.IsLanding,
+	}
+	n.ExpireAt = parseExpireAt(r.ExpireAt)
+	return n
+}
+
+func toNodeFromList(r sqlcgen.ListNodesRow) nodes.Node {
+	n := nodes.Node{
+		ID:            r.ID,
+		Name:          r.Name,
+		BaseURL:       r.BaseUrl,
+		UploadBytes:   r.UploadBytes,
+		DownloadBytes: r.DownloadBytes,
+		ACMEEmail:     r.AcmeEmail,
+		PanelDomain:   r.PanelDomain,
+		ExtraProxies:  r.ExtraProxies,
+		HTTPSPort:     int(r.HttpsPort),
+		PanelURL:      r.PanelUrl,
+		Remark:        r.Remark,
+		IPOverride:    r.IpOverride,
+		Disabled:      r.Disabled != 0,
+		IsLanding:     r.IsLanding,
 	}
 	n.ExpireAt = parseExpireAt(r.ExpireAt)
 	return n

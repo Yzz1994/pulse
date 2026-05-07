@@ -339,9 +339,6 @@ type SNIProxySyncRequest struct {
 	CloudflareToken string          `json:"cloudflare_token,omitempty"`
 	ACMEStaging     bool            `json:"acme_staging,omitempty"`
 	Routes          []SNIProxyRoute `json:"routes"`
-	// CertDomains 需要由 certmgr 管理、但不出现在 Terminating 路由中的额外域名。
-	// direct TLS 模式下 Xray 自持证书，仍需 certmgr 统一申请和续期。
-	CertDomains []string `json:"cert_domains,omitempty"`
 }
 
 // SyncSNIProxy 把内置 SNI 代理的完整配置推送给节点，节点端热更新。

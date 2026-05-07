@@ -20,13 +20,13 @@ import SNIProxyPage from "./routes/sniproxy";
 import ShopPage from "./routes/shop";
 import ShopSuccessPage from "./routes/shop-success";
 import UserPage from "./routes/user";
+import UserLoginPage from "./routes/user-login";
 import PlansPage from "./routes/plans";
 import StatPage from "./routes/stat";
 import AnnouncementsPage from "./routes/announcements";
 import TicketsPage from "./routes/tickets";
 import DomainsPage from "./routes/domains";
 import UserGroupsPage from "./routes/user-groups";
-import TraceRoutePage from "./routes/traceroute";
 import LatencyPage from "./routes/latency";
 import AuditPage from "./routes/audit";
 
@@ -204,13 +204,6 @@ const userGroupsRoute = createRoute({
   beforeLoad: requireAuth,
 });
 
-const tracerouteRoute = createRoute({
-  getParentRoute: () => rootRoute,
-  path: "/panel/traceroute",
-  component: TraceRoutePage,
-  beforeLoad: requireAuth,
-});
-
 const latencyRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/panel/latency",
@@ -257,6 +250,12 @@ const userRoute = createRoute({
   component: UserPage,
 });
 
+const userLoginRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/user",
+  component: UserLoginPage,
+});
+
 const statRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/stat",
@@ -283,7 +282,6 @@ const routeTree = rootRoute.addChildren([
   ticketsRoute,
   domainsRoute,
   userGroupsRoute,
-  tracerouteRoute,
   latencyRoute,
   auditRoute,
   shopRoute,
@@ -291,6 +289,7 @@ const routeTree = rootRoute.addChildren([
   shopTestRoute,
   shopTestSuccessRoute,
   userRoute,
+  userLoginRoute,
   statRoute,
 ]);
 
