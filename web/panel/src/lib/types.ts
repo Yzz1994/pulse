@@ -302,8 +302,6 @@ export interface Host {
   entry?: string;        // 入口城市，如 深圳
   tags?: string;         // 业务标签，如 NF·GPT
   relay_node_id?: string; // 前置节点 ID，设置后该节点 NodeGate 自动配置端口转发
-  relay_port?: number;    // 前置节点监听端口
-  cert_domain?: string;   // 证书域名：NodeGate ACME 申请用，为空时回退到 address
   https_port?: number; // 落地节点 NodeGate HTTPS 端口（0 = 跟随节点配置，最终 fallback 443）
 }
 

@@ -653,8 +653,8 @@ func (db *DB) init() error {
 		`ALTER TABLE hosts DROP COLUMN IF EXISTS relay_port`,
 		// nodes 表：新增 tls_mode，支持 direct 模式（Xray 自持证书，NodeGate passthrough）
 		`ALTER TABLE nodes ADD COLUMN IF NOT EXISTS tls_mode TEXT NOT NULL DEFAULT ''`,
-		// tls_cert_domain 已废弃（域名从 inbound Host SNI 自动收集），保留列避免迁移失败
-		`ALTER TABLE nodes ADD COLUMN IF NOT EXISTS tls_cert_domain TEXT NOT NULL DEFAULT ''`,
+		// tls_cert_domain 已废弃（域名从 inbound Host SNI 自动收集）
+		`ALTER TABLE nodes DROP COLUMN IF EXISTS tls_cert_domain`,
 		`CREATE TABLE IF NOT EXISTS node_latency_samples (
 			id         BIGSERIAL PRIMARY KEY,
 			node_id    TEXT NOT NULL,

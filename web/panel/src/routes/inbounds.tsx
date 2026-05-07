@@ -1010,7 +1010,7 @@ function HostFormDialog({
     if (host) {
       setForm({
         address: host.address,
-        port: host.relay_node_id && host.relay_port ? String(host.relay_port) : String(host.port),
+        port: String(host.port),
         sni: host.sni || "",
         country: host.country || "",
         region: host.region || "",
@@ -1094,7 +1094,7 @@ function HostFormDialog({
 
   const relayValid = !form.relay_node_id || (form.port !== "" && Number(form.port) > 0 && Number(form.port) <= 65535);
   const relayPortConflict = !!form.relay_node_id && form.port !== "" &&
-    allHosts.some((h) => h.relay_node_id === form.relay_node_id && h.relay_port === Number(form.port) && h.id !== host?.id);
+    allHosts.some((h) => h.relay_node_id === form.relay_node_id && h.port === Number(form.port) && h.id !== host?.id);
   const canSubmit = form.address.trim() !== "" && relayValid && !relayPortConflict;
 
   const handleGeoLookup = async () => {
@@ -1133,9 +1133,8 @@ function HostFormDialog({
         tags: form.tags,
       };
 
-      // 显式提交 relay 字段，含清空场景（relay_node_id="" relay_port=0）
+      // 显式提交 relay 字段，含清空场景（relay_node_id="" → relay 关闭）
       body.relay_node_id = form.relay_node_id || "";
-      body.relay_port = form.relay_node_id ? (Number(form.port) || 0) : 0;
       body.https_port = (form.relay_node_id && form.https_port) ? Number(form.https_port) : 0;
 
       if (isEdit) {
@@ -1350,7 +1349,7 @@ function HostFormDialog({
               const takenPorts = new Set(
                 allHosts
                   .filter((h) => h.relay_node_id === form.relay_node_id && h.id !== host?.id)
-                  .map((h) => h.relay_port)
+                  .map((h) => h.port)
               );
               const portConflict =
                 form.relay_node_id !== "" && form.port !== "" &&
