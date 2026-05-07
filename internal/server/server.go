@@ -1101,6 +1101,7 @@ func Run() error {
 	serverapi.RegisterUserGroupAPI(protectedV1, db.UserGroupStore(), userStore, inboundStore, panelHandler.ApplyNodes)
 	serverapi.RegisterNodeDomainAPI(protectedV1, db.NodeDomainStore(), db.CFDomainStore(), store)
 	serverapi.RegisterUpdateAPI(protectedV1, settingsStore)
+	go serverapi.WarmUpdateCache()
 	serverapi.RegisterGeoIPAPI(protectedV1, settingsStore, store, geoipDB)
 	serverapi.RegisterIPSentinelAPI(protectedV1, db.IPSentinelStore(), nodeAPI, geoipDB, store)
 

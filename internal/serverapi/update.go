@@ -8,9 +8,17 @@ import (
 	"os"
 	"os/exec"
 	"strings"
+	"sync"
 	"time"
 
 	"pulse/internal/buildinfo"
+)
+
+var (
+	releaseCache    *githubRelease
+	releaseCacheAt  time.Time
+	releaseCacheMu  sync.Mutex
+	releaseCacheTTL = 30 * time.Minute
 )
 
 // UpdateSettingsStore 提供设置的持久化读写。
@@ -54,7 +62,7 @@ type githubRelease struct {
 const pulseRepo = "0xUnixIO/pulse"
 
 func handleUpdateCheck(w http.ResponseWriter, r *http.Request) {
-	release, err := fetchLatestRelease()
+	release, err := fetchLatestReleaseCached()
 	if err != nil {
 		writeJSON(w, http.StatusBadGateway, map[string]any{"error": err.Error()})
 		return
@@ -90,6 +98,28 @@ func handleUpdateApply(w http.ResponseWriter, r *http.Request) {
 			log.Printf("update: install script failed: %v", err)
 		}
 	}()
+}
+
+// WarmUpdateCache 在服务启动时预热 GitHub release 缓存，避免首次页面加载时检查更新超时。
+func WarmUpdateCache() {
+	if _, err := fetchLatestReleaseCached(); err != nil {
+		log.Printf("update: warm cache failed: %v", err)
+	}
+}
+
+func fetchLatestReleaseCached() (*githubRelease, error) {
+	releaseCacheMu.Lock()
+	defer releaseCacheMu.Unlock()
+	if releaseCache != nil && time.Since(releaseCacheAt) < releaseCacheTTL {
+		return releaseCache, nil
+	}
+	r, err := fetchLatestRelease()
+	if err != nil {
+		return nil, err
+	}
+	releaseCache = r
+	releaseCacheAt = time.Now()
+	return r, nil
 }
 
 func fetchLatestRelease() (*githubRelease, error) {
