@@ -1225,59 +1225,51 @@ func Run() error {
 		IdleTimeout: 120 * time.Second,
 	}
 
-	if nhResult.GRPCServer != nil {
-		// 单端口混合模式：cmux 按 TLS ClientHello 分流。
-		// TLS 连接（节点 gRPC mTLS）→ grpcL；明文 HTTP（浏览器面板）→ httpL。
-		// TLS 握手在 gRPC server 内由 credentials.NewTLS 完成，面板无需证书。
-		lis, err := net.Listen("tcp", cfg.ServerAddr)
-		if err != nil {
-			return fmt.Errorf("listen on %s: %w", cfg.ServerAddr, err)
-		}
-
-		m := cmux.New(lis)
-		grpcL := m.Match(cmux.TLS())   // TLS ClientHello → gRPC（mTLS）
-		httpL := m.Match(cmux.Any())   // 明文 HTTP → 面板
-
-		log.Printf("pulse-server listening on %s (HTTP panel + gRPC TLS, single port)", cfg.ServerAddr)
-
-		grpcSrv := nhResult.GRPCServer
-		g, gctx := errgroup.WithContext(sigCtx)
-
-		// 关闭协程：收到信号后依次关闭 cmux、gRPC、HTTP。
-		g.Go(func() error {
-			<-gctx.Done()
-			m.Close()
-			grpcSrv.GracefulStop()
-			shutCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-			defer cancel()
-			return httpSrv.Shutdown(shutCtx)
-		})
-		g.Go(func() error { return grpcSrv.Serve(grpcL) })
-		g.Go(func() error { return httpSrv.Serve(httpL) })
-		g.Go(func() error { return m.Serve() })
-
-		err = g.Wait()
-		if err != nil && !errors.Is(err, http.ErrServerClosed) && !errors.Is(err, cmux.ErrServerClosed) {
-			return err
-		}
-		return nil
+	// 单端口 cmux 模式：面板 HTTP + gRPC TLS 共用同一端口。
+	// Cloudflare 需配置为 Flexible 模式（CF → 源站走 HTTP），节点直连走 TLS。
+	// cmux.TLS() 只匹配 TLS ClientHello，CF 的 HTTP 连接不会触发，不会路由到 gRPC。
+	lis, err := net.Listen("tcp", cfg.ServerAddr)
+	if err != nil {
+		return fmt.Errorf("listen %s: %w", cfg.ServerAddr, err)
 	}
-
-	// gRPC 初始化失败，退化为纯 HTTP 面板模式（无 gRPC 功能）。
-	httpSrv.Addr = cfg.ServerAddr
-	log.Printf("pulse-server listening on %s (HTTP, gRPC disabled)", cfg.ServerAddr)
 
 	g, gctx := errgroup.WithContext(sigCtx)
 	g.Go(func() error {
 		<-gctx.Done()
-		shutCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-		defer cancel()
-		return httpSrv.Shutdown(shutCtx)
+		return lis.Close()
 	})
-	g.Go(func() error { return httpSrv.ListenAndServe() })
+
+	if nhResult.GRPCServer != nil {
+		log.Printf("pulse-server panel+gRPC on %s (HTTP+TLS mux)", cfg.ServerAddr)
+		m := cmux.New(lis)
+		grpcL := m.Match(cmux.TLS())
+		httpL := m.Match(cmux.Any())
+
+		grpcSrv := nhResult.GRPCServer
+		g.Go(func() error { return grpcSrv.Serve(grpcL) })
+		g.Go(func() error { return httpSrv.Serve(httpL) })
+		g.Go(func() error {
+			<-gctx.Done()
+			grpcSrv.GracefulStop()
+			shutCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			defer cancel()
+			_ = httpSrv.Shutdown(shutCtx)
+			return nil
+		})
+		g.Go(func() error { return m.Serve() })
+	} else {
+		log.Printf("pulse-server panel on %s (HTTP, gRPC disabled)", cfg.ServerAddr)
+		g.Go(func() error { return httpSrv.Serve(lis) })
+		g.Go(func() error {
+			<-gctx.Done()
+			shutCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			defer cancel()
+			return httpSrv.Shutdown(shutCtx)
+		})
+	}
 
 	err = g.Wait()
-	if err != nil && !errors.Is(err, http.ErrServerClosed) {
+	if err != nil && !errors.Is(err, http.ErrServerClosed) && !errors.Is(err, net.ErrClosed) {
 		return err
 	}
 	return nil
