@@ -287,7 +287,7 @@ export default function NodeDetailPage() {
   return (
     <div className="mx-auto max-w-6xl space-y-4 p-6">
       {/* Header */}
-      <div className="flex flex-wrap items-center gap-3">
+      <div className="sticky top-0 z-20 -mx-6 -mt-6 mb-4 flex flex-wrap items-center gap-3 border-b bg-[hsl(var(--background))]/95 px-6 py-3 backdrop-blur supports-[backdrop-filter]:bg-[hsl(var(--background))]/80">
         <Button variant="outline" size="sm" asChild>
           <Link to="/panel/nodes">← 返回</Link>
         </Button>
