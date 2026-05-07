@@ -122,7 +122,6 @@ echo "$ENROLL_TOKEN" | bash <(curl -fsSL https://raw.githubusercontent.com/0xUni
   节点出口:    <node-ip>
   控制面 gRPC: https://<控制面板地址>:8082
 
-  pulse-node 不再监听 HTTP 端口，所有指令通过 gRPC 长连接由控制面下发。
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 ```
 
