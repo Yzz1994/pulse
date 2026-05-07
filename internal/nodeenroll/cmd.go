@@ -32,6 +32,7 @@ func RunCLI(args []string) error {
 		token       = fs.String("token", "", "一次性 enroll token")
 		tokenFile   = fs.String("token-file", "", "从文件读取 token，'-' 表示 stdin")
 		outDir      = fs.String("out", ".", "输出目录，写入 node_cert.pem / node_key.pem / node_ca.pem")
+		envOut      = fs.String("env-out", "", "将 enroll 结果写入该 env 文件（追加/覆盖 PULSE_NODE_* 变量）")
 		insecure    = fs.Bool("insecure", false, "跳过控制面 TLS 校验（首次 enroll 必需）")
 		fingerprint = fs.String("server-fingerprint", "", "控制面证书 SHA256 指纹（暂未实现，与 --insecure 互斥）")
 	)
@@ -109,9 +110,59 @@ func RunCLI(args []string) error {
 	fmt.Fprintf(os.Stdout, "✔ Saved %s (0644)\n", res.CertPath)
 	fmt.Fprintf(os.Stdout, "✔ Saved %s (0600)\n", res.KeyPath)
 	fmt.Fprintf(os.Stdout, "✔ Saved %s  (0644)\n", res.CAPath)
-	fmt.Fprintln(os.Stdout, "")
-	fmt.Fprintf(os.Stdout, "GRPC server: %s\n", res.GRPCURL)
+	fmt.Fprintf(os.Stdout, "✔ gRPC server: %s\n", res.GRPCURL)
+
+	if *envOut != "" {
+		if err := writeEnvResult(*envOut, res); err != nil {
+			return fmt.Errorf("write env-out: %w", err)
+		}
+		fmt.Fprintf(os.Stdout, "✔ Written env vars to %s\n", *envOut)
+	}
 	return nil
+}
+
+// writeEnvResult 将 enroll 结果写入 env 文件，覆盖同名变量、保留其他行。
+func writeEnvResult(path string, res Result) error {
+	grpcHostPort := strings.TrimPrefix(strings.TrimPrefix(res.GRPCURL, "https://"), "http://")
+
+	vars := map[string]string{
+		"PULSE_NODE_CLIENT_CERT_FILE": res.CertPath,
+		"PULSE_NODE_CLIENT_KEY_FILE":  res.KeyPath,
+		"PULSE_NODE_SERVER_CA_FILE":   res.CAPath,
+		"PULSE_NODE_GRPC_URL":         res.GRPCURL,
+		"PULSE_NODE_SERVER_ADDR":      grpcHostPort,
+	}
+	return upsertEnvFile(path, vars)
+}
+
+// upsertEnvFile 原地更新 env 文件中的指定变量，未出现的变量追加到末尾。
+func upsertEnvFile(path string, vars map[string]string) error {
+	existing, err := os.ReadFile(path)
+	if err != nil && !os.IsNotExist(err) {
+		return err
+	}
+
+	lines := strings.Split(string(existing), "\n")
+	updated := make(map[string]bool)
+	for i, line := range lines {
+		for k, v := range vars {
+			if strings.HasPrefix(line, k+"=") {
+				lines[i] = k + "=" + v
+				updated[k] = true
+			}
+		}
+	}
+	for k, v := range vars {
+		if !updated[k] {
+			lines = append(lines, k+"="+v)
+		}
+	}
+
+	content := strings.Join(lines, "\n")
+	if !strings.HasSuffix(content, "\n") {
+		content += "\n"
+	}
+	return os.WriteFile(path, []byte(content), 0o644)
 }
 
 func readToken(path string) (string, error) {

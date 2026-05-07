@@ -481,8 +481,10 @@ if [ "$component" = "server" ]; then
     # 未配置或仍是 localhost 则自动推断
     case "$_existing_grpc" in
       *localhost*|*127.0.0.1*|"")
-        _grpc_addr="${PULSE_NODE_GRPC_ADDR:-:8082}"
-        _grpc_port="${_grpc_addr#:}"
+        # gRPC 与面板共用同一端口（单端口 TLS 模式），从 PULSE_SERVER_ADDR 取端口号。
+        # 用 ## 取最后一个 ":" 之后的部分，兼容 "0.0.0.0:8443" 和 ":8080" 格式。
+        _srv_addr="${PULSE_SERVER_ADDR:-:8080}"
+        _grpc_port="${_srv_addr##*:}"
         _public_ip="$(ip -4 addr show scope global 2>/dev/null | awk '/inet/{gsub(/\/.*/, "", $2); print $2; exit}' \
                     || hostname -I 2>/dev/null | awk '{print $1}')"
         if [ -n "$_public_ip" ]; then
@@ -558,67 +560,41 @@ else
     run_as_root mv "$legacy_cert" "${legacy_cert}.deprecated"
   fi
 
-  enroll_args="--server=$server_url --node-id=$node_id --token-file=$token_tmp --out=$etc_dir"
+  enroll_args="--server=$server_url --node-id=$node_id --token-file=$token_tmp --out=$etc_dir --env-out=$env_target"
   if [ "$insecure" = "1" ]; then
     # TODO: 待 pulse-node enroll 支持 --server-fingerprint 后，把默认改为 fingerprint pinning
     enroll_args="$enroll_args --insecure"
   fi
 
-  enroll_log="$(mktemp)"
   echo "执行 pulse-node enroll ..."
   if [ "${PULSE_INSTALL_DRY_RUN:-0}" = "1" ]; then
     echo "[dry-run] ${bin_dir}/pulse-node enroll $enroll_args" >&2
-    # 模拟产物以便后续步骤继续
-    : > "${tmp_dir}/node_cert.pem"
-    : > "${tmp_dir}/node_key.pem"
-    : > "${tmp_dir}/node_ca.pem"
-    cert_target="${tmp_dir}/node_cert.pem"
-    key_target="${tmp_dir}/node_key.pem"
-    ca_target="${tmp_dir}/node_ca.pem"
-    grpc_url=""
   else
-    # shellcheck disable=SC2086 # 我们故意拆词以便把多个 flag 传给 enroll
-    # 用临时文件捕获输出，避免 pipe 使 tee 的退出码掩盖 enroll 本身的错误。
-    if ! run_as_root "${bin_dir}/pulse-node" enroll $enroll_args > "$enroll_log" 2>&1; then
-      cat "$enroll_log" >&2
-      rm -f "$token_tmp" "$enroll_log"
+    # shellcheck disable=SC2086
+    if ! run_as_root "${bin_dir}/pulse-node" enroll $enroll_args; then
+      rm -f "$token_tmp"
       echo "pulse-node enroll 失败，安装终止" >&2
       exit 1
     fi
-    cat "$enroll_log"
-    cert_target="${etc_dir}/node_cert.pem"
-    key_target="${etc_dir}/node_key.pem"
-    ca_target="${etc_dir}/node_ca.pem"
-    if [ ! -s "$cert_target" ] || [ ! -s "$key_target" ] || [ ! -s "$ca_target" ]; then
-      rm -f "$token_tmp" "$enroll_log"
-      echo "enroll 完成但缺少证书文件 (${cert_target} / ${key_target} / ${ca_target})" >&2
+    if [ ! -s "${etc_dir}/node_cert.pem" ] || [ ! -s "${etc_dir}/node_key.pem" ] || [ ! -s "${etc_dir}/node_ca.pem" ]; then
+      rm -f "$token_tmp"
+      echo "enroll 完成但缺少证书文件 (${etc_dir}/node_{cert,key,ca}.pem)" >&2
       exit 1
     fi
-    # enroll 输出形如 'GRPC server: https://host:port'
-    grpc_url="$(awk -F': ' '/^GRPC server: /{print $2}' "$enroll_log" | tail -n1)"
   fi
-  rm -f "$token_tmp" "$enroll_log"
+  rm -f "$token_tmp"
 
   # 修正权限（enroll 自身已写 0644/0600/0644，这里再保险一遍）
   if [ "${PULSE_INSTALL_DRY_RUN:-0}" != "1" ]; then
-    run_as_root chmod 0644 "$cert_target" "$ca_target"
-    run_as_root chmod 0600 "$key_target"
+    run_as_root chmod 0644 "${etc_dir}/node_cert.pem" "${etc_dir}/node_ca.pem"
+    run_as_root chmod 0600 "${etc_dir}/node_key.pem"
     if id -u pulse >/dev/null 2>&1; then
-      run_as_root chown pulse:pulse "$key_target" 2>/dev/null || true
+      run_as_root chown pulse:pulse "${etc_dir}/node_key.pem" 2>/dev/null || true
     fi
   fi
 
+  # PULSE_NODE_ID 由脚本写入（enroll 不知道这个值）
   set_env_file_value "$env_target" "PULSE_NODE_ID" "$node_id"
-  set_env_file_value "$env_target" "PULSE_NODE_CLIENT_CERT_FILE" "$cert_target"
-  set_env_file_value "$env_target" "PULSE_NODE_CLIENT_KEY_FILE" "$key_target"
-  set_env_file_value "$env_target" "PULSE_NODE_SERVER_CA_FILE" "$ca_target"
-  if [ -n "$grpc_url" ]; then
-    set_env_file_value "$env_target" "PULSE_NODE_GRPC_URL" "$grpc_url"
-    # PULSE_NODE_SERVER_ADDR = host:port，从 grpc_url 解析
-    grpc_hostport="${grpc_url#*://}"
-    grpc_hostport="${grpc_hostport%%/*}"
-    set_env_file_value "$env_target" "PULSE_NODE_SERVER_ADDR" "$grpc_hostport"
-  fi
 
   # 移除已废弃的环境变量（HTTP listener / 旧 mTLS 流程残留）
   for legacy_var in PULSE_NODE_TLS_CERT_FILE PULSE_NODE_TLS_KEY_FILE \
@@ -666,9 +642,9 @@ if [ "$component" = "server" ]; then
     echo "  节点 gRPC: ${_grpc_url}"
   else
     echo ""
-    echo "  ⚠  PULSE_NODE_GRPC_URL 未配置，节点 enroll 后将使用 localhost:8082。"
+    echo "  ⚠  PULSE_NODE_GRPC_URL 未配置，节点 enroll 后将使用 localhost。"
     echo "     请编辑 ${env_target}，设置:"
-    echo "     PULSE_NODE_GRPC_URL=https://${_ip}:8082"
+    echo "     PULSE_NODE_GRPC_URL=https://${_ip}:${_port}"
     echo "     然后执行: pulse-server restart"
   fi
   echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"

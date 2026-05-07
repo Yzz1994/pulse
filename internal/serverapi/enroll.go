@@ -42,6 +42,7 @@ const enrollCertTTL = 365 * 24 * time.Hour
 
 // RegisterEnrollEndpoint 注册 POST /v1/node-enroll 端点。
 // 该端点不走 admin 鉴权：节点首次接入时还没有客户端证书，token 本身即凭据。
+//
 func RegisterEnrollEndpoint(mux *http.ServeMux, ca *cert.NodeCA, tokens enrolltokens.Store, grpcURL string) {
 	mux.HandleFunc("POST /v1/node-enroll", func(w http.ResponseWriter, r *http.Request) {
 		var req enrollRequest
