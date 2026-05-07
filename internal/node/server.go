@@ -11,6 +11,7 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"sync"
 	"syscall"
 	"time"
 
@@ -92,6 +93,7 @@ func Run() error {
 	defer stop()
 
 	usagePusher := nodeagent.NewUsagePusher(api, 30*time.Second)
+	var pusherStart sync.Once
 
 	agentCfg := nodeagent.Config{
 		NodeID:        cfg.NodeID,
@@ -105,11 +107,16 @@ func Run() error {
 		OnConnected: func(ctx context.Context, sender nodeagent.Sender) {
 			dispatcher.SetSender(sender)
 			usagePusher.SetSender(sender)
-			go func() {
-				if err := usagePusher.Run(ctx); err != nil && !errors.Is(err, context.Canceled) {
-					log.Printf("pulse-node usage pusher exited: %v", err)
-				}
-			}()
+			pusherStart.Do(func() {
+				go func() {
+					if err := usagePusher.Run(context.Background()); err != nil && !errors.Is(err, context.Canceled) {
+						log.Printf("pulse-node usage pusher exited: %v", err)
+					}
+				}()
+			})
+			// 重连后立即触发一次 push，避免等下一个 ticker（最多 30s）才把
+			// 离线期间累积的 delta 上报。首次连接命中 baseline 分支无副作用。
+			go usagePusher.Tick(ctx)
 		},
 	}
 
