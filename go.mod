@@ -3,7 +3,7 @@ module pulse
 go 1.26.1
 
 require (
-	github.com/0xUnixIO/Xray-core v1.260506.0-anytls
+	github.com/0xUnixIO/Xray-core v1.260507.0-anytls
 	github.com/caddyserver/certmagic v0.25.2
 	github.com/jackc/pgx/v5 v5.9.1
 	github.com/libdns/cloudflare v0.2.2
@@ -11,8 +11,8 @@ require (
 	github.com/stripe/stripe-go/v83 v83.2.1
 	golang.org/x/crypto v0.50.0
 	golang.org/x/net v0.53.0
-	google.golang.org/grpc v1.81.0
-	google.golang.org/protobuf v1.36.11
+	google.golang.org/grpc v1.72.0-dev
+	google.golang.org/protobuf v1.36.4
 )
 
 require github.com/anytls/sing-anytls v0.0.11 // indirect
@@ -63,8 +63,8 @@ require (
 	golang.zx2c4.com/wintun v0.0.0-20230126152724-0fa3db229ce2 // indirect
 	golang.zx2c4.com/wireguard v0.0.0-20250521234502-f333402bd9cb // indirect
 	golang.zx2c4.com/wireguard/windows v1.0.1 // indirect
-	google.golang.org/genproto/googleapis/rpc v0.0.0-20260226221140-a57be14db171 // indirect
+	google.golang.org/genproto/googleapis/rpc v0.0.0-20250115164207-1a7da9e5054f // indirect
 	gopkg.in/yaml.v2 v2.4.0 // indirect
-	gvisor.dev/gvisor v0.0.0-20260122175437-89a5d21be8f0 // indirect
+	gvisor.dev/gvisor v0.0.0-20250503011706-39ed1f5ac29c // indirect
 	lukechampine.com/blake3 v1.4.1 // indirect
 )
