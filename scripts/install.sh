@@ -76,6 +76,139 @@ random_port() {
   awk 'BEGIN{srand(); print int(rand()*55535)+10000}'
 }
 
+pg_is_ready() {
+  command -v pg_isready >/dev/null 2>&1 && pg_isready -q 2>/dev/null
+}
+
+pg_exec_sql_file() {
+  _f="$1"
+  chmod 0644 "$_f"
+  if [ "$(id -u)" -eq 0 ]; then
+    su postgres -s /bin/sh -c "psql -v ON_ERROR_STOP=0 -f '${_f}'" 2>/dev/null || true
+  else
+    sudo -u postgres psql -v ON_ERROR_STOP=0 -f "$_f" 2>/dev/null || true
+  fi
+}
+
+install_postgres_native() {
+  echo "正在安装 PostgreSQL ..."
+  if command -v apt-get >/dev/null 2>&1; then
+    run_as_root apt-get install -y postgresql
+  elif command -v yum >/dev/null 2>&1; then
+    run_as_root yum install -y postgresql-server postgresql
+    run_as_root postgresql-setup --initdb 2>/dev/null || \
+      run_as_root postgresql-setup initdb 2>/dev/null || true
+  elif command -v apk >/dev/null 2>&1; then
+    run_as_root apk add --no-cache postgresql postgresql-client
+    if id -u postgres >/dev/null 2>&1 && [ ! -f /var/lib/postgresql/data/PG_VERSION ]; then
+      run_as_root install -d -m 0700 -o postgres -g postgres /var/lib/postgresql/data
+      su postgres -s /bin/sh -c "initdb -D /var/lib/postgresql/data" 2>/dev/null || true
+    fi
+  else
+    echo "不支持的包管理器，请手动安装 PostgreSQL 后重新运行安装脚本" >&2
+    exit 1
+  fi
+  run_as_root systemctl start postgresql 2>/dev/null || \
+    run_as_root service postgresql start 2>/dev/null || \
+    run_as_root rc-service postgresql start 2>/dev/null || true
+  run_as_root systemctl enable postgresql 2>/dev/null || \
+    run_as_root rc-update add postgresql default 2>/dev/null || true
+  _wait=15
+  while [ "$_wait" -gt 0 ]; do
+    pg_is_ready && break
+    _wait=$((_wait - 1))
+    sleep 1
+  done
+}
+
+install_postgres_docker() {
+  _user="$1" _pass="$2" _db="$3"
+  need_cmd docker
+  echo "正在通过 Docker 启动 PostgreSQL ..."
+  docker run -d --name pulse-postgres --restart always \
+    -e POSTGRES_USER="$_user" \
+    -e POSTGRES_PASSWORD="$_pass" \
+    -e POSTGRES_DB="$_db" \
+    -p 127.0.0.1:5432:5432 \
+    postgres:16-alpine
+  _wait=30
+  while [ "$_wait" -gt 0 ]; do
+    docker exec pulse-postgres pg_isready -U "$_user" -q 2>/dev/null && break
+    _wait=$((_wait - 1))
+    sleep 1
+  done
+}
+
+create_postgres_db() {
+  _user="$1" _pass="$2" _db="$3"
+  echo "正在创建数据库 '${_db}' 和用户 '${_user}' ..."
+  _sql_tmp="$(mktemp)"
+  chmod 0644 "$_sql_tmp"
+  printf "CREATE USER %s WITH PASSWORD '%s';\nCREATE DATABASE %s OWNER %s;\n" \
+    "$_user" "$_pass" "$_db" "$_user" > "$_sql_tmp"
+  pg_exec_sql_file "$_sql_tmp"
+  rm -f "$_sql_tmp"
+}
+
+setup_database() {
+  _env_file="$1"
+
+  [ "${PULSE_INSTALL_DRY_RUN:-0}" = "1" ] && { echo "[dry-run] 跳过数据库配置" >&2; return 0; }
+
+  # 已通过环境变量传入
+  if [ "${PULSE_DATABASE_URL+x}" = "x" ]; then
+    set_env_file_value "$_env_file" "PULSE_DATABASE_URL" "$PULSE_DATABASE_URL"
+    return 0
+  fi
+
+  # 重装/升级场景：配置文件中已有连接串，跳过
+  _existing="$(grep '^PULSE_DATABASE_URL=' "$_env_file" 2>/dev/null | cut -d= -f2- | tr -d "'" | tr -d '"')"
+  [ -n "$_existing" ] && return 0
+
+  echo ""
+  echo "【数据库】pulse-server 需要 PostgreSQL。"
+
+  # 询问是否已有实例
+  _has_pg=""
+  if tty_available; then
+    printf "是否已有可用的 PostgreSQL？直接回车=没有 [y/N]: " >/dev/tty
+    read -r _has_pg </dev/tty
+  fi
+
+  case "$_has_pg" in
+    [Yy]*)
+      printf "连接串（postgres://user:pass@host:5432/db?sslmode=disable）: " >/dev/tty
+      read -r _url </dev/tty
+      [ -z "$_url" ] && { echo "连接串不能为空" >&2; exit 1; }
+      set_env_file_value "$_env_file" "PULSE_DATABASE_URL" "$_url"
+      return 0
+      ;;
+  esac
+
+  # 选择安装方式
+  _method="1"
+  if tty_available; then
+    printf "安装方式:\n  1) 原生安装（apt/yum/apk）\n  2) Docker\n选择 [1]: " >/dev/tty
+    read -r _method </dev/tty
+    _method="${_method:-1}"
+  fi
+
+  _db_user="pulse"
+  _db_pass="$(random_password)"
+  _db_name="pulse"
+
+  if [ "$_method" = "2" ]; then
+    install_postgres_docker "$_db_user" "$_db_pass" "$_db_name"
+  else
+    install_postgres_native
+    create_postgres_db "$_db_user" "$_db_pass" "$_db_name"
+  fi
+
+  set_env_file_value "$_env_file" "PULSE_DATABASE_URL" \
+    "postgres://${_db_user}:${_db_pass}@localhost:5432/${_db_name}?sslmode=disable"
+  echo "数据库配置完成。"
+}
+
 need_cmd() {
   command -v "$1" >/dev/null 2>&1 || {
     echo "缺少命令: $1" >&2
@@ -156,6 +289,14 @@ _next_is_cert=0
 _next_is_token=0
 _next_is_token_file=0
 for _arg in "$@"; do
+  # 支持 --key=value 形式
+  case "$_arg" in
+    --server=*)     server_url="${_arg#*=}";    continue ;;
+    --node-id=*)    node_id="${_arg#*=}";       continue ;;
+    --cert=*)       cert_b64="${_arg#*=}";      continue ;;
+    --token=*)      token="${_arg#*=}";         continue ;;
+    --token-file=*) token_file="${_arg#*=}";    continue ;;
+  esac
   if [ "$_next_is_server" = "1" ]; then
     server_url="$_arg"
     _next_is_server=0
@@ -247,6 +388,14 @@ else
   download_url="https://github.com/${repo}/releases/download/${version}/${asset}"
 fi
 
+# 镜像支持：设置 PULSE_DOWNLOAD_MIRROR 可在前缀拼接镜像
+# 例如 PULSE_DOWNLOAD_MIRROR=https://ghfast.top/ 会拼成
+# https://ghfast.top/https://github.com/...
+if [ -n "${PULSE_DOWNLOAD_MIRROR:-}" ]; then
+  mirror="${PULSE_DOWNLOAD_MIRROR%/}/"
+  download_url="${mirror}${download_url}"
+fi
+
 bin_dir="${PULSE_INSTALL_BIN:-/usr/local/bin}"
 etc_dir="${PULSE_INSTALL_ETC:-/etc/pulse}"
 share_dir="${PULSE_INSTALL_SHARE:-/usr/local/share/pulse}"
@@ -283,7 +432,12 @@ if [ "${PULSE_INSTALL_DRY_RUN:-0}" = "1" ]; then
   : > "${package_dir}/etc/init.d/pulse-${component}"
 else
   echo "下载 ${asset} ..."
-  curl -fsSL "$download_url" -o "${tmp_dir}/${asset}"
+  if ! curl -fsSL "$download_url" -o "${tmp_dir}/${asset}"; then
+    echo "下载失败: ${download_url}" >&2
+    echo "如网络无法直连 GitHub，可设置 PULSE_DOWNLOAD_MIRROR 使用镜像，例如：" >&2
+    echo "  PULSE_DOWNLOAD_MIRROR=https://ghfast.top/ bash <(...) ..." >&2
+    exit 1
+  fi
   tar -xzf "${tmp_dir}/${asset}" -C "$tmp_dir"
 
   if [ ! -d "$package_dir" ]; then
@@ -335,9 +489,7 @@ if [ "$component" = "server" ]; then
   if [ "${PULSE_DISCOURSE_ADMIN_USERS+x}" = "x" ]; then
     set_env_file_value "$env_target" "PULSE_DISCOURSE_ADMIN_USERS" "$PULSE_DISCOURSE_ADMIN_USERS"
   fi
-  if [ "${PULSE_DATABASE_URL+x}" = "x" ]; then
-    set_env_file_value "$env_target" "PULSE_DATABASE_URL" "$PULSE_DATABASE_URL"
-  fi
+  setup_database "$env_target"
   if [ "${PULSE_DATA_DIR+x}" = "x" ]; then
     set_env_file_value "$env_target" "PULSE_DATA_DIR" "$PULSE_DATA_DIR"
   fi
