@@ -1,10 +1,9 @@
 # 开发指南
 
-**依赖**：Go 1.21+、Bun、PostgreSQL
+**依赖**：Go 1.23+、Bun、PostgreSQL
 
 ```bash
-# 启动 server(:8080 HTTP + :8082 gRPC node hub) + React SPA dev server(:3000)
-# pulse-node 不会自动启动，需通过 enroll 流程手动注册（见下）
+# 启动 server（:8080 HTTP + :8082 gRPC node hub）+ React SPA dev server（:3000）
 make dev
 
 # 停止所有开发进程
@@ -27,23 +26,21 @@ make build
 
 ## 本地注册一个节点
 
-`make dev` 不会自动起 `pulse-node`。需要本地节点时分两步：
+`make dev` 不启动 `pulse-node`。本地需要节点时分两步：
 
 ```bash
-# 1) 通过面板「节点 → 添加节点」生成 enroll token，或调接口拿到 <TOKEN> 与 <ID>
+# 1) 面板「节点 → 添加节点」生成 enroll token，得到 <ID> 与 <TOKEN>
 
-# 2) 在另一个终端执行 enroll，再启动 pulse-node
+# 2) enroll：写出证书 + env 文件（./dev-data/node/pulse-node.env）
 ./dist/pulse-node enroll \
-  --server=http://localhost:8080 --node-id=<ID> --token=<TOKEN> \
-  --insecure --out=./dev-data/node
+  --server=http://localhost:8080 \
+  --node-id=<ID> --token=<TOKEN> --insecure \
+  --out=./dev-data/node \
+  --env-out=./dev-data/node/pulse-node.env
 
-PULSE_NODE_ID=<ID> \
-PULSE_NODE_GRPC_URL=https://localhost:8082 \
-PULSE_NODE_SERVER_ADDR=localhost:8082 \
-PULSE_NODE_CLIENT_CERT_FILE=./dev-data/node/node_cert.pem \
-PULSE_NODE_CLIENT_KEY_FILE=./dev-data/node/node_key.pem \
-PULSE_NODE_SERVER_CA_FILE=./dev-data/node/node_ca.pem \
-  ./dist/pulse-node
+# 3) 加载 env 启动 node
+set -a; source ./dev-data/node/pulse-node.env; set +a
+PULSE_NODE_ID=<ID> ./dist/pulse-node
 ```
 
 节点启动后会主动连 `localhost:8082` 建立 gRPC 长连接；进程本身不监听任何端口。
