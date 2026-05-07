@@ -565,7 +565,7 @@ func (a *API) handleNodeStart(w http.ResponseWriter, r *http.Request, nodeID str
 		writeNodeError(w, err)
 		return
 	}
-	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
+	ctx, cancel := context.WithTimeout(r.Context(), 60*time.Second)
 	defer cancel()
 	out, err := client.Start(ctx, nodes.ConfigRequest{Config: req.Config})
 	if err != nil {
@@ -630,7 +630,7 @@ func (a *API) handleNodeRestart(w http.ResponseWriter, r *http.Request, nodeID s
 		writeJSON(w, http.StatusInternalServerError, map[string]any{"error": err.Error()})
 		return
 	}
-	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
+	ctx, cancel := context.WithTimeout(r.Context(), 60*time.Second)
 	defer cancel()
 	status, _, err := jobs.ApplyNodeUsers(ctx, client, nodeInbounds, userAccesses, userMap, a.inboundStore, a.outboundStore, a.applyOpts, node)
 	if err != nil {
@@ -675,7 +675,7 @@ func (a *API) handleNodeApply(w http.ResponseWriter, r *http.Request, nodeID str
 		writeJSON(w, http.StatusInternalServerError, map[string]any{"error": err.Error()})
 		return
 	}
-	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
+	ctx, cancel := context.WithTimeout(r.Context(), 60*time.Second)
 	defer cancel()
 	status, _, err := jobs.ApplyNodeUsers(ctx, client, nodeInbounds, userAccesses, userMap, a.inboundStore, a.outboundStore, a.applyOpts, node)
 	if err != nil {
