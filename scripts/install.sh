@@ -15,17 +15,12 @@ usage() {
                       TODO: 待实现 --server-fingerprint 后改为默认关闭）
   --cert <BASE64>     [已废弃] 旧的 server 客户端证书 base64，仅向后兼容（会被忽略）
 
-选项（server 专用）:
-  --reset-password    生成随机新密码并重启服务
-
 环境变量:
   PULSE_INSTALL_BIN     二进制安装目录，默认 /usr/local/bin
   PULSE_INSTALL_ETC     配置安装目录，默认 /etc/pulse
   PULSE_INSTALL_LIB     systemd 安装目录，默认 /etc/systemd/system
   PULSE_INSTALL_INITD   OpenRC 安装目录，默认 /etc/init.d
   PULSE_STATE_DIR       工作目录，默认 /var/lib/pulse
-  PULSE_ADMIN_USERNAME  server 安装时管理员用户名，默认 admin
-  PULSE_ADMIN_PASSWORD  server 安装时管理员密码，不指定则随机生成
   PULSE_SERVER_ADDR     server 监听地址，不指定则随机端口（格式 :端口）
   PULSE_DATABASE_URL    PostgreSQL 连接串（postgres://user:pass@host:5432/db?sslmode=disable）
   PULSE_DATA_DIR        工作目录（geoip、上传文件等），默认 /var/lib/pulse
@@ -266,7 +261,6 @@ arch() {
 }
 
 force=0
-reset_password=0
 component=""
 version="latest"
 server_url=""
@@ -316,7 +310,6 @@ for _arg in "$@"; do
   fi
   case "$_arg" in
     --force|-f) force=1 ;;
-    --reset-password) reset_password=1 ;;
     -h|--help) usage; exit 0 ;;
     --server) _next_is_server=1 ;;
     --node-id) _next_is_node_id=1 ;;
@@ -454,20 +447,9 @@ if [ "$component" = "server" ]; then
     run_as_root install -m 0644 "${package_dir}/etc/pulse/pulse-server.env.example" "$env_target"
   fi
   if [ "$is_new_install" = "1" ]; then
-    if [ "${PULSE_ADMIN_PASSWORD+x}" != "x" ]; then
-      PULSE_ADMIN_PASSWORD="$(random_password)"
-    fi
     if [ "${PULSE_SERVER_ADDR+x}" != "x" ]; then
       PULSE_SERVER_ADDR=":$(random_port)"
     fi
-  elif [ "$reset_password" = "1" ]; then
-    PULSE_ADMIN_PASSWORD="$(random_password)"
-  fi
-  if [ "${PULSE_ADMIN_USERNAME+x}" = "x" ]; then
-    set_env_file_value "$env_target" "PULSE_ADMIN_USERNAME" "$PULSE_ADMIN_USERNAME"
-  fi
-  if [ "${PULSE_ADMIN_PASSWORD+x}" = "x" ] || [ "$reset_password" = "1" ]; then
-    set_env_file_value "$env_target" "PULSE_ADMIN_PASSWORD" "$PULSE_ADMIN_PASSWORD"
   fi
   if [ "${PULSE_SERVER_ADDR+x}" = "x" ]; then
     set_env_file_value "$env_target" "PULSE_SERVER_ADDR" "$PULSE_SERVER_ADDR"
@@ -646,19 +628,14 @@ echo "安装完成: pulse-${component} ${_installed_version}"
 echo "配置文件: ${env_target}"
 echo "工作目录: ${state_dir}"
 if [ "$component" = "server" ]; then
-  # 从 env 文件读取实际值
   _addr="$(grep '^PULSE_SERVER_ADDR=' "$env_target" 2>/dev/null | cut -d= -f2- | tr -d "'" | tr -d '"')"
-  _username="$(grep '^PULSE_ADMIN_USERNAME=' "$env_target" 2>/dev/null | cut -d= -f2- | tr -d "'" | tr -d '"')"
-  _password="$(grep '^PULSE_ADMIN_PASSWORD=' "$env_target" 2>/dev/null | cut -d= -f2- | tr -d "'" | tr -d '"')"
-  echo ""
-  echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
   _port="${_addr#:}"
   _ip="$(ip -4 addr show scope global 2>/dev/null | awk '/inet/{gsub(/\/.*/, "", $2); print $2; exit}' \
         || hostname -I 2>/dev/null | awk '{print $1}' \
         || echo "<your-ip>")"
+  echo ""
+  echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
   echo "  面板地址: http://${_ip}:${_port}"
-  echo "  管理员:   ${_username:-admin}"
-  echo "  密码:     ${_password:-(见 ${env_target})}"
   echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 else
   _ip="$(ip -4 addr show scope global 2>/dev/null | awk '/inet/{gsub(/\/.*/, "", $2); print $2; exit}' \
