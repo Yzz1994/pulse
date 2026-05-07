@@ -20,6 +20,8 @@ import (
 	"time"
 
 	"github.com/soheilhy/cmux"
+	"golang.org/x/net/http2"
+	"golang.org/x/net/http2/h2c"
 	"golang.org/x/sync/errgroup"
 
 	"pulse/internal/alert"
@@ -1216,8 +1218,11 @@ func Run() error {
 	// SPA catch-all: must be registered last
 	mux.Handle("/", spaHandler)
 
+	// cmux 在 TLS 之上做连接分流，httpL 收到的连接对 http.Server 而言是"明文"。
+	// 浏览器经 TLS ALPN 协商 h2 后仍会发送 HTTP/2 帧，需用 h2c handler 接管，
+	// 否则 http.Server 将 HTTP/2 帧当 HTTP/1.1 解析失败，导致页面白屏。
 	httpSrv := &http.Server{
-		Handler:           accessLog(mux),
+		Handler:           h2c.NewHandler(accessLog(mux), &http2.Server{}),
 		ReadHeaderTimeout: 5 * time.Second,
 		// WriteTimeout 不设：系统日志等 SSE 长连接会被强制断流
 		IdleTimeout: 120 * time.Second,

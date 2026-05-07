@@ -641,7 +641,7 @@ if [ "$component" = "server" ]; then
   _grpc_url="$(grep '^PULSE_NODE_GRPC_URL=' "$env_target" 2>/dev/null | cut -d= -f2- | tr -d "'" | tr -d '"')"
   echo ""
   echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-  echo "  面板地址: http://${_ip}:${_port}"
+  echo "  面板地址: https://${_ip}:${_port}"
   if [ -n "$_grpc_url" ]; then
     echo "  节点 gRPC: ${_grpc_url}"
   else
