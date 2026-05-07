@@ -3,13 +3,13 @@ package server
 import (
 	"bytes"
 	"context"
-	"crypto/tls"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
 	"io/fs"
 	"log"
+	"net"
 	"net/http"
 	"net/url"
 	"os"
@@ -20,8 +20,6 @@ import (
 	"time"
 
 	"github.com/soheilhy/cmux"
-	"golang.org/x/net/http2"
-	"golang.org/x/net/http2/h2c"
 	"golang.org/x/sync/errgroup"
 
 	"pulse/internal/alert"
@@ -1218,38 +1216,27 @@ func Run() error {
 	// SPA catch-all: must be registered last
 	mux.Handle("/", spaHandler)
 
-	// cmux 在 TLS 之上做连接分流，httpL 收到的连接对 http.Server 而言是"明文"。
-	// 浏览器经 TLS ALPN 协商 h2 后仍会发送 HTTP/2 帧，需用 h2c handler 接管，
-	// 否则 http.Server 将 HTTP/2 帧当 HTTP/1.1 解析失败，导致页面白屏。
 	httpSrv := &http.Server{
-		Handler:           h2c.NewHandler(accessLog(mux), &http2.Server{}),
+		Handler:           accessLog(mux),
 		ReadHeaderTimeout: 5 * time.Second,
 		// WriteTimeout 不设：系统日志等 SSE 长连接会被强制断流
 		IdleTimeout: 120 * time.Second,
 	}
 
 	if nhResult.GRPCServer != nil {
-		// 单端口 TLS 模式：cmux 在 tls.Listener 之上按 content-type 分流。
-		// gRPC server 通过 Serve(grpcL) 运行，keepalive 完全有效。
-		tlsCfg := &tls.Config{
-			Certificates: []tls.Certificate{nhResult.TLSCert},
-			ClientAuth:   tls.RequestClientCert,
-			ClientCAs:    nodeCA.ClientCAPool(),
-			NextProtos:   []string{"h2", "http/1.1"},
-			MinVersion:   tls.VersionTLS12,
-		}
-		lis, err := tls.Listen("tcp", cfg.ServerAddr, tlsCfg)
+		// 单端口混合模式：cmux 按 TLS ClientHello 分流。
+		// TLS 连接（节点 gRPC mTLS）→ grpcL；明文 HTTP（浏览器面板）→ httpL。
+		// TLS 握手在 gRPC server 内由 credentials.NewTLS 完成，面板无需证书。
+		lis, err := net.Listen("tcp", cfg.ServerAddr)
 		if err != nil {
-			return fmt.Errorf("tls listen on %s: %w", cfg.ServerAddr, err)
+			return fmt.Errorf("listen on %s: %w", cfg.ServerAddr, err)
 		}
 
 		m := cmux.New(lis)
-		// HTTP/2 + content-type: application/grpc → gRPC server
-		grpcL := m.MatchWithWriters(cmux.HTTP2MatchHeaderFieldSendSettings("content-type", "application/grpc"))
-		// 其余（HTTP/1.1 面板、HTTP/2 非 gRPC）→ http.Server
-		httpL := m.Match(cmux.Any())
+		grpcL := m.Match(cmux.TLS())   // TLS ClientHello → gRPC（mTLS）
+		httpL := m.Match(cmux.Any())   // 明文 HTTP → 面板
 
-		log.Printf("pulse-server listening on %s (TLS, panel+gRPC single port)", cfg.ServerAddr)
+		log.Printf("pulse-server listening on %s (HTTP panel + gRPC TLS, single port)", cfg.ServerAddr)
 
 		grpcSrv := nhResult.GRPCServer
 		g, gctx := errgroup.WithContext(sigCtx)

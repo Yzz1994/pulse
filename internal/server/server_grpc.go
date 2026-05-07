@@ -9,17 +9,19 @@ import (
 	"time"
 
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/credentials"
+	"google.golang.org/grpc/keepalive"
 
 	"pulse/internal/cert"
 	"pulse/internal/nodehub"
 	"pulse/internal/nodes"
+	nodev1 "pulse/internal/pb/nodev1"
 )
 
 // nodeHubResult 包含 startNodeHub 的启动结果。
 type nodeHubResult struct {
 	Hub        *nodehub.Hub
-	GRPCServer *grpc.Server    // nil 表示 gRPC 未启用（证书颁发失败等）
-	TLSCert    tls.Certificate // 服务器 TLS 证书，供外层单端口 TLS 使用
+	GRPCServer *grpc.Server // nil 表示 gRPC 未启用（证书颁发失败等）
 }
 
 // startNodeHub 实例化 nodehub.Hub 并构造 gRPC server（单端口 cmux 模式）。
@@ -48,18 +50,31 @@ func startNodeHub(ctx context.Context, serverCN string, serverSANs []string, nod
 		return &nodeHubResult{Hub: hub}
 	}
 
-	grpcSrv, err := nodehub.NewGRPCServer(ctx, nodehub.ServerOptions{
-		Hub:                 hub,
-		KeepaliveTime:       30 * time.Second,
-		KeepaliveTimeout:    10 * time.Second,
-		PermitWithoutStream: true,
-	})
-	if err != nil {
-		log.Printf("nodehub: create gRPC server failed: %v; gRPC disabled", err)
-		return &nodeHubResult{Hub: hub}
+	// gRPC 使用真实 TLS 握手（cmux 按 TLS ClientHello 分流，握手在此完成）。
+	// RequireAndVerifyClientCert 在 TLS 层强制 mTLS，无需额外的应用层拦截器。
+	tlsCfg := &tls.Config{
+		Certificates: []tls.Certificate{serverTLS},
+		ClientAuth:   tls.RequireAndVerifyClientCert,
+		ClientCAs:    nodeCA.ClientCAPool(),
+		NextProtos:   []string{"h2"},
+		MinVersion:   tls.VersionTLS12,
 	}
 
-	return &nodeHubResult{Hub: hub, GRPCServer: grpcSrv, TLSCert: serverTLS}
+	grpcSrv := grpc.NewServer(
+		grpc.Creds(credentials.NewTLS(tlsCfg)),
+		grpc.KeepaliveParams(keepalive.ServerParameters{
+			Time:    30 * time.Second,
+			Timeout: 10 * time.Second,
+		}),
+		grpc.KeepaliveEnforcementPolicy(keepalive.EnforcementPolicy{
+			MinTime:             25 * time.Second,
+			PermitWithoutStream: true,
+		}),
+	)
+	nodev1.RegisterNodeAgentServer(grpcSrv, hub)
+	go hub.RunReaper(ctx)
+
+	return &nodeHubResult{Hub: hub, GRPCServer: grpcSrv}
 }
 
 // onNodeConnected 返回节点建连回调：用 gRPC 对端 IP 更新 node.BaseURL。
