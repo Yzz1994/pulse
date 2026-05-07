@@ -1120,7 +1120,7 @@ func Run() error {
 			return usageBuf.Append(nodeID, seq, stats)
 		},
 	}
-	nodeHub := startNodeHub(context.Background(), cfg.NodeGRPCAddr, "pulse-grpc-server", []string{"localhost", "127.0.0.1"}, nodeCA, hubPushHandler)
+	nodeHub := startNodeHub(context.Background(), cfg.NodeGRPCAddr, "pulse-grpc-server", []string{"localhost", "127.0.0.1"}, nodeCA, db.NodeStore(), hubPushHandler)
 	if nodeHub != nil {
 		serverapi.RegisterNodeHubMetrics(protectedV1, nodeHub)
 		// 让 serverapi 的 clientFactory 优先用 hub 构造 Client。

@@ -27,10 +27,12 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"net"
 	"sync"
 	"time"
 
 	nodev1 "pulse/internal/pb/nodev1"
+	"google.golang.org/grpc/peer"
 )
 
 // PushHandler 处理 node 主动推送的事件。
@@ -73,6 +75,10 @@ type Options struct {
 	PushHandler   PushHandler
 	PeerExtractor PeerExtractor // 默认基于 mTLS client cert CN（见 peer.go）
 
+	// OnNodeConnected 在节点成功建立 Session 后调用，传入 nodeID 和 gRPC 对端 IP。
+	// 可用于自动更新节点出口 IP 等场景。nil 时不调用。
+	OnNodeConnected func(nodeID, peerIP string)
+
 	// DeadConnectionTimeout 是 reaper 判定一个 node 连接已死的最长无帧时间。
 	// 超过此时长（自上次收到任意帧起）未收到帧的连接会被强制关闭。
 	// 默认 60s；ReaperInterval 默认 10s（不可外部调）；测试通过 ReaperInterval 字段加速。
@@ -85,9 +91,10 @@ type Options struct {
 type Hub struct {
 	nodev1.UnimplementedNodeAgentServer
 
-	logger        *slog.Logger
-	pushHandler   PushHandler
-	peerExtractor PeerExtractor
+	logger          *slog.Logger
+	pushHandler     PushHandler
+	peerExtractor   PeerExtractor
+	onNodeConnected func(nodeID, peerIP string)
 
 	deadConnTimeout time.Duration
 	reaperInterval  time.Duration
@@ -135,6 +142,7 @@ func New(opts Options) *Hub {
 		logger:          logger,
 		pushHandler:     ph,
 		peerExtractor:   pe,
+		onNodeConnected: opts.OnNodeConnected,
 		deadConnTimeout: dct,
 		reaperInterval:  ri,
 		conns:           make(map[string]*conn),
@@ -220,6 +228,16 @@ func (h *Hub) Session(stream nodev1.NodeAgent_SessionServer) error {
 	h.mu.Unlock()
 	h.metrics.onlineGauge.Add(1)
 	h.metrics.markSeen(nodeID)
+
+	if h.onNodeConnected != nil {
+		peerIP := ""
+		if p, ok := peer.FromContext(ctx); ok && p.Addr != nil {
+			if host, _, err := net.SplitHostPort(p.Addr.String()); err == nil {
+				peerIP = host
+			}
+		}
+		go h.onNodeConnected(nodeID, peerIP)
+	}
 
 	defer func() {
 		h.mu.Lock()

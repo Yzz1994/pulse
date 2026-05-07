@@ -633,6 +633,7 @@ else
   else
     echo "未检测到 systemd 或 OpenRC，请手动启动: ${bin_dir}/pulse-node"
   fi
+
 fi
 
 _installed_version="$("${bin_dir}/pulse-${component}" --version 2>/dev/null || echo "$version")"
