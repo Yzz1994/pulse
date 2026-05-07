@@ -233,6 +233,11 @@ repo="0xUnixIO/pulse"
 
 os="linux"
 cpu="$(arch)"
+case "$cpu" in
+  x86_64|amd64) cpu="amd64" ;;
+  aarch64|arm64) cpu="arm64" ;;
+  *) echo "不支持的 CPU 架构: $cpu" >&2; exit 1 ;;
+esac
 asset="pulse-${component}-${os}-${cpu}.tar.gz"
 
 # Non-token fallback URL (public repos)
