@@ -14,6 +14,7 @@ import (
 	"strings"
 	"time"
 
+	"net/url"
 	"pulse/internal/alert"
 	"pulse/internal/announcements"
 	"path/filepath"
@@ -1120,7 +1121,13 @@ func Run() error {
 			return usageBuf.Append(nodeID, seq, stats)
 		},
 	}
-	nodeHub := startNodeHub(context.Background(), cfg.NodeGRPCAddr, "pulse-grpc-server", []string{"localhost", "127.0.0.1"}, nodeCA, hubPushHandler)
+	grpcSANs := []string{"localhost", "127.0.0.1"}
+	if u, err := url.Parse(cfg.NodeGRPCURL); err == nil {
+		if h := u.Hostname(); h != "" && h != "localhost" && h != "127.0.0.1" && h != "::1" {
+			grpcSANs = append(grpcSANs, h)
+		}
+	}
+	nodeHub := startNodeHub(context.Background(), cfg.NodeGRPCAddr, "pulse-grpc-server", grpcSANs, nodeCA, hubPushHandler)
 	if nodeHub != nil {
 		serverapi.RegisterNodeHubMetrics(protectedV1, nodeHub)
 		// 让 serverapi 的 clientFactory 优先用 hub 构造 Client。
