@@ -8,14 +8,11 @@ on:
 permissions:
   contents: write
 
-env:
-  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
-
 jobs:
   frontend:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - uses: oven-sh/setup-bun@v2
         with:
@@ -25,7 +22,7 @@ jobs:
         run: cd web/panel && bun install --frozen-lockfile && bun run build.ts
 
       - name: Upload frontend dist
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: frontend-dist
           path: web/panel/dist/
@@ -40,15 +37,15 @@ jobs:
         component: [server, node]
         arch: [amd64, arm64]
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
-      - uses: actions/setup-go@v5
+      - uses: actions/setup-go@v6
         with:
           go-version-file: go.mod
 
       - name: Download frontend dist
         if: matrix.component == 'server'
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: frontend-dist
           path: web/panel/dist/
@@ -63,7 +60,7 @@ jobs:
             SKIP_SPA=1
 
       - name: Upload package
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: pulse-${{ matrix.component }}-linux-${{ matrix.arch }}
           path: dist/release/pulse-${{ matrix.component }}-linux-${{ matrix.arch }}.tar.gz
@@ -73,10 +70,10 @@ jobs:
     runs-on: ubuntu-latest
     needs: build
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Download all packages
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           pattern: pulse-*
           path: dist/release/
@@ -86,7 +83,7 @@ jobs:
         run: cd dist/release && sha256sum *.tar.gz > checksums.txt
 
       - name: Publish GitHub Release
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           files: |
             dist/release/*.tar.gz
