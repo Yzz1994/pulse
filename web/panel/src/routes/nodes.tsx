@@ -496,6 +496,8 @@ function ManualUpdateDialog({
   const [error, setError] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
   const [updated, setUpdated] = useState(false);
+  // 两阶段检测：先等节点离线（确认重启已开始），再等重新上线（确认更新完成）
+  const seenOffline = useRef(false);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   useEffect(() => {
@@ -503,6 +505,7 @@ function ManualUpdateDialog({
     setEnroll(null);
     setError(null);
     setUpdated(false);
+    seenOffline.current = false;
     api
       .post<EnrollTokenResponse>(`/nodes/${node.id}/enroll-token`, {})
       .then(setEnroll)
@@ -513,7 +516,13 @@ function ManualUpdateDialog({
     if (!open || !node || updated) return;
     pollRef.current = setInterval(() => {
       api.get<Node>(`/nodes/${node.id}`)
-        .then((n) => { if (n.online) setUpdated(true); })
+        .then((n) => {
+          if (!n.online) {
+            seenOffline.current = true;
+          } else if (seenOffline.current) {
+            setUpdated(true);
+          }
+        })
         .catch(() => {});
     }, 3000);
     return () => { if (pollRef.current) clearInterval(pollRef.current); };
