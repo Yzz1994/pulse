@@ -36,11 +36,9 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { api } from "@/lib/api";
 import { getToken } from "@/lib/auth";
 import { useAuthErrorHandler } from "@/hooks/useAuthErrorHandler";
-import { useNodeHubMetrics, formatLastSeen } from "@/hooks/useNodeHubMetrics";
 import { formatBytes, formatSpeed } from "@/lib/format";
 import type { Node, NodesResponse, CreateNodeRequest } from "@/lib/types";
 
-type NodeStatus = "online" | "offline" | "loading";
 type DetailMode = "status" | "config" | "logs" | null;
 
 interface RuntimeInfo {
@@ -388,7 +386,7 @@ function InstallCmdDialog({
     if (!open || !node) return;
     setEnroll(null);
     setError(null);
-    setRegistered(!!node.base_url);
+    setRegistered(false);
     api
       .post<EnrollTokenResponse>(`/nodes/${node.id}/enroll-token`, {})
       .then(setEnroll)
@@ -399,7 +397,7 @@ function InstallCmdDialog({
     if (!open || !node || registered) return;
     pollRef.current = setInterval(() => {
       api.get<Node>(`/nodes/${node.id}`)
-        .then((n) => { if (n.base_url) setRegistered(true); })
+        .then((n) => { if (n.online) setRegistered(true); })
         .catch(() => {});
     }, 3000);
     return () => { if (pollRef.current) clearInterval(pollRef.current); };
@@ -834,7 +832,6 @@ interface GeoInfo {
 
 interface NodeCardProps {
   node: Node;
-  status: NodeStatus;
   runtime: RuntimeInfo | null;
   metrics: NodeMetrics | null;
   onEdit: (node: Node) => void;
@@ -853,8 +850,6 @@ interface NodeCardProps {
   onManualUpdate: (node: Node) => void;
   latestVersion: string | null;
   geoInfo?: GeoInfo | null;
-  hubOnline?: boolean;
-  hubLastSeen?: number; // unix seconds
 }
 
 // ── Traceroute Dialog ────────────────────────────────────────────
@@ -1915,34 +1910,22 @@ function countryFlag(code: string): string {
   return String.fromCodePoint(...[...code.toUpperCase()].map(c => 0x1F1E6 - 65 + c.charCodeAt(0)));
 }
 
-function NodeCard({ node, status, runtime, metrics, onEdit, onDelete, onOpenDetail, onRestart, onSpeedtest, speedtestLoading, speedtestResult, onCheck, checkLoading, checkResult, prevMetrics, onUpdate, updateLoading, onManualUpdate, latestVersion, geoInfo, hubOnline, hubLastSeen }: NodeCardProps) {
+function NodeCard({ node, runtime, metrics, onEdit, onDelete, onOpenDetail, onRestart, onSpeedtest, speedtestLoading, speedtestResult, onCheck, checkLoading, checkResult, prevMetrics, onUpdate, updateLoading, onManualUpdate, latestVersion, geoInfo }: NodeCardProps) {
   const [tracerouteOpen, setTracerouteOpen] = useState(false);
   const [sentinelOpen, setSentinelOpen] = useState(false);
   const totalTraffic = node.upload_bytes + node.download_bytes;
 
-  const statusBadge = (() => {
-    switch (status) {
-      case "online":
-        return <Badge className="bg-green-600 text-white hover:bg-green-600">在线</Badge>;
-      case "offline":
-        return <Badge variant="destructive">离线</Badge>;
-      default:
-        return <Badge variant="outline">检测中...</Badge>;
-    }
-  })();
-
-  const hubBadge = hubOnline === undefined ? null : (
-    <span
-      className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-medium ${
-        hubOnline
-          ? "bg-emerald-500/15 text-emerald-600 dark:text-emerald-400"
-          : "bg-[hsl(var(--muted))] text-[hsl(var(--muted-foreground))]"
-      }`}
-      title={`gRPC 长连接 · 最近活跃：${formatLastSeen(hubLastSeen)}`}
+  const online = !!node.online;
+  const statusBadge = (
+    <Badge
+      className={online
+        ? "bg-green-600 text-white hover:bg-green-600"
+        : ""}
+      variant={online ? undefined : "destructive"}
+      title="基于 gRPC 长连接判定"
     >
-      <span className={`h-1.5 w-1.5 rounded-full ${hubOnline ? "bg-emerald-500" : "bg-gray-400"}`} />
-      {hubOnline ? "🟢 在线" : "⚪️ 离线"}
-    </span>
+      {online ? "在线" : "离线"}
+    </Badge>
   );
 
   return (
@@ -1964,7 +1947,6 @@ function NodeCard({ node, status, runtime, metrics, onEdit, onDelete, onOpenDeta
           )}
         </div>
         <div className="ml-2 flex shrink-0 items-center gap-2">
-          {hubBadge}
           {node.disabled
             ? <Badge variant="secondary">已禁用</Badge>
             : statusBadge}
@@ -2201,9 +2183,6 @@ export default function NodesPage() {
   const [deleting, setDeleting] = useState(false);
   const [restartNode, setRestartNode] = useState<Node | null>(null);
 
-  // Node status tracking
-  const [nodeStatuses, setNodeStatuses] = useState<Map<string, NodeStatus>>(new Map());
-
   // Node runtime info (versions)
   const [nodeRuntimes, setNodeRuntimes] = useState<Map<string, RuntimeInfo>>(new Map());
 
@@ -2234,58 +2213,31 @@ export default function NodesPage() {
   // ── Auth error handler ───────────────────────────────────────
   const handleAuthError = useAuthErrorHandler();
 
-  // ── nodehub gRPC 长连接指标（每 5 秒轮询） ─────────────────
-  const hubMetrics = useNodeHubMetrics(5000);
-  const hubOnlineSet = useMemo(
-    () => new Set(hubMetrics?.online_node_ids ?? []),
-    [hubMetrics],
-  );
-
-  // ── Check status for a single node ──────────────────────────
-  const checkNodeStatus = useCallback(
-    (nodeId: string) => {
-      setNodeStatuses((prev) => {
-        const next = new Map(prev);
-        next.set(nodeId, "loading");
-        return next;
-      });
-      api
-        .get<any>(`/nodes/${nodeId}/runtime/status`)
-        .then(() => {
-          setNodeStatuses((prev) => {
-            const next = new Map(prev);
-            next.set(nodeId, "online");
-            return next;
-          });
-        })
-        .catch(() => {
-          setNodeStatuses((prev) => {
-            const next = new Map(prev);
-            next.set(nodeId, "offline");
-            return next;
-          });
-        });
-    },
-    [],
-  );
-
   // ── Fetch nodes ──────────────────────────────────────────────
-  const fetchNodes = useCallback(() => {
-    setLoading(true);
-    setError(null);
-    api
+  const fetchNodes = useCallback((silent = false) => {
+    if (!silent) {
+      setLoading(true);
+      setError(null);
+    }
+    return api
       .get<NodesResponse>("/nodes")
       .then((res) => setNodes(res.nodes ?? []))
       .catch((err) => {
-        if (!handleAuthError(err)) {
+        if (!silent && !handleAuthError(err)) {
           setError(err instanceof Error ? err.message : "加载失败");
         }
       })
-      .finally(() => setLoading(false));
+      .finally(() => { if (!silent) setLoading(false); });
   }, [handleAuthError]);
 
   useEffect(() => {
     fetchNodes();
+  }, [fetchNodes]);
+
+  // 每 5 秒静默刷新节点列表，更新在线状态（来自 server hub）。
+  useEffect(() => {
+    const id = setInterval(() => { fetchNodes(true); }, 5000);
+    return () => clearInterval(id);
   }, [fetchNodes]);
 
   // ── Fetch latest version for update badge ────────────────────
@@ -2306,12 +2258,6 @@ export default function NodesPage() {
       })
       .catch(() => {}); // 数据库未就绪时静默跳过
   }, [nodes]);
-
-  // ── Check statuses after nodes load ─────────────────────────
-  useEffect(() => {
-    if (nodes.length === 0) return;
-    nodes.forEach((node) => checkNodeStatus(node.id));
-  }, [nodes, checkNodeStatus]);
 
   // ── Fetch runtime info (versions) after nodes load ───────────
   useEffect(() => {
@@ -2453,7 +2399,7 @@ export default function NodesPage() {
     try {
       await api.post<any>(`/nodes/${node.id}/runtime/restart`, { config: "" });
       toast(`节点 ${node.name} 重启成功`, "success");
-      checkNodeStatus(node.id);
+      fetchNodes(true);
     } catch (err) {
       if (!handleAuthError(err)) {
         toast(`重启失败：${err instanceof Error ? err.message : "未知错误"}`, "error");
@@ -2529,7 +2475,7 @@ export default function NodesPage() {
             </div>
             <p className="mb-1 font-semibold text-[hsl(var(--foreground))]">加载失败</p>
             <p className="mb-4 text-sm text-[hsl(var(--muted-foreground))]">{error}</p>
-            <Button onClick={fetchNodes} variant="outline">
+            <Button onClick={() => { fetchNodes(); }} variant="outline">
               <IconRefresh className="mr-2 h-4 w-4" />
               重试
             </Button>
@@ -2592,7 +2538,6 @@ export default function NodesPage() {
             <NodeCard
               key={node.id}
               node={node}
-              status={nodeStatuses.get(node.id) ?? "loading"}
               runtime={nodeRuntimes.get(node.id) ?? null}
               metrics={nodeMetrics.get(node.id) ?? null}
               prevMetrics={prevNodeMetrics.get(node.id) ?? null}
@@ -2611,8 +2556,6 @@ export default function NodesPage() {
               onManualUpdate={(n) => { setManualUpdateNode(n); setManualUpdateOpen(true); }}
               latestVersion={latestVersion}
               geoInfo={geoInfoMap.get(node.id) ?? null}
-              hubOnline={hubMetrics ? hubOnlineSet.has(node.id) : undefined}
-              hubLastSeen={hubMetrics?.last_seen?.[node.id]}
             />
           ))}
         </div>

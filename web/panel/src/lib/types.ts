@@ -169,6 +169,7 @@ export interface Node {
   ip_override: string;
   disabled: boolean;
   is_landing: boolean;
+  online?: boolean;
 }
 
 export interface NodesResponse {

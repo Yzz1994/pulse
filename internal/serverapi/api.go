@@ -39,6 +39,7 @@ type API struct {
 	clientCache    sync.Map // nodeID → *nodes.Client
 	accessLogStore accesslogs.Store
 	auditRuleStore auditrules.Store
+	hub            *nodehub.Hub // 用于在线状态查询；可能为 nil（早期或测试）
 }
 
 type upsertNodeRequest struct {
@@ -98,10 +99,27 @@ func (a *API) SetNodeHub(hub *nodehub.Hub) {
 	if hub == nil {
 		return
 	}
+	a.hub = hub
 	a.clientFactory = func(node nodes.Node) *nodes.Client {
 		return nodes.NewClientWithHub(node.ID, hub)
 	}
 	a.clientCache = sync.Map{}
+}
+
+// nodeWithOnline 返回包含 online 字段的节点 JSON map（嵌入原 Node + online）。
+func (a *API) nodeWithOnline(node nodes.Node) map[string]any {
+	online := false
+	if a.hub != nil {
+		online = a.hub.IsOnline(node.ID)
+	}
+	b, _ := json.Marshal(node)
+	var m map[string]any
+	_ = json.Unmarshal(b, &m)
+	if m == nil {
+		m = map[string]any{}
+	}
+	m["online"] = online
+	return m
 }
 
 func RegisterUsersAPI(mux *http.ServeMux, usersStore users.Store, nodesStore nodes.Store, inboundStore inbounds.InboundStore, outboundStore outbounds.Store, applyOpts jobs.ApplyOptions, geoDB *geoip.DB, sesStore PortalSessionStore) {
@@ -136,7 +154,11 @@ func (a *API) handleNodes(w http.ResponseWriter, r *http.Request) {
 			writeJSON(w, http.StatusInternalServerError, map[string]any{"error": err.Error()})
 			return
 		}
-		writeJSON(w, http.StatusOK, map[string]any{"nodes": items})
+		out := make([]map[string]any, 0, len(items))
+		for _, n := range items {
+			out = append(out, a.nodeWithOnline(n))
+		}
+		writeJSON(w, http.StatusOK, map[string]any{"nodes": out})
 	case http.MethodPost:
 		var req upsertNodeRequest
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -245,7 +267,7 @@ func (a *API) handleNode(w http.ResponseWriter, r *http.Request, nodeID string) 
 			writeNodeError(w, err)
 			return
 		}
-		writeJSON(w, http.StatusOK, node)
+		writeJSON(w, http.StatusOK, a.nodeWithOnline(node))
 	case http.MethodPut:
 		var req upsertNodeRequest
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
