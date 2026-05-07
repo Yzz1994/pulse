@@ -224,9 +224,9 @@ func Run() error {
 		},
 	})
 
-	ctx, cancelCtx := context.WithCancel(context.Background())
-	defer cancelCtx()
-	scheduler.Start(ctx)
+	schedulerCtx, cancelScheduler := context.WithCancel(context.Background())
+	defer cancelScheduler()
+	// scheduler.Start 在 SetNodeHub 之后调用，确保首次立即执行时 hub 已注入。
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("/healthz", func(w http.ResponseWriter, r *http.Request) {
@@ -1041,11 +1041,11 @@ func Run() error {
 			ticker := time.NewTicker(5 * time.Minute)
 			defer ticker.Stop()
 			for {
-				if err := payment.SyncSubscriptions(ctx, settingsStore, cfg.StripeSecretKey, orderStore, userStore); err != nil {
+				if err := payment.SyncSubscriptions(schedulerCtx, settingsStore, cfg.StripeSecretKey, orderStore, userStore); err != nil {
 					log.Printf("[jobs] sync-stripe error: %v", err)
 				}
 				select {
-				case <-ctx.Done():
+				case <-schedulerCtx.Done():
 					return
 				case <-ticker.C:
 				}
@@ -1157,6 +1157,8 @@ func Run() error {
 	jobs.SetNodesHubClientFactory(func(nodeID string, _ jobs.HubCaller) *nodes.Client {
 		return nodes.NewClientWithHub(nodeID, nodeHub)
 	})
+	// hub 注入完毕后再启动 scheduler，保证首次立即执行时所有依赖（hub、nodeAPI）已就绪。
+	scheduler.Start(schedulerCtx)
 	mux.Handle("/v1/system/nodehub/", authManager.Middleware(protectedV1))
 	mux.Handle("/v1/tools/", authManager.Middleware(protectedV1))
 	mux.Handle("/v1/system/info", authManager.Middleware(protectedV1))
