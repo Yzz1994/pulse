@@ -395,6 +395,7 @@ else
     echo "  PULSE_DOWNLOAD_MIRROR=https://ghfast.top/ bash <(...) ..." >&2
     exit 1
   fi
+  echo "解压 ${asset} ..."
   tar -xzf "${tmp_dir}/${asset}" -C "$tmp_dir"
 
   if [ ! -d "$package_dir" ]; then
@@ -403,6 +404,7 @@ else
   fi
 fi
 
+echo "安装二进制 ..."
 run_as_root mkdir -p "$bin_dir" "$etc_dir" "$state_dir"
 if [ "$init_system" = "systemd" ]; then
   run_as_root mkdir -p "$lib_dir"
@@ -476,6 +478,7 @@ if [ "$component" = "server" ]; then
     run_as_root install -m 0644 "${package_dir}/lib/systemd/system/pulse-server.service" "${lib_dir}/pulse-server.service"
     run_as_root systemctl daemon-reload
     run_as_root systemctl enable pulse-server
+    echo "重启服务 pulse-server ..."
     run_as_root systemctl restart pulse-server
   elif [ "$init_system" = "openrc" ]; then
     run_as_root install -m 0755 "${package_dir}/etc/init.d/pulse-server" "${initd_dir}/pulse-server"
@@ -586,6 +589,7 @@ else
     run_as_root install -m 0644 "${package_dir}/lib/systemd/system/pulse-node.service" "${lib_dir}/pulse-node.service"
     run_as_root systemctl daemon-reload
     run_as_root systemctl enable pulse-node
+    echo "重启服务 pulse-node ..."
     run_as_root systemctl restart pulse-node
   elif [ "$init_system" = "openrc" ]; then
     run_as_root install -m 0755 "${package_dir}/etc/init.d/pulse-node" "${initd_dir}/pulse-node"
