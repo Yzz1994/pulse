@@ -160,6 +160,20 @@ NodeGate **按需自动启停**：当节点上至少存在一条 host 把它当 
 
 详见 [docs/sniproxy.md](docs/sniproxy.md)。
 
+## 6. 为面板启用 HTTPS（可选，推荐）
+
+控制面板默认通过 `http://<server-ip>:8080/panel` 访问。最简单的方式是用 Cloudflare 反代 + 它自带的 SSL：
+
+1. **DNS**：在 Cloudflare 添加 `panel.example.com` A 记录指向 server 的公网 IP，**开启橙云代理**（Proxied）。
+2. **SSL/TLS → Overview**：模式选 **Flexible**（CF↔server 走 HTTP）。
+   - 想要 CF↔server 也加密，可以在 server 前置一层 Caddy/Nginx 终止 TLS，再把 CF 模式调成 **Full** 或 **Full (strict)**。
+3. **SSL/TLS → Edge Certificates**：打开 **Always Use HTTPS**，浏览器访问自动跳 HTTPS。
+4. （可选）Origin Rules / Page Rules 把 `panel.example.com` → `:8080` 端口转发，避免在面板地址里带端口。
+
+完成后 `https://panel.example.com/panel` 即可访问。订阅链接会自动用域名（panel 通过 `X-Forwarded-Host` 感知，无需改环境变量）。
+
+> 不想用 Cloudflare：用 Caddy/Nginx 反代到 `http://127.0.0.1:8080`，或参考 [docs/sniproxy.md](docs/sniproxy.md) 把面板挂到节点 NodeGate 的 `http-reverse` 路由上。
+
 ## 卸载
 
 ```bash
