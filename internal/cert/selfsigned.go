@@ -90,11 +90,3 @@ func GenerateSelfSignedKeyPair(commonName string) ([]byte, []byte, error) {
 	keyPEM := pem.EncodeToMemory(&pem.Block{Type: "RSA PRIVATE KEY", Bytes: x509.MarshalPKCS1PrivateKey(privateKey)})
 	return certPEM, keyPEM, nil
 }
-
-func ReadCertificatePEM(certFile string) (string, error) {
-	content, err := os.ReadFile(certFile)
-	if err != nil {
-		return "", fmt.Errorf("read cert file: %w", err)
-	}
-	return string(content), nil
-}

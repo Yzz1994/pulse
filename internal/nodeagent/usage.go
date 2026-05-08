@@ -56,13 +56,6 @@ func NewUsagePusher(api UsageSnapshotProvider, interval time.Duration) *UsagePus
 	}
 }
 
-// SetLogger 自定义日志（默认 slog.Default()）。
-func (p *UsagePusher) SetLogger(l *slog.Logger) {
-	if l != nil {
-		p.logger = l
-	}
-}
-
 // SetAckTimeout 自定义等待 ack 的超时；<=0 时复用 interval。
 func (p *UsagePusher) SetAckTimeout(d time.Duration) {
 	if d > 0 {
