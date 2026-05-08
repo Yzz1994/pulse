@@ -58,7 +58,14 @@ export default function RootLayout() {
   }, []);
 
   // Standalone pages — no sidebar
-  if (currentPath === "/panel/login" || currentPath === "/shop" || currentPath.startsWith("/shop/") || currentPath === "/stat" || currentPath.startsWith("/user/")) {
+  if (
+    currentPath === "/panel/login" ||
+    currentPath === "/shop" ||
+    currentPath.startsWith("/shop/") ||
+    currentPath === "/stat" ||
+    currentPath === "/user" ||
+    currentPath.startsWith("/user/")
+  ) {
     return <Outlet />;
   }
 
