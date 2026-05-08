@@ -84,9 +84,10 @@ type Config struct {
 	// ctx 退出后台 goroutine。本 todo 用此机制把 Sender 暴露给上层。
 	OnConnected func(ctx context.Context, sender Sender)
 
-	// 测试钩子：注入额外的 grpc.DialOption（如 insecure 凭据）。
-	// 当 GRPCDialOpts 非 nil 时，agent 不再加载 TLS（CertFile/KeyFile/CAFile 被忽略）。
-	GRPCDialOpts []grpc.DialOption
+	// Dialer 自定义 gRPC 客户端连接构造方式。零值使用 ServerAddr + 加载的
+	// mTLS 凭证 + keepalive 默认参数构建（生产路径）。允许调用方注入自定义
+	// 连接逻辑（service mesh 集成、bufconn 等）。
+	Dialer func(ctx context.Context) (*grpc.ClientConn, error)
 }
 
 // DefaultHelloProvider 构造一个常见的 hello 帧 provider：
@@ -119,8 +120,8 @@ func Run(ctx context.Context, cfg Config) error {
 	if cfg.HelloProvider == nil {
 		return errors.New("nodeagent: Config.HelloProvider is required")
 	}
-	if cfg.ServerAddr == "" {
-		return errors.New("nodeagent: Config.ServerAddr is required")
+	if cfg.ServerAddr == "" && cfg.Dialer == nil {
+		return errors.New("nodeagent: Config.ServerAddr or Config.Dialer is required")
 	}
 	if cfg.Logger == nil {
 		cfg.Logger = slog.Default()
@@ -135,19 +136,23 @@ func Run(ctx context.Context, cfg Config) error {
 		cfg.KeepaliveTimeout = 10 * time.Second
 	}
 
-	// 解析或加载 TransportCredentials。
-	var creds credentials.TransportCredentials
-	if len(cfg.GRPCDialOpts) == 0 {
-		c, err := loadTLSCreds(cfg)
+	// 默认 Dialer：从 Cert/Key/CA 加载 mTLS，按 ServerAddr 建立 gRPC 连接。
+	if cfg.Dialer == nil {
+		creds, err := loadTLSCreds(cfg)
 		if err != nil {
 			return fmt.Errorf("nodeagent: load TLS: %w", err)
 		}
-		creds = c
+		cfg.Dialer = func(_ context.Context) (*grpc.ClientConn, error) {
+			return grpc.NewClient(cfg.ServerAddr,
+				grpc.WithTransportCredentials(creds),
+				keepaliveParams(cfg),
+			)
+		}
 	}
 
 	attempts := 0
 	for {
-		err := runSession(ctx, cfg, creds)
+		err := runSession(ctx, cfg)
 		if ctx.Err() != nil {
 			return ctx.Err()
 		}
@@ -170,7 +175,7 @@ func Run(ctx context.Context, cfg Config) error {
 
 func loadTLSCreds(cfg Config) (credentials.TransportCredentials, error) {
 	if cfg.CertFile == "" || cfg.KeyFile == "" || cfg.CAFile == "" {
-		return nil, errors.New("CertFile/KeyFile/CAFile required when GRPCDialOpts is empty")
+		return nil, errors.New("CertFile/KeyFile/CAFile required when Dialer is not set")
 	}
 	clientCert, err := tls.LoadX509KeyPair(cfg.CertFile, cfg.KeyFile)
 	if err != nil {

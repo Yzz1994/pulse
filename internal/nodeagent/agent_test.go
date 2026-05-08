@@ -134,10 +134,12 @@ func helloProvider() (json.RawMessage, error) {
 	return json.RawMessage(`{"node_id":"test","config_hash":"deadbeef","version":"test"}`), nil
 }
 
-func dialOpts(dialer func(context.Context, string) (net.Conn, error)) []grpc.DialOption {
-	return []grpc.DialOption{
-		grpc.WithContextDialer(dialer),
-		grpc.WithTransportCredentials(insecure.NewCredentials()),
+func dialerFor(dialer func(context.Context, string) (net.Conn, error)) func(context.Context) (*grpc.ClientConn, error) {
+	return func(_ context.Context) (*grpc.ClientConn, error) {
+		return grpc.NewClient("passthrough:///bufnet",
+			grpc.WithContextDialer(dialer),
+			grpc.WithTransportCredentials(insecure.NewCredentials()),
+		)
 	}
 }
 
@@ -169,7 +171,7 @@ func TestAgent_HelloOnConnect(t *testing.T) {
 		ServerAddr:    "passthrough:///bufnet",
 		Dispatcher:    NoopDispatcher{},
 		HelloProvider: helloProvider,
-		GRPCDialOpts:  dialOpts(dialer),
+		Dialer:        dialerFor(dialer),
 	}
 	done := runAgent(t, ctx, cfg)
 
@@ -217,7 +219,7 @@ func TestAgent_DispatcherRoundTrip(t *testing.T) {
 			return json.RawMessage(`{"pong":true}`), nil
 		}),
 		HelloProvider: helloProvider,
-		GRPCDialOpts:  dialOpts(dialer),
+		Dialer:        dialerFor(dialer),
 	}
 	done := runAgent(t, ctx, cfg)
 	defer func() { cancel(); <-done }()
@@ -259,7 +261,7 @@ func TestAgent_CancelInflight(t *testing.T) {
 			return nil, ctx.Err()
 		}),
 		HelloProvider: helloProvider,
-		GRPCDialOpts:  dialOpts(dialer),
+		Dialer:        dialerFor(dialer),
 	}
 	done := runAgent(t, ctx, cfg)
 	defer func() { cancel(); <-done }()
@@ -308,7 +310,7 @@ func TestAgent_Reconnect(t *testing.T) {
 		ServerAddr:       "passthrough:///bufnet",
 		Dispatcher:       NoopDispatcher{},
 		HelloProvider:    helloProvider,
-		GRPCDialOpts:     dialOpts(dialer),
+		Dialer:           dialerFor(dialer),
 		ReconnectBackoff: []time.Duration{10 * time.Millisecond},
 	}
 	done := runAgent(t, ctx, cfg)
@@ -344,7 +346,7 @@ func TestAgent_CtxCancel(t *testing.T) {
 		ServerAddr:    "passthrough:///bufnet",
 		Dispatcher:    NoopDispatcher{},
 		HelloProvider: helloProvider,
-		GRPCDialOpts:  dialOpts(dialer),
+		Dialer:        dialerFor(dialer),
 	}
 	done := runAgent(t, ctx, cfg)
 
@@ -377,7 +379,7 @@ func TestAgent_UsagePushAck(t *testing.T) {
 		ServerAddr:    "passthrough:///bufnet",
 		Dispatcher:    NoopDispatcher{},
 		HelloProvider: helloProvider,
-		GRPCDialOpts:  dialOpts(dialer),
+		Dialer:        dialerFor(dialer),
 		OnConnected: func(ctx context.Context, sender Sender) {
 			senderCh <- sender
 		},
@@ -433,7 +435,7 @@ func TestAgent_ConcurrentDispatch(t *testing.T) {
 			return body, nil
 		}),
 		HelloProvider: helloProvider,
-		GRPCDialOpts:  dialOpts(dialer),
+		Dialer:        dialerFor(dialer),
 	}
 	done := runAgent(t, ctx, cfg)
 	defer func() { cancel(); <-done }()

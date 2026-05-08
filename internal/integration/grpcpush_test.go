@@ -430,9 +430,11 @@ func TestE2E_DispatchRPC(t *testing.T) {
 		ServerAddr:    "passthrough:///bufnet",
 		Dispatcher:    disp,
 		HelloProvider: nodeagent.DefaultHelloProvider(nodeID, nil),
-		GRPCDialOpts: []grpc.DialOption{
-			grpc.WithContextDialer(dialer),
-			grpc.WithTransportCredentials(insecure.NewCredentials()),
+		Dialer: func(_ context.Context) (*grpc.ClientConn, error) {
+			return grpc.NewClient("passthrough:///bufnet",
+				grpc.WithContextDialer(dialer),
+				grpc.WithTransportCredentials(insecure.NewCredentials()),
+			)
 		},
 		ReconnectBackoff: []time.Duration{20 * time.Millisecond},
 	}
@@ -513,9 +515,11 @@ func TestE2E_StreamLogsCancel(t *testing.T) {
 		ServerAddr:    "passthrough:///bufnet",
 		Dispatcher:    disp,
 		HelloProvider: nodeagent.DefaultHelloProvider(nodeID, nil),
-		GRPCDialOpts: []grpc.DialOption{
-			grpc.WithContextDialer(dialer),
-			grpc.WithTransportCredentials(insecure.NewCredentials()),
+		Dialer: func(_ context.Context) (*grpc.ClientConn, error) {
+			return grpc.NewClient("passthrough:///bufnet",
+				grpc.WithContextDialer(dialer),
+				grpc.WithTransportCredentials(insecure.NewCredentials()),
+			)
 		},
 		ReconnectBackoff: []time.Duration{20 * time.Millisecond},
 	}
@@ -597,9 +601,11 @@ func TestE2E_UsagePushAck(t *testing.T) {
 		ServerAddr:    "passthrough:///bufnet",
 		Dispatcher:    newCallableDispatcher(),
 		HelloProvider: nodeagent.DefaultHelloProvider(nodeID, nil),
-		GRPCDialOpts: []grpc.DialOption{
-			grpc.WithContextDialer(dialer),
-			grpc.WithTransportCredentials(insecure.NewCredentials()),
+		Dialer: func(_ context.Context) (*grpc.ClientConn, error) {
+			return grpc.NewClient("passthrough:///bufnet",
+				grpc.WithContextDialer(dialer),
+				grpc.WithTransportCredentials(insecure.NewCredentials()),
+			)
 		},
 		OnConnected: func(_ context.Context, s nodeagent.Sender) {
 			pusher.SetSender(s)
@@ -696,7 +702,6 @@ func TestE2E_SelfSyncOnHelloMismatch(t *testing.T) {
 	})
 
 	hubCaller := &recordingHubCaller{}
-	applyDone := make(chan error, 1)
 
 	hello := &jobs.SelfSyncHandler{
 		UserStore:    userStore,
@@ -704,7 +709,6 @@ func TestE2E_SelfSyncOnHelloMismatch(t *testing.T) {
 		NodeStore:    nodeStore,
 		HubCaller:    hubCaller,
 		ApplyTimeout: 5 * time.Second,
-		OnApplyDone:  func(_ string, err error) { applyDone <- err },
 	}
 
 	body, _ := json.Marshal(map[string]string{
@@ -717,13 +721,15 @@ func TestE2E_SelfSyncOnHelloMismatch(t *testing.T) {
 	if hello.MismatchCount() != 1 {
 		t.Fatalf("MismatchCount=%d want 1", hello.MismatchCount())
 	}
-	select {
-	case <-applyDone:
-	case <-time.After(3 * time.Second):
-		t.Fatal("OnApplyDone not fired in 3s")
+	deadline := time.Now().Add(3 * time.Second)
+	for time.Now().Before(deadline) {
+		if hello.ApplyOKCount()+hello.ApplyErrCount() == 1 {
+			break
+		}
+		time.Sleep(10 * time.Millisecond)
 	}
 	if hello.ApplyOKCount()+hello.ApplyErrCount() != 1 {
-		t.Fatalf("apply ok+err=%d want 1", hello.ApplyOKCount()+hello.ApplyErrCount())
+		t.Fatalf("apply ok+err=%d want 1 within 3s", hello.ApplyOKCount()+hello.ApplyErrCount())
 	}
 
 	// hash 匹配时不应再触发 mismatch
@@ -767,8 +773,10 @@ func TestE2E_ReconnectBackoff(t *testing.T) {
 		ServerAddr:    addr,
 		Dispatcher:    disp,
 		HelloProvider: nodeagent.DefaultHelloProvider(nodeID, nil),
-		GRPCDialOpts: []grpc.DialOption{
-			grpc.WithTransportCredentials(insecure.NewCredentials()),
+		Dialer: func(_ context.Context) (*grpc.ClientConn, error) {
+			return grpc.NewClient(addr,
+				grpc.WithTransportCredentials(insecure.NewCredentials()),
+			)
 		},
 		ReconnectBackoff: []time.Duration{50 * time.Millisecond, 100 * time.Millisecond, 200 * time.Millisecond},
 		KeepaliveTime:    500 * time.Millisecond,
@@ -878,9 +886,11 @@ func TestE2E_MultiNode(t *testing.T) {
 			ServerAddr:    "passthrough:///bufnet",
 			Dispatcher:    newCallableDispatcher(),
 			HelloProvider: nodeagent.DefaultHelloProvider(nid, nil),
-			GRPCDialOpts: []grpc.DialOption{
-				grpc.WithContextDialer(dialers[i]),
-				grpc.WithTransportCredentials(insecure.NewCredentials()),
+			Dialer: func(_ context.Context) (*grpc.ClientConn, error) {
+				return grpc.NewClient("passthrough:///bufnet",
+					grpc.WithContextDialer(dialers[i]),
+					grpc.WithTransportCredentials(insecure.NewCredentials()),
+				)
 			},
 			OnConnected: func(_ context.Context, s nodeagent.Sender) {
 				pusher.SetSender(s)

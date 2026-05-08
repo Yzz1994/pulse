@@ -130,12 +130,10 @@ func TestSelfSyncHandler_HashMatch_NoApply(t *testing.T) {
 	expected, _ := ComputeNodeConfigHash(context.Background(), "n1", userStore, ibStore, nil)
 
 	hc := &recordHubCaller{called: make(chan struct{}, 1)}
-	done := make(chan error, 1)
 	h := &SelfSyncHandler{
 		UserStore:    userStore,
 		InboundStore: ibStore,
 		HubCaller:    hc,
-		OnApplyDone:  func(_ string, err error) { done <- err },
 	}
 
 	body, _ := json.Marshal(map[string]string{
@@ -148,11 +146,14 @@ func TestSelfSyncHandler_HashMatch_NoApply(t *testing.T) {
 	if h.MismatchCount() != 0 {
 		t.Fatalf("expected no mismatch, got %d", h.MismatchCount())
 	}
+	// hash 匹配时 OnHello 同步返回，不会启动 apply goroutine。
+	if h.ApplyOKCount()+h.ApplyErrCount() != 0 {
+		t.Fatalf("apply should not run on hash match; ok=%d err=%d",
+			h.ApplyOKCount(), h.ApplyErrCount())
+	}
 	select {
 	case <-hc.called:
 		t.Fatal("HubCaller.Call should not be invoked when hash matches")
-	case <-done:
-		t.Fatal("OnApplyDone should not fire when hash matches")
 	default:
 	}
 }
@@ -165,7 +166,6 @@ func TestSelfSyncHandler_HashMismatch_TriggersApply(t *testing.T) {
 	})
 
 	hc := &recordHubCaller{called: make(chan struct{}, 4)}
-	done := make(chan error, 1)
 	nodeStore := nodes.NewMemoryStore()
 	_, _ = nodeStore.Upsert(nodes.Node{ID: "n1", Name: "n1", BaseURL: "http://node.test"})
 	h := &SelfSyncHandler{
@@ -173,7 +173,6 @@ func TestSelfSyncHandler_HashMismatch_TriggersApply(t *testing.T) {
 		InboundStore: ibStore,
 		NodeStore:    nodeStore,
 		HubCaller:    hc,
-		OnApplyDone:  func(_ string, err error) { done <- err },
 	}
 
 	body, _ := json.Marshal(map[string]string{
@@ -188,14 +187,16 @@ func TestSelfSyncHandler_HashMismatch_TriggersApply(t *testing.T) {
 	}
 
 	// 等异步 apply 完成（HubCaller 注入但 nodes.NewHubClient 工厂未注入 → ApplyNode
-	// 路径走 hubDialer 返回错误，OnApplyDone 仍会触发）。
-	select {
-	case <-done:
-	case <-time.After(2 * time.Second):
-		t.Fatal("timeout waiting for OnApplyDone")
+	// 路径走 hubDialer 返回错误，应计入 ApplyErrCount）。
+	deadline := time.Now().Add(2 * time.Second)
+	for time.Now().Before(deadline) {
+		if h.ApplyOKCount()+h.ApplyErrCount() == 1 {
+			break
+		}
+		time.Sleep(10 * time.Millisecond)
 	}
 	if h.ApplyOKCount()+h.ApplyErrCount() != 1 {
-		t.Fatalf("expected 1 apply attempt; ok=%d err=%d",
+		t.Fatalf("expected 1 apply attempt within 2s; ok=%d err=%d",
 			h.ApplyOKCount(), h.ApplyErrCount())
 	}
 }

@@ -111,10 +111,12 @@ func TestLoad_ConcurrentNodes(t *testing.T) {
 				ReconnectBackoff: []time.Duration{200 * time.Millisecond},
 				KeepaliveTime:    30 * time.Second,
 				KeepaliveTimeout: 10 * time.Second,
-				GRPCDialOpts: []grpc.DialOption{
-					grpc.WithContextDialer(dialer),
-					grpc.WithTransportCredentials(insecure.NewCredentials()),
-					nodeIDInterceptor(nodeID),
+				Dialer: func(_ context.Context) (*grpc.ClientConn, error) {
+					return grpc.NewClient("passthrough:///bufnet",
+						grpc.WithContextDialer(dialer),
+						grpc.WithTransportCredentials(insecure.NewCredentials()),
+						nodeIDInterceptor(nodeID),
+					)
 				},
 			}
 			err := nodeagent.Run(agentCtx, cfg)

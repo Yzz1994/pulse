@@ -36,9 +36,11 @@ func TestIntegration_NodesClient_HubPath(t *testing.T) {
 		ServerAddr:    "passthrough:///bufnet",
 		Dispatcher:    disp,
 		HelloProvider: DefaultHelloProvider("n1", nil),
-		GRPCDialOpts: []grpc.DialOption{
-			grpc.WithContextDialer(dialer),
-			grpc.WithTransportCredentials(insecure.NewCredentials()),
+		Dialer: func(_ context.Context) (*grpc.ClientConn, error) {
+			return grpc.NewClient("passthrough:///bufnet",
+				grpc.WithContextDialer(dialer),
+				grpc.WithTransportCredentials(insecure.NewCredentials()),
+			)
 		},
 		ReconnectBackoff: []time.Duration{20 * time.Millisecond},
 	}

@@ -44,9 +44,6 @@ type SelfSyncHandler struct {
 	// ApplyTimeout 单次 self-sync 配置下发超时。零值默认 5 分钟。
 	ApplyTimeout time.Duration
 
-	// 测试钩子：每次异步 ApplyNode 完成后回调（成功/失败均回调）。零值不调用。
-	OnApplyDone func(nodeID string, err error)
-
 	// 计数器，便于测试断言与可观测。
 	helloCount    atomic.Int64
 	mismatchCount atomic.Int64
@@ -120,9 +117,6 @@ func (s *SelfSyncHandler) applyAsync(nodeID string) {
 	} else {
 		s.applyOKCount.Add(1)
 		s.logger().Printf("selfsync: node %s apply ok", nodeID)
-	}
-	if s.OnApplyDone != nil {
-		s.OnApplyDone(nodeID, err)
 	}
 }
 

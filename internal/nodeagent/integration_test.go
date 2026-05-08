@@ -96,9 +96,11 @@ func TestIntegration_HelloAndCall(t *testing.T) {
 		ServerAddr:    "passthrough:///bufnet",
 		Dispatcher:    disp,
 		HelloProvider: DefaultHelloProvider("n1", ConfigHasher(api)),
-		GRPCDialOpts: []grpc.DialOption{
-			grpc.WithContextDialer(dialer),
-			grpc.WithTransportCredentials(insecure.NewCredentials()),
+		Dialer: func(_ context.Context) (*grpc.ClientConn, error) {
+			return grpc.NewClient("passthrough:///bufnet",
+				grpc.WithContextDialer(dialer),
+				grpc.WithTransportCredentials(insecure.NewCredentials()),
+			)
 		},
 		ReconnectBackoff: []time.Duration{20 * time.Millisecond},
 	}
@@ -174,9 +176,11 @@ func TestIntegration_UsagePushAck(t *testing.T) {
 		ServerAddr:    "passthrough:///bufnet",
 		Dispatcher:    NoopDispatcher{},
 		HelloProvider: DefaultHelloProvider("n1", nil),
-		GRPCDialOpts: []grpc.DialOption{
-			grpc.WithContextDialer(dialer),
-			grpc.WithTransportCredentials(insecure.NewCredentials()),
+		Dialer: func(_ context.Context) (*grpc.ClientConn, error) {
+			return grpc.NewClient("passthrough:///bufnet",
+				grpc.WithContextDialer(dialer),
+				grpc.WithTransportCredentials(insecure.NewCredentials()),
+			)
 		},
 		OnConnected: func(_ context.Context, s Sender) {
 			pusher.SetSender(s)

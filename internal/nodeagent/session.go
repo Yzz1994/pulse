@@ -8,29 +8,15 @@ import (
 	"io"
 	"sync"
 
-	"google.golang.org/grpc"
-	"google.golang.org/grpc/credentials"
-
 	nodev1 "pulse/internal/pb/nodev1"
 )
 
 // runSession 建立一次连接，发 hello 帧，进入收发循环。任何错误（包括正常 EOF）
 // 都返回 error，由上层 Run 触发重连。
-func runSession(ctx context.Context, cfg Config, creds credentials.TransportCredentials) error {
-	dialOpts := make([]grpc.DialOption, 0, 4)
-	if len(cfg.GRPCDialOpts) > 0 {
-		dialOpts = append(dialOpts, cfg.GRPCDialOpts...)
-	} else {
-		if creds == nil {
-			return errors.New("nodeagent: nil credentials")
-		}
-		dialOpts = append(dialOpts, grpc.WithTransportCredentials(creds))
-	}
-	dialOpts = append(dialOpts, keepaliveParams(cfg))
-
-	conn, err := grpc.NewClient(cfg.ServerAddr, dialOpts...)
+func runSession(ctx context.Context, cfg Config) error {
+	conn, err := cfg.Dialer(ctx)
 	if err != nil {
-		return fmt.Errorf("grpc.NewClient: %w", err)
+		return fmt.Errorf("dial: %w", err)
 	}
 	defer conn.Close()
 
