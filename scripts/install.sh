@@ -213,17 +213,15 @@ run_as_root() {
 restart_service() {
   _svc="$1"
   run_as_root systemctl restart "$_svc"
-  if systemctl is-active --quiet "$_svc" 2>/dev/null; then
-    echo "服务运行正常"
-  else
-    echo "警告: 服务未正常启动" >&2
-  fi
   echo "--- ${_svc} 最近日志 ---"
   journalctl -u "$_svc" -n 15 --no-pager 2>/dev/null \
     || run_as_root journalctl -u "$_svc" -n 15 --no-pager 2>/dev/null \
     || true
   echo "---"
-  if ! systemctl is-active --quiet "$_svc" 2>/dev/null; then
+  if systemctl is-active --quiet "$_svc" 2>/dev/null; then
+    echo "服务运行正常"
+  else
+    echo "警告: 服务未正常启动，请查看上方日志" >&2
     exit 1
   fi
 }

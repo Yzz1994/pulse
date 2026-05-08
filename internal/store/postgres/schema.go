@@ -418,22 +418,44 @@ var schemaMigrations = []migration{
 			`DROP TABLE IF EXISTS ix_domains`,
 			`ALTER TABLE users ADD COLUMN IF NOT EXISTS password TEXT NOT NULL DEFAULT ''`,
 			`ALTER TABLE users ADD COLUMN IF NOT EXISTS is_admin BOOLEAN NOT NULL DEFAULT FALSE`,
-			`CREATE UNIQUE INDEX IF NOT EXISTS users_one_admin ON users(is_admin) WHERE is_admin = TRUE`,
-			`ALTER TABLE nodes ALTER COLUMN upload_bytes TYPE BIGINT`,
-			`ALTER TABLE nodes ALTER COLUMN download_bytes TYPE BIGINT`,
-			`ALTER TABLE users ALTER COLUMN traffic_limit_bytes TYPE BIGINT`,
-			`ALTER TABLE users ALTER COLUMN upload_bytes TYPE BIGINT`,
-			`ALTER TABLE users ALTER COLUMN download_bytes TYPE BIGINT`,
-			`ALTER TABLE users ALTER COLUMN used_bytes TYPE BIGINT`,
-			`ALTER TABLE users ALTER COLUMN raw_upload_bytes TYPE BIGINT`,
-			`ALTER TABLE users ALTER COLUMN raw_download_bytes TYPE BIGINT`,
-			`ALTER TABLE node_daily_usage ALTER COLUMN upload_bytes TYPE BIGINT`,
-			`ALTER TABLE node_daily_usage ALTER COLUMN download_bytes TYPE BIGINT`,
-			`ALTER TABLE node_speedtest ALTER COLUMN down_bps TYPE BIGINT`,
-			`ALTER TABLE node_speedtest ALTER COLUMN up_bps TYPE BIGINT`,
-			`ALTER TABLE user_node_daily_usage ALTER COLUMN upload_bytes TYPE BIGINT`,
-			`ALTER TABLE user_node_daily_usage ALTER COLUMN download_bytes TYPE BIGINT`,
-			`ALTER TABLE plans ALTER COLUMN traffic_limit TYPE BIGINT`,
+			// 仅在存在多个 admin 时跳过，避免约束冲突导致迁移失败
+			`DO $$ BEGIN
+			  IF (SELECT COUNT(*) FROM users WHERE is_admin = TRUE) <= 1 THEN
+			    CREATE UNIQUE INDEX IF NOT EXISTS users_one_admin ON users(is_admin) WHERE is_admin = TRUE;
+			  END IF;
+			END $$`,
+			// 仅在列实际为 integer 时才执行 TYPE BIGINT，避免触发不必要的全表重写
+			`DO $$
+			DECLARE r RECORD;
+			BEGIN
+			  FOR r IN SELECT t.tbl, t.col FROM (VALUES
+			    ('nodes',                 'upload_bytes'),
+			    ('nodes',                 'download_bytes'),
+			    ('users',                 'traffic_limit_bytes'),
+			    ('users',                 'upload_bytes'),
+			    ('users',                 'download_bytes'),
+			    ('users',                 'used_bytes'),
+			    ('users',                 'raw_upload_bytes'),
+			    ('users',                 'raw_download_bytes'),
+			    ('node_daily_usage',      'upload_bytes'),
+			    ('node_daily_usage',      'download_bytes'),
+			    ('node_speedtest',        'down_bps'),
+			    ('node_speedtest',        'up_bps'),
+			    ('user_node_daily_usage', 'upload_bytes'),
+			    ('user_node_daily_usage', 'download_bytes'),
+			    ('plans',                 'traffic_limit')
+			  ) AS t(tbl, col) LOOP
+			    IF EXISTS (
+			      SELECT 1 FROM information_schema.columns
+			      WHERE table_schema = 'public'
+			        AND table_name  = r.tbl
+			        AND column_name = r.col
+			        AND data_type   = 'integer'
+			    ) THEN
+			      EXECUTE format('ALTER TABLE %I ALTER COLUMN %I TYPE BIGINT', r.tbl, r.col);
+			    END IF;
+			  END LOOP;
+			END $$`,
 			`ALTER TABLE nodes ADD COLUMN IF NOT EXISTS is_landing BOOLEAN NOT NULL DEFAULT TRUE`,
 			`ALTER TABLE users ADD COLUMN IF NOT EXISTS uuid TEXT NOT NULL DEFAULT ''`,
 			`ALTER TABLE users ADD COLUMN IF NOT EXISTS secret TEXT NOT NULL DEFAULT ''`,
@@ -459,16 +481,15 @@ func (db *DB) init() error {
 	if err != nil {
 		return fmt.Errorf("query schema_migrations: %w", err)
 	}
+	defer rows.Close()
 	applied := make(map[int]bool)
 	for rows.Next() {
 		var v int
-		if scanErr := rows.Scan(&v); scanErr != nil {
-			rows.Close()
-			return fmt.Errorf("scan schema_migrations: %w", scanErr)
+		if err := rows.Scan(&v); err != nil {
+			return fmt.Errorf("scan schema_migrations: %w", err)
 		}
 		applied[v] = true
 	}
-	rows.Close()
 	if err := rows.Err(); err != nil {
 		return fmt.Errorf("schema_migrations rows: %w", err)
 	}
