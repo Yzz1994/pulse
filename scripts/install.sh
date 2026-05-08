@@ -389,7 +389,7 @@ if [ "${PULSE_INSTALL_DRY_RUN:-0}" = "1" ]; then
   : > "${package_dir}/etc/init.d/pulse-${component}"
 else
   echo "下载 ${asset} ..."
-  if ! curl -fsSL "$download_url" -o "${tmp_dir}/${asset}"; then
+  if ! curl -fL --progress-bar --connect-timeout 30 "$download_url" -o "${tmp_dir}/${asset}"; then
     echo "下载失败: ${download_url}" >&2
     echo "如网络无法直连 GitHub，可设置 PULSE_DOWNLOAD_MIRROR 使用镜像，例如：" >&2
     echo "  PULSE_DOWNLOAD_MIRROR=https://ghfast.top/ bash <(...) ..." >&2
