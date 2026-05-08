@@ -333,8 +333,8 @@ func (db *DB) init() error {
 			id                  TEXT PRIMARY KEY,
 			name                TEXT NOT NULL,
 			base_url            TEXT NOT NULL,
-			upload_bytes        INTEGER NOT NULL DEFAULT 0,
-			download_bytes      INTEGER NOT NULL DEFAULT 0,
+			upload_bytes        BIGINT NOT NULL DEFAULT 0,
+			download_bytes      BIGINT NOT NULL DEFAULT 0,
 			acme_email          TEXT NOT NULL DEFAULT '',
 			panel_domain        TEXT NOT NULL DEFAULT '',
 			extra_proxies       TEXT NOT NULL DEFAULT '',
@@ -370,12 +370,12 @@ func (db *DB) init() error {
 			note                      TEXT NOT NULL DEFAULT '',
 			expire_at                 TEXT,
 			data_limit_reset_strategy TEXT NOT NULL DEFAULT 'no_reset',
-			traffic_limit_bytes       INTEGER NOT NULL DEFAULT 0,
-			upload_bytes              INTEGER NOT NULL DEFAULT 0,
-			download_bytes            INTEGER NOT NULL DEFAULT 0,
-			used_bytes                INTEGER NOT NULL DEFAULT 0,
-			raw_upload_bytes          INTEGER NOT NULL DEFAULT 0,
-			raw_download_bytes        INTEGER NOT NULL DEFAULT 0,
+			traffic_limit_bytes       BIGINT NOT NULL DEFAULT 0,
+			upload_bytes              BIGINT NOT NULL DEFAULT 0,
+			download_bytes            BIGINT NOT NULL DEFAULT 0,
+			used_bytes                BIGINT NOT NULL DEFAULT 0,
+			raw_upload_bytes          BIGINT NOT NULL DEFAULT 0,
+			raw_download_bytes        BIGINT NOT NULL DEFAULT 0,
 			on_hold_expire_at         TEXT,
 			last_traffic_reset_at     TEXT,
 			online_at                 TEXT,
@@ -421,8 +421,8 @@ func (db *DB) init() error {
 		`CREATE TABLE IF NOT EXISTS node_daily_usage (
 			node_id        TEXT NOT NULL,
 			date           TEXT NOT NULL,
-			upload_bytes   INTEGER NOT NULL DEFAULT 0,
-			download_bytes INTEGER NOT NULL DEFAULT 0,
+			upload_bytes   BIGINT NOT NULL DEFAULT 0,
+			download_bytes BIGINT NOT NULL DEFAULT 0,
 			PRIMARY KEY (node_id, date)
 		)`,
 		// sub_access_logs：记录 /sub/:token 的访问记录
@@ -437,8 +437,8 @@ func (db *DB) init() error {
 		// node_speedtest：节点测速结果
 		`CREATE TABLE IF NOT EXISTS node_speedtest (
 			node_id   TEXT PRIMARY KEY,
-			down_bps  INTEGER NOT NULL DEFAULT 0,
-			up_bps    INTEGER NOT NULL DEFAULT 0,
+			down_bps  BIGINT NOT NULL DEFAULT 0,
+			up_bps    BIGINT NOT NULL DEFAULT 0,
 			tested_at TEXT NOT NULL DEFAULT ''
 		)`,
 		// node_check_results：节点解锁检测结果
@@ -465,8 +465,8 @@ func (db *DB) init() error {
 			user_id        TEXT NOT NULL,
 			node_id        TEXT NOT NULL,
 			date           TEXT NOT NULL,
-			upload_bytes   INTEGER NOT NULL DEFAULT 0,
-			download_bytes INTEGER NOT NULL DEFAULT 0,
+			upload_bytes   BIGINT NOT NULL DEFAULT 0,
+			download_bytes BIGINT NOT NULL DEFAULT 0,
 			PRIMARY KEY (user_id, node_id, date)
 		)`,
 		// route_rules：全局分流规则
@@ -491,7 +491,7 @@ func (db *DB) init() error {
 			price_cents             INTEGER NOT NULL DEFAULT 0,
 			currency                TEXT NOT NULL DEFAULT 'usd',
 			stripe_price_id         TEXT NOT NULL DEFAULT '',
-			traffic_limit           INTEGER NOT NULL DEFAULT 0,
+			traffic_limit           BIGINT NOT NULL DEFAULT 0,
 			duration_days           INTEGER NOT NULL DEFAULT 0,
 			data_limit_reset_strategy TEXT NOT NULL DEFAULT 'no_reset',
 			user_group_ids          TEXT NOT NULL DEFAULT '',
@@ -692,6 +692,23 @@ func (db *DB) init() error {
 		`ALTER TABLE users ADD COLUMN IF NOT EXISTS password TEXT NOT NULL DEFAULT ''`,
 		`ALTER TABLE users ADD COLUMN IF NOT EXISTS is_admin BOOLEAN NOT NULL DEFAULT FALSE`,
 		`CREATE UNIQUE INDEX IF NOT EXISTS users_one_admin ON users(is_admin) WHERE is_admin = TRUE`,
+		// 修复历史建表错误：流量相关列在早期版本被建为 INTEGER（int4，溢出阈值 ~2.1GB），
+		// 应当为 BIGINT。已存在的列在此原地升级，重复执行幂等。
+		`ALTER TABLE nodes ALTER COLUMN upload_bytes TYPE BIGINT`,
+		`ALTER TABLE nodes ALTER COLUMN download_bytes TYPE BIGINT`,
+		`ALTER TABLE users ALTER COLUMN traffic_limit_bytes TYPE BIGINT`,
+		`ALTER TABLE users ALTER COLUMN upload_bytes TYPE BIGINT`,
+		`ALTER TABLE users ALTER COLUMN download_bytes TYPE BIGINT`,
+		`ALTER TABLE users ALTER COLUMN used_bytes TYPE BIGINT`,
+		`ALTER TABLE users ALTER COLUMN raw_upload_bytes TYPE BIGINT`,
+		`ALTER TABLE users ALTER COLUMN raw_download_bytes TYPE BIGINT`,
+		`ALTER TABLE node_daily_usage ALTER COLUMN upload_bytes TYPE BIGINT`,
+		`ALTER TABLE node_daily_usage ALTER COLUMN download_bytes TYPE BIGINT`,
+		`ALTER TABLE node_speedtest ALTER COLUMN down_bps TYPE BIGINT`,
+		`ALTER TABLE node_speedtest ALTER COLUMN up_bps TYPE BIGINT`,
+		`ALTER TABLE user_node_daily_usage ALTER COLUMN upload_bytes TYPE BIGINT`,
+		`ALTER TABLE user_node_daily_usage ALTER COLUMN download_bytes TYPE BIGINT`,
+		`ALTER TABLE plans ALTER COLUMN traffic_limit TYPE BIGINT`,
 		// sub_token 唯一约束：避免手动改写或迁移导入造成重复，导致订阅链接错位。
 		// 空字符串不参与唯一性（部分老用户可能历史无 token）。
 		`CREATE UNIQUE INDEX IF NOT EXISTS idx_users_sub_token ON users(sub_token) WHERE sub_token <> ''`,
