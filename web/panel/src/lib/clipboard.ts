@@ -30,7 +30,10 @@ export async function copyText(text: string): Promise<void> {
   ta.style.boxShadow = "none";
   ta.style.background = "transparent";
   ta.style.opacity = "0";
-  document.body.appendChild(ta);
+  // Radix Dialog 有 focus trap：body 层的元素无法被 focus，execCommand 会失败。
+  // 优先插入到当前打开的 dialog 内，确保在 focus scope 之内。
+  const container = document.querySelector<HTMLElement>('[role="dialog"]') ?? document.body;
+  container.appendChild(ta);
   const prevActive = document.activeElement as HTMLElement | null;
   let ok = false;
   try {
@@ -41,7 +44,7 @@ export async function copyText(text: string): Promise<void> {
   } catch {
     ok = false;
   } finally {
-    document.body.removeChild(ta);
+    container.removeChild(ta);
     if (prevActive && typeof prevActive.focus === "function") {
       try { prevActive.focus({ preventScroll: true } as FocusOptions); } catch { /* noop */ }
     }

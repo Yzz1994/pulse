@@ -415,11 +415,15 @@ function InstallCmdDialog({
 
   const installCmd = enroll?.install_command ?? (error ?? "正在生成安装 token…");
 
-  const handleCopy = (text: string) => {
+  const handleCopy = async (text: string) => {
     if (!text) return;
-    copyText(text);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
+    try {
+      await copyText(text);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch {
+      alert("复制失败，请手动选中文本复制");
+    }
   };
 
   return (
@@ -530,11 +534,15 @@ function ManualUpdateDialog({
 
   const installCmd = enroll?.install_command ?? (error ?? "正在获取安装信息…");
 
-  const handleCopy = () => {
+  const handleCopy = async () => {
     if (!enroll?.install_command) return;
-    copyText(enroll.install_command);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
+    try {
+      await copyText(enroll.install_command);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch {
+      alert("复制失败，请手动选中文本复制");
+    }
   };
 
   return (
