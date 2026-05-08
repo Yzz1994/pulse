@@ -89,10 +89,14 @@ export default function ShopSuccessPage() {
 
   function handleCopy() {
     if (!orderInfo?.sub_url) return;
-    copyText(orderInfo.sub_url).then(() => {
-      setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
-    });
+    copyText(orderInfo.sub_url)
+      .then(() => {
+        setCopied(true);
+        setTimeout(() => setCopied(false), 2000);
+      })
+      .catch(() => {
+        setError("复制失败，请手动选中链接复制");
+      });
   }
 
   function handleRetry() {

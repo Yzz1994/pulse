@@ -523,17 +523,7 @@ export default function UserPage() {
       setCopied(label);
       setTimeout(() => setCopied(null), 2000);
     } catch {
-      // Fallback for older browsers
-      const textarea = document.createElement("textarea");
-      textarea.value = text;
-      textarea.style.position = "fixed";
-      textarea.style.opacity = "0";
-      document.body.appendChild(textarea);
-      textarea.select();
-      document.execCommand("copy");
-      document.body.removeChild(textarea);
-      setCopied(label);
-      setTimeout(() => setCopied(null), 2000);
+      window.alert("复制失败，请手动选中内容复制");
     }
   }, []);
 
