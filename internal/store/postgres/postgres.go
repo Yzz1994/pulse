@@ -734,17 +734,21 @@ func (db *DB) init() error {
 		`CREATE INDEX IF NOT EXISTS idx_enroll_tokens_expires ON enroll_tokens(expires_at)`,
 	}
 
+	stmts = append(stmts,
+		`CREATE UNIQUE INDEX IF NOT EXISTS idx_users_username ON users(username)`,
+		`CREATE INDEX IF NOT EXISTS idx_user_inbounds_inbound_id ON user_inbounds(inbound_id)`,
+	)
+
+	batch := &pgx.Batch{}
 	for _, stmt := range stmts {
-		if _, err := db.conn.Exec(ctx, stmt); err != nil {
-			return fmt.Errorf("init postgres schema: %w\nSQL: %s", err, stmt)
+		batch.Queue(stmt)
+	}
+	br := db.conn.SendBatch(ctx, batch)
+	for i, stmt := range stmts {
+		if _, err := br.Exec(); err != nil {
+			_ = br.Close()
+			return fmt.Errorf("init postgres schema: stmt %d: %w\nSQL: %s", i, err, stmt)
 		}
 	}
-	// users username 唯一索引
-	if _, err := db.conn.Exec(ctx, `CREATE UNIQUE INDEX IF NOT EXISTS idx_users_username ON users(username)`); err != nil {
-		return fmt.Errorf("init postgres schema: create idx_users_username: %w", err)
-	}
-	if _, err := db.conn.Exec(ctx, `CREATE INDEX IF NOT EXISTS idx_user_inbounds_inbound_id ON user_inbounds(inbound_id)`); err != nil {
-		return fmt.Errorf("init postgres schema: create idx_user_inbounds_inbound_id: %w", err)
-	}
-	return nil
+	return br.Close()
 }
