@@ -597,7 +597,7 @@ export default function UsersPage() {
     copyText(url).then(() => {
       setCopiedUserId(user.id);
       setTimeout(() => setCopiedUserId(null), 1500);
-    });
+    }).catch(() => {});
   }, []);
 
   // ── Reset traffic ─────────────────────────────────────────────
@@ -1118,9 +1118,10 @@ export default function UsersPage() {
                   variant="outline"
                   size="sm"
                   className="shrink-0"
-                  onClick={() => {
+                  onClick={(e) => {
                     if (editSubToken) {
-                      copyText(editSubToken);
+                      const container = e.currentTarget.closest<HTMLElement>('[role="dialog"]');
+                      copyText(editSubToken, container).catch(() => {});
                     }
                   }}
                   title="复制"
@@ -1645,11 +1646,11 @@ function SubLinksDialog({
     return () => { cancelled = true; };
   }, [open, user]);
 
-  const copyLink = (link: string, idx: number) => {
-    copyText(link).then(() => {
+  const copyLink = (link: string, idx: number, container?: HTMLElement | null) => {
+    copyText(link, container).then(() => {
       setCopiedIdx(idx);
       setTimeout(() => setCopiedIdx(null), 1500);
-    });
+    }).catch(() => {});
   };
 
   return (
@@ -1697,7 +1698,7 @@ function SubLinksDialog({
                         variant="ghost"
                         size="sm"
                         className="h-7 w-12 px-0 text-xs"
-                        onClick={() => copyLink(link, idx)}
+                        onClick={(e) => copyLink(link, idx, e.currentTarget.closest<HTMLElement>('[role="dialog"]'))}
                       >
                         {copiedIdx === idx ? "已复制" : "复制"}
                       </Button>

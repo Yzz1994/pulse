@@ -415,14 +415,14 @@ function InstallCmdDialog({
 
   const installCmd = enroll?.install_command ?? (error ?? "正在生成安装 token…");
 
-  const handleCopy = async (text: string) => {
+  const handleCopy = async (text: string, container?: HTMLElement | null) => {
     if (!text) return;
     try {
-      await copyText(text);
+      await copyText(text, container);
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
     } catch {
-      alert("复制失败，请手动选中文本复制");
+      // 复制失败静默处理，clipboard.ts 已覆盖 HTTP fallback
     }
   };
 
@@ -441,7 +441,7 @@ function InstallCmdDialog({
           </ScrollArea>
           <div className="flex items-center gap-2">
             <button
-              onClick={() => handleCopy(installCmd)}
+              onClick={(e) => handleCopy(installCmd, e.currentTarget.closest<HTMLElement>('[role="dialog"]'))}
               disabled={!enroll}
               className="inline-flex items-center gap-1.5 rounded-md border border-[hsl(var(--border))] bg-transparent px-3 py-1.5 text-xs font-medium transition-colors hover:bg-[hsl(var(--accent))] disabled:opacity-50"
             >
@@ -534,14 +534,14 @@ function ManualUpdateDialog({
 
   const installCmd = enroll?.install_command ?? (error ?? "正在获取安装信息…");
 
-  const handleCopy = async () => {
+  const handleCopy = async (container?: HTMLElement | null) => {
     if (!enroll?.install_command) return;
     try {
-      await copyText(enroll.install_command);
+      await copyText(enroll.install_command, container);
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
     } catch {
-      alert("复制失败，请手动选中文本复制");
+      // 复制失败静默处理，clipboard.ts 已覆盖 HTTP fallback
     }
   };
 
@@ -559,7 +559,7 @@ function ManualUpdateDialog({
             <pre className="whitespace-pre-wrap break-all p-3 text-xs font-mono">{installCmd}</pre>
           </ScrollArea>
           <button
-            onClick={handleCopy}
+            onClick={(e) => handleCopy(e.currentTarget.closest<HTMLElement>('[role="dialog"]'))}
             disabled={!enroll?.install_command}
             className="inline-flex items-center gap-1.5 rounded-md border border-[hsl(var(--border))] bg-transparent px-3 py-1.5 text-xs font-medium transition-colors hover:bg-[hsl(var(--accent))] disabled:opacity-50"
           >
@@ -1294,7 +1294,7 @@ function TracerouteDialog({ node, open, onOpenChange }: {
     return parts.join(" ");
   };
 
-  const handleCopy = () => {
+  const handleCopy = (e?: React.MouseEvent) => {
     const isOutbound = activeTab === "outbound";
     const targetHops = isOutbound ? gpHops : hops;
     if (!targetHops.length) return;
@@ -1313,10 +1313,11 @@ function TracerouteDialog({ node, open, onOpenChange }: {
         );
       }
     }
-    copyText(lines.join("\n")).then(() => {
+    const container = e?.currentTarget.closest<HTMLElement>('[role="dialog"]');
+    copyText(lines.join("\n"), container).then(() => {
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
-    });
+    }).catch(() => {});
   };
 
   // ── 共用表格渲染 ─────────────────────────────────────────────
@@ -1635,7 +1636,7 @@ function TracerouteDialog({ node, open, onOpenChange }: {
 
         <DialogFooter className="flex-row items-center justify-between sm:justify-between">
           {hasCopyable ? (
-            <Button variant="outline" size="sm" onClick={handleCopy}>
+            <Button variant="outline" size="sm" onClick={(e) => handleCopy(e)}>
               {copied ? "已复制" : "复制结果"}
             </Button>
           ) : <span />}

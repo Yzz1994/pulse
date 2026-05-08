@@ -1,8 +1,9 @@
 // 复制文本到剪贴板。
 // 在 secure context（HTTPS / localhost）下使用 navigator.clipboard，
 // 否则降级到 document.execCommand('copy')，保证 HTTP 远程访问也能用。
+// container：调用方传入的宿主元素（例如当前 Dialog），用于绕过 Radix focus trap。
 // 失败时抛出异常，由调用方决定如何向用户反馈。
-export async function copyText(text: string): Promise<void> {
+export async function copyText(text: string, container?: HTMLElement | null): Promise<void> {
   if (typeof navigator !== "undefined" && navigator.clipboard && window.isSecureContext) {
     try {
       await navigator.clipboard.writeText(text);
@@ -31,9 +32,9 @@ export async function copyText(text: string): Promise<void> {
   ta.style.background = "transparent";
   ta.style.opacity = "0";
   // Radix Dialog 有 focus trap：body 层的元素无法被 focus，execCommand 会失败。
-  // 优先插入到当前打开的 dialog 内，确保在 focus scope 之内。
-  const container = document.querySelector<HTMLElement>('[role="dialog"]') ?? document.body;
-  container.appendChild(ta);
+  // 调用方应传入当前 Dialog 元素作为 container，确保 textarea 在 focus scope 之内。
+  const appendTo = container ?? document.body;
+  appendTo.appendChild(ta);
   const prevActive = document.activeElement as HTMLElement | null;
   let ok = false;
   try {
@@ -44,7 +45,7 @@ export async function copyText(text: string): Promise<void> {
   } catch {
     ok = false;
   } finally {
-    container.removeChild(ta);
+    appendTo.removeChild(ta);
     if (prevActive && typeof prevActive.focus === "function") {
       try { prevActive.focus({ preventScroll: true } as FocusOptions); } catch { /* noop */ }
     }
