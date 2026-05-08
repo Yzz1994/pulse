@@ -491,12 +491,20 @@ func tryDeltaUsers(
 			if ib.Protocol == "vless" && ib.Security == "reality" {
 				flow = "xtls-rprx-vision"
 			}
+			uuid := u.UUID
+			if uuid == "" {
+				uuid = acc.UUID
+			}
+			secret := u.Secret
+			if secret == "" {
+				secret = acc.Secret
+			}
 			if err := client.AddUser(ctx, nodes.UserChangeRequest{
 				InboundTag: tag,
 				Protocol:   ib.Protocol,
 				Email:      email,
-				UUID:       acc.UUID,
-				Password:   acc.Secret,
+				UUID:       uuid,
+				Password:   secret,
 				Flow:       flow,
 			}); err != nil {
 				log.Printf("warn: delta AddUser %s on %s: %v — falling back to restart", email, tag, err)

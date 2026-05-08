@@ -41,8 +41,6 @@ func (s *InboundStore) UpsertInbound(inbound inbounds.Inbound) (inbounds.Inbound
 		RealityShortID:       inbound.RealityShortID,
 		OutboundID:           inbound.OutboundID,
 		TrafficRate:          inbound.TrafficRate,
-		TargetHost:           inbound.TargetHost,
-		TargetPort:           int32(inbound.TargetPort),
 	})
 	if err != nil {
 		return inbounds.Inbound{}, err
@@ -180,8 +178,6 @@ func toInbound(r sqlcgen.Inbound) inbounds.Inbound {
 		RealityShortID:       r.RealityShortID,
 		OutboundID:           r.OutboundID,
 		TrafficRate:          r.TrafficRate,
-		TargetHost:           r.TargetHost,
-		TargetPort:           int(r.TargetPort),
 	}
 	if in.TrafficRate <= 0 {
 		in.TrafficRate = 1.0

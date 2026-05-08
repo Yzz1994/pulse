@@ -302,9 +302,7 @@ func (db *DB) init() error {
 			reality_handshake_addr TEXT NOT NULL DEFAULT '',
 			reality_short_id       TEXT NOT NULL DEFAULT '',
 			outbound_id            TEXT NOT NULL DEFAULT '',
-			traffic_rate           DOUBLE PRECISION NOT NULL DEFAULT 1.0,
-			target_host            TEXT NOT NULL DEFAULT '',
-			target_port            INTEGER NOT NULL DEFAULT 0
+			traffic_rate           DOUBLE PRECISION NOT NULL DEFAULT 1.0
 		)`,
 		// hosts：客户端连接模板（地址 + TLS 客户端参数）
 		`CREATE TABLE IF NOT EXISTS hosts (
@@ -679,7 +677,10 @@ func (db *DB) init() error {
 		`UPDATE users u SET secret = (SELECT ui.secret FROM user_inbounds ui WHERE ui.user_id = u.id AND ui.secret != '' LIMIT 1)
 		 WHERE u.secret = '' AND EXISTS (SELECT 1 FROM user_inbounds ui WHERE ui.user_id = u.id AND ui.secret != '')`,
 		`ALTER TABLE outbounds ADD COLUMN IF NOT EXISTS flow TEXT NOT NULL DEFAULT ''`,
-		`ALTER TABLE nodes ADD COLUMN IF NOT EXISTS audit_enabled BOOLEAN NOT NULL DEFAULT FALSE`,
+		`ALTER TABLE inbounds DROP COLUMN IF EXISTS target_host`,
+		`ALTER TABLE inbounds DROP COLUMN IF EXISTS target_port`,
+		`ALTER TABLE nodes DROP COLUMN IF EXISTS audit_enabled`,
+		`DROP TABLE IF EXISTS ix_domains`,
 		// audit_rules：流量审计告警规则
 		`CREATE TABLE IF NOT EXISTS audit_rules (
 			id         TEXT PRIMARY KEY,

@@ -13,9 +13,7 @@ CREATE TABLE IF NOT EXISTS inbounds (
     reality_handshake_addr TEXT NOT NULL DEFAULT '',
     reality_short_id       TEXT NOT NULL DEFAULT '',
     outbound_id            TEXT NOT NULL DEFAULT '',
-    traffic_rate           DOUBLE PRECISION NOT NULL DEFAULT 1.0,
-    target_host            TEXT NOT NULL DEFAULT '',
-    target_port            INTEGER NOT NULL DEFAULT 0
+    traffic_rate           DOUBLE PRECISION NOT NULL DEFAULT 1.0
 );
 
 -- hosts：客户端连接模板（地址 + TLS 客户端参数）
@@ -372,14 +370,6 @@ CREATE TABLE IF NOT EXISTS ip_sentinel_runs (
 
 CREATE INDEX IF NOT EXISTS idx_ip_sentinel_runs_node ON ip_sentinel_runs(node_id, started_at DESC);
 
-
--- ix_domains：国内中转域名配置
-CREATE TABLE IF NOT EXISTS ix_domains (
-    id     TEXT PRIMARY KEY,
-    name   TEXT NOT NULL DEFAULT '',
-    domain TEXT NOT NULL DEFAULT '',
-    remark TEXT NOT NULL DEFAULT ''
-);
 
 -- user_groups：用户组
 CREATE TABLE IF NOT EXISTS user_groups (

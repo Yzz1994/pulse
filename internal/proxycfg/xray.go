@@ -254,9 +254,6 @@ func BuildXrayConfig(nodeInbounds []inbounds.Inbound, userAccesses []users.UserI
 					continue
 				}
 				secret := u.Secret
-				if secret == "" {
-					secret = acc.Secret // 向后兼容旧数据
-				}
 				email := u.Username + UserInboundSep + tag
 				anytlsUsers = append(anytlsUsers, xrayAnyTLSUser{Email: email, Password: secret})
 				if _, dup := seenUsers[email]; !dup {
@@ -303,9 +300,6 @@ func BuildXrayConfig(nodeInbounds []inbounds.Inbound, userAccesses []users.UserI
 					continue
 				}
 				uuid := u.UUID
-				if uuid == "" {
-					uuid = acc.UUID // 向后兼容旧数据
-				}
 				email := u.Username + UserInboundSep + tag
 				flow := ""
 				if ib.Security == "reality" {
@@ -336,9 +330,6 @@ func BuildXrayConfig(nodeInbounds []inbounds.Inbound, userAccesses []users.UserI
 					continue
 				}
 				secret := u.Secret
-				if secret == "" {
-					secret = acc.Secret // 向后兼容旧数据
-				}
 				email := u.Username + UserInboundSep + tag
 				clients = append(clients, xrayClient{
 					Password: secret,
@@ -373,11 +364,8 @@ func BuildXrayConfig(nodeInbounds []inbounds.Inbound, userAccesses []users.UserI
 					continue
 				}
 				email := u.Username + UserInboundSep + tag
-				// SS 2022 密钥从全局 Secret 派生，保证跨节点一致；fallback 到 acc.Secret 兼容旧数据
+				// SS 2022 密钥从全局 Secret 派生，保证跨节点一致
 				userSecret := u.Secret
-				if userSecret == "" {
-					userSecret = acc.Secret
-				}
 				keyLen := 16
 				if strings.Contains(method, "256") || strings.Contains(method, "chacha20") {
 					keyLen = 32

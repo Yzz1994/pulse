@@ -28,10 +28,6 @@ type Inbound struct {
 	RealityHandshakeAddr string `json:"reality_handshake_addr,omitempty"` // 握手目标 host:port
 	RealityShortID       string  `json:"reality_short_id,omitempty"`
 	TrafficRate          float64 `json:"traffic_rate"` // 流量倍率，默认 1.0，影响用户计费流量
-	// TargetHost / TargetPort 已废弃，仅保留用于数据库向后兼容，不再有新写入。
-	// 端口转发路由现通过 Host.RelayNodeID + Host.Port 配置。
-	TargetHost string `json:"target_host,omitempty"`
-	TargetPort int    `json:"target_port,omitempty"`
 }
 
 // Host 表示客户端连接模板：地址 + TLS/传输层配置。

@@ -76,8 +76,6 @@ type Inbound struct {
 	RealityShortID       string
 	OutboundID           string
 	TrafficRate          float64
-	TargetHost           string
-	TargetPort           int32
 }
 
 type IpSentinelConfig struct {
@@ -105,13 +103,6 @@ type IpSentinelRun struct {
 	Result      string
 	StartedAt   time.Time
 	FinishedAt  pgtype.Timestamptz
-}
-
-type IxDomain struct {
-	ID     string
-	Name   string
-	Domain string
-	Remark string
 }
 
 type Node struct {
