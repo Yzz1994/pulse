@@ -44,7 +44,8 @@ export default function RootLayout() {
   const [theme, setTheme] = useState<Theme>(getTheme);
   const [updateChecking, setUpdateChecking] = useState(false);
   const [updateResult, setUpdateResult] = useState<{ has_update: boolean; latest: string; current: string } | null>(null);
-  const [updateApplying, setUpdateApplying] = useState(false);
+  type UpdatePhase = "idle" | "downloading" | "restarting" | "done";
+  const [updatePhase, setUpdatePhase] = useState<UpdatePhase>("idle");
   const [currentVersion, setCurrentVersion] = useState<string | null>(null);
 
   useEffect(() => {
@@ -83,21 +84,33 @@ export default function RootLayout() {
   }
 
   async function applyUpdate() {
-    setUpdateApplying(true);
+    setUpdatePhase("downloading");
     try {
       await api.post("/system/update/apply", {});
+      // 利用 healthz 推断阶段：
+      //   apply 响应后 + healthz 仍通  → 下载/安装中（旧进程仍活着）
+      //   healthz 开始失败             → systemctl restart 触发，服务重启中
+      //   healthz 恢复                 → 新进程已就绪
+      let wasDown = false;
       await new Promise<void>((resolve) => {
         const poll = setInterval(async () => {
           try {
             const res = await fetch("/healthz");
-            if (res.ok) { clearInterval(poll); resolve(); }
-          } catch { /* 等待重启 */ }
+            if (res.ok) {
+              if (wasDown) { clearInterval(poll); setUpdatePhase("done"); resolve(); }
+            } else {
+              if (!wasDown) { wasDown = true; setUpdatePhase("restarting"); }
+            }
+          } catch {
+            if (!wasDown) { wasDown = true; setUpdatePhase("restarting"); }
+          }
         }, 2000);
       });
+      await new Promise((r) => setTimeout(r, 800));
       window.location.reload();
     } catch {
       toast("更新失败", "error");
-      setUpdateApplying(false);
+      setUpdatePhase("idle");
     }
   }
 
@@ -183,16 +196,16 @@ export default function RootLayout() {
           variant="ghost"
           className="w-full justify-start gap-3 text-[hsl(var(--muted-foreground))] hover:bg-[hsl(var(--accent))] hover:text-[hsl(var(--accent-foreground))]"
           onClick={updateResult?.has_update ? applyUpdate : checkUpdate}
-          disabled={updateChecking || updateApplying}
+          disabled={updateChecking || updatePhase !== "idle"}
         >
           <span className="relative shrink-0">
             <UpdateIcon className="h-4 w-4" />
-            {updateResult?.has_update && !updateApplying && (
+            {updateResult?.has_update && updatePhase === "idle" && (
               <span className="absolute -top-0.5 -right-0.5 h-1.5 w-1.5 rounded-full bg-red-500" />
             )}
           </span>
           <span className="flex flex-col items-start">
-            <span>{updateApplying ? "更新中…" : updateChecking ? "检查中…" : updateResult?.has_update ? `更新到 ${updateResult.latest}` : "检查更新"}</span>
+            <span>{updatePhase !== "idle" ? "更新中…" : updateChecking ? "检查中…" : updateResult?.has_update ? `更新到 ${updateResult.latest}` : "检查更新"}</span>
             {currentVersion && <span className="text-[10px] opacity-50 font-mono">{currentVersion}</span>}
           </span>
         </Button>
@@ -211,6 +224,32 @@ export default function RootLayout() {
   return (
     <TooltipProvider delayDuration={300}>
       <div className="flex h-screen w-screen overflow-hidden bg-[hsl(var(--background))] text-[hsl(var(--foreground))]">
+        {/* 更新进度全屏 overlay */}
+        {updatePhase !== "idle" && (
+          <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/60 backdrop-blur-sm">
+            <div className="flex flex-col items-center gap-5 rounded-2xl bg-[hsl(var(--card))] px-14 py-10 shadow-2xl">
+              {updatePhase === "done" ? (
+                <div className="flex h-12 w-12 items-center justify-center rounded-full bg-green-500/15 text-green-500">
+                  <CheckCircleIcon className="h-7 w-7" />
+                </div>
+              ) : (
+                <div className="h-10 w-10 animate-spin rounded-full border-4 border-[hsl(var(--border))] border-t-[hsl(var(--primary))]" />
+              )}
+              <div className="text-center">
+                <p className="text-base font-semibold">
+                  {updatePhase === "downloading" && "正在下载并安装新版本"}
+                  {updatePhase === "restarting"  && "服务重启中"}
+                  {updatePhase === "done"        && "更新完成"}
+                </p>
+                <p className="mt-1 text-sm text-[hsl(var(--muted-foreground))]">
+                  {updatePhase === "downloading" && "请勿关闭此页面，通常需要 30～60 秒"}
+                  {updatePhase === "restarting"  && "新版本即将就绪，请稍候…"}
+                  {updatePhase === "done"        && "正在刷新页面…"}
+                </p>
+              </div>
+            </div>
+          </div>
+        )}
         {/* 移动端遮罩 */}
         {sidebarOpen && (
           <div
@@ -641,6 +680,24 @@ function ShieldIcon(props: React.SVGProps<SVGSVGElement>) {
       <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
       <line x1="12" y1="8" x2="12" y2="12" />
       <line x1="12" y1="16" x2="12.01" y2="16" />
+    </svg>
+  );
+}
+
+function CheckCircleIcon(props: React.SVGProps<SVGSVGElement>) {
+  return (
+    <svg
+      xmlns="http://www.w3.org/2000/svg"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={2}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      {...props}
+    >
+      <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14" />
+      <polyline points="22 4 12 14.01 9 11.01" />
     </svg>
   );
 }
