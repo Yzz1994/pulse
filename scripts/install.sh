@@ -210,6 +210,24 @@ run_as_root() {
   exit 1
 }
 
+restart_service() {
+  _svc="$1"
+  run_as_root systemctl restart "$_svc"
+  if systemctl is-active --quiet "$_svc" 2>/dev/null; then
+    echo "服务运行正常"
+  else
+    echo "警告: 服务未正常启动" >&2
+  fi
+  echo "--- ${_svc} 最近日志 ---"
+  journalctl -u "$_svc" -n 15 --no-pager 2>/dev/null \
+    || run_as_root journalctl -u "$_svc" -n 15 --no-pager 2>/dev/null \
+    || true
+  echo "---"
+  if ! systemctl is-active --quiet "$_svc" 2>/dev/null; then
+    exit 1
+  fi
+}
+
 quote_env_value() {
   printf "'%s'" "$(printf "%s" "$1" | sed "s/'/'\\\\''/g")"
 }
@@ -479,7 +497,7 @@ if [ "$component" = "server" ]; then
     run_as_root systemctl daemon-reload
     run_as_root systemctl enable pulse-server
     echo "重启服务 pulse-server ..."
-    run_as_root systemctl restart pulse-server
+    restart_service pulse-server
   elif [ "$init_system" = "openrc" ]; then
     run_as_root install -m 0755 "${package_dir}/etc/init.d/pulse-server" "${initd_dir}/pulse-server"
     run_as_root rc-update add pulse-server default
@@ -590,7 +608,7 @@ else
     run_as_root systemctl daemon-reload
     run_as_root systemctl enable pulse-node
     echo "重启服务 pulse-node ..."
-    run_as_root systemctl restart pulse-node
+    restart_service pulse-node
   elif [ "$init_system" = "openrc" ]; then
     run_as_root install -m 0755 "${package_dir}/etc/init.d/pulse-node" "${initd_dir}/pulse-node"
     run_as_root rc-update add pulse-node default
