@@ -73,13 +73,27 @@ systemctl restart pulse-server
 
 忘记管理员密码：登录数据库直接更新 `users` 表的 `password_hash` 字段，或在面板设置页内改密码。
 
-## 2. 添加节点（生成安装命令）
+## 2. 为面板启用 HTTPS（可选）
+
+控制面板默认 `http://<server-ip>:<面板端口>/panel`（端口见安装完成时打印的地址或 `PULSE_SERVER_ADDR`）。推荐用 NodeGate 作为反向代理：
+
+**前置**：至少有一台节点已配置 ACME Email（含 Cloudflare API Token）。
+
+1. **DNS**：在 Cloudflare 把 `panel.example.com` 解析到**那台 NodeGate 节点的公网 IP**（不是 server）。**关闭橙云代理**（灰云 / DNS only），让 TLS 直达 NodeGate。
+2. **面板 → NodeGate → 找到对应节点 → HTTP 反代规则**：填写域名 `panel.example.com`，后端填 `<server 内网或公网 IP>:<面板端口>`（节点能访问到 server 的地址即可），点击「添加」→「保存并同步」。
+3. 证书由 Let's Encrypt 走 DNS-01 自动签发，几十秒后 `https://panel.example.com/panel` 即可访问。
+
+订阅链接会自动切到 `https://panel.example.com/sub/...`（panel 通过 `X-Forwarded-Host` 感知真实域名，无需改环境变量）。
+
+> **备选**：用 Caddy/Nginx 自行反代到 `http://127.0.0.1:<面板端口>`；或在 Cloudflare 用橙云 + Flexible SSL（CF→server 走 HTTP，安全性较弱）。
+
+## 3. 添加节点（生成安装命令）
 
 登录控制面 → **节点**页面 → **添加节点** → 复制生成的完整安装命令（已包含
 `--server`、`--node-id`、`--token` 三个参数）。token 是一次性的，一经使用即失效；
 未使用且过期 24h 后由 `cleanup-enroll-tokens` 任务回收。
 
-## 3. 安装 node
+## 4. 安装 node
 
 将上一步复制的命令粘贴到节点机器上执行，例如：
 
@@ -140,42 +154,22 @@ vim /etc/pulse/pulse-node.env
 systemctl restart pulse-node
 ```
 
-## 4. 配置出口（可选）
+## 5. 配置出口（可选）
 
 1. 进入 **面板 → Outbounds**，添加出口（Shadowsocks 或 VLESS+Reality）
 2. 在对应 inbound 编辑页的「出口」下拉框中选择出口，保存后下发配置即生效
 
 不绑定出口的 inbound 保持直连。
 
-## 5. 启用 NodeGate（可选，推荐）
+## 6. 配置 NodeGate 证书（可选）
 
-NodeGate 是节点内置的 SNI 代理，无需安装 Nginx 或 Caddy。
+NodeGate 是节点内置的 SNI 代理，无需安装 Nginx 或 Caddy。**当节点存在 AnyTLS / Trojan 入站（默认协议）时，NodeGate 自动启动**，无需手动开启。
 
-1. 进入 **面板 → NodeGate**，编辑节点，填写 **ACME Email** 和 **面板域名**
-2. 保存后面板自动触发同步，证书由 Let's Encrypt 自动申请
-
-NodeGate **按需自动启停**：当节点上至少存在一条 host 把它当 relay 或一个 https_port>0 的入站时，控制面会自动下发 `Listen=":443"` 启动监听；否则保持关闭。
+若需要自动签发 TLS 证书（Let's Encrypt），在 **面板 → 节点详情 → 基础信息** 中填写 **ACME Email**，保存后面板自动触发同步，证书自动申请。
 
 **无公网 80/443（NAT 机器）**：在 **面板 → 设置 → Cloudflare API Token** 配置 Token（需 `Zone:DNS:Edit` 权限），启用 DNS-01 验证。
 
 详见 [docs/sniproxy.md](docs/sniproxy.md)。
-
-## 6. 为面板启用 HTTPS（可选，推荐）
-
-控制面板默认 `http://<server-ip>:8080/panel`。推荐用前一步启用的 NodeGate 作为反向代理：
-
-**前置**：已按第 5 步至少有一台节点开启 NodeGate（含 ACME Email + Cloudflare API Token）。
-
-1. **DNS**：在 Cloudflare 把 `panel.example.com` 解析到**那台 NodeGate 节点的公网 IP**（不是 server）。**关闭橙云代理**（灰云 / DNS only），让 TLS 直达 NodeGate。
-2. **面板 → NodeGate → 选节点 → 添加路由**：
-   - SNI：`panel.example.com`
-   - 模式：`http-reverse`
-   - 后端：`<server 内网或公网 IP>:8080`（节点能访问到 server 的地址即可）
-3. 保存。证书由 Let's Encrypt 走 DNS-01 自动签发，几十秒后 `https://panel.example.com/panel` 即可访问。
-
-订阅链接会自动切到 `https://panel.example.com/sub/...`（panel 通过 `X-Forwarded-Host` 感知真实域名，无需改环境变量）。
-
-> **备选**：用 Caddy/Nginx 自行反代到 `http://127.0.0.1:8080`；或在 Cloudflare 用橙云 + Flexible SSL（CF→server 走 HTTP，安全性较弱）。
 
 ## 卸载
 
