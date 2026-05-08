@@ -16,29 +16,34 @@ export async function copyText(text: string): Promise<void> {
   }
   const ta = document.createElement("textarea");
   ta.value = text;
+  // 必须保留 readonly 防止移动端弹出键盘，但不能 display:none / visibility:hidden，
+  // 否则 execCommand('copy') 在多数浏览器下会失败。
   ta.setAttribute("readonly", "");
-  // iOS Safari 要求元素在视口内且 contentEditable 才能 select；用 fixed + 极小尺寸 + 透明
-  // 兼容桌面与移动浏览器，避免触发 scroll 跳动。
-  ta.style.cssText = "position:fixed;top:0;left:0;width:1px;height:1px;padding:0;border:0;outline:0;background:transparent;opacity:0;pointer-events:none;";
-  ta.contentEditable = "true";
+  ta.style.position = "fixed";
+  ta.style.top = "0";
+  ta.style.left = "0";
+  ta.style.width = "1px";
+  ta.style.height = "1px";
+  ta.style.padding = "0";
+  ta.style.border = "0";
+  ta.style.outline = "0";
+  ta.style.boxShadow = "none";
+  ta.style.background = "transparent";
+  ta.style.opacity = "0";
   document.body.appendChild(ta);
-  const prevSelection = document.getSelection()?.rangeCount
-    ? document.getSelection()!.getRangeAt(0)
-    : null;
-  ta.focus();
-  ta.select();
-  ta.setSelectionRange(0, ta.value.length);
+  const prevActive = document.activeElement as HTMLElement | null;
   let ok = false;
   try {
+    ta.focus({ preventScroll: true });
+    ta.select();
+    ta.setSelectionRange(0, ta.value.length);
     ok = document.execCommand("copy");
   } catch {
     ok = false;
   } finally {
     document.body.removeChild(ta);
-    if (prevSelection) {
-      const sel = document.getSelection();
-      sel?.removeAllRanges();
-      sel?.addRange(prevSelection);
+    if (prevActive && typeof prevActive.focus === "function") {
+      try { prevActive.focus({ preventScroll: true } as FocusOptions); } catch { /* noop */ }
     }
   }
   if (!ok) {
