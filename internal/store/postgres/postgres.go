@@ -14,7 +14,12 @@ type DB struct {
 }
 
 func Open(dsn string) (*DB, error) {
-	conn, err := pgxpool.New(context.Background(), dsn)
+	cfg, err := pgxpool.ParseConfig(dsn)
+	if err != nil {
+		return nil, fmt.Errorf("open postgres: parse config: %w", err)
+	}
+	cfg.MaxConns = 20
+	conn, err := pgxpool.NewWithConfig(context.Background(), cfg)
 	if err != nil {
 		return nil, fmt.Errorf("open postgres: %w", err)
 	}

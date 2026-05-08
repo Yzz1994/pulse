@@ -40,6 +40,7 @@ type API struct {
 	accessLogStore accesslogs.Store
 	auditRuleStore auditrules.Store
 	hub            *nodehub.Hub // 用于在线状态查询；可能为 nil（早期或测试）
+	mHub           *metricsHub  // 节点指标广播器，StartMetricsHub 后可用
 }
 
 type upsertNodeRequest struct {
@@ -90,6 +91,12 @@ func (a *API) SetAccessLogStore(s accesslogs.Store) {
 
 func (a *API) SetAuditRuleStore(s auditrules.Store) {
 	a.auditRuleStore = s
+}
+
+// StartMetricsHub 启动节点指标广播器。应在 SetNodeHub 之后调用。
+func (a *API) StartMetricsHub(ctx context.Context) {
+	a.mHub = newMetricsHub()
+	go a.mHub.Run(ctx, a.store, a.clientFor)
 }
 
 // SetNodeHub 注入 gRPC 长连接 hub，所有节点 RPC 调用都通过此 hub 走 mTLS gRPC。
@@ -370,11 +377,16 @@ func (a *API) handleNodeMetrics(w http.ResponseWriter, r *http.Request, nodeID s
 	writeJSON(w, http.StatusOK, out)
 }
 
-// handleAllNodeMetricsStream 推送所有节点的实时指标（SSE），每 2 秒采样一次。
+// handleAllNodeMetricsStream 推送所有节点的实时指标（SSE）。
+// 所有 SSE 连接共享同一个 metricsHub 广播，避免每个连接独立轮询 DB 导致连接池耗尽。
 func (a *API) handleAllNodeMetricsStream(w http.ResponseWriter, r *http.Request) {
 	flusher, ok := w.(http.Flusher)
 	if !ok {
 		http.Error(w, "streaming not supported", http.StatusInternalServerError)
+		return
+	}
+	if a.mHub == nil {
+		http.Error(w, "metrics hub not ready", http.StatusServiceUnavailable)
 		return
 	}
 
@@ -382,69 +394,16 @@ func (a *API) handleAllNodeMetricsStream(w http.ResponseWriter, r *http.Request)
 	w.Header().Set("Cache-Control", "no-cache")
 	w.Header().Set("Connection", "keep-alive")
 
-	type nodeMetricsItem struct {
-		NodeID        string `json:"node_id"`
-		Running       bool   `json:"running"`
-		UploadSpeed   int64  `json:"upload_speed"`
-		DownloadSpeed int64  `json:"download_speed"`
-		Connections   int    `json:"connections"`
-	}
+	ch := a.mHub.subscribe()
+	defer a.mHub.unsubscribe(ch)
 
-	send := func() {
-		nodeList, err := a.store.List()
-		if err != nil {
-			return
-		}
-		results := make([]nodeMetricsItem, 0, len(nodeList))
-		var mu sync.Mutex
-		var wg sync.WaitGroup
-		for _, node := range nodeList {
-			if node.Disabled {
-				continue
-			}
-			wg.Add(1)
-			go func(n nodes.Node) {
-				defer wg.Done()
-				client, err := a.clientFor(n.ID)
-				if err != nil {
-					return
-				}
-				ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
-				defer cancel()
-				stats, err := client.Usage(ctx, false)
-				if err != nil {
-					return
-				}
-				mu.Lock()
-				results = append(results, nodeMetricsItem{
-					NodeID:        n.ID,
-					Running:       stats.Running,
-					UploadSpeed:   stats.UploadSpeed,
-					DownloadSpeed: stats.DownloadSpeed,
-					Connections:   stats.Connections,
-				})
-				mu.Unlock()
-			}(node)
-		}
-		wg.Wait()
-		data, err := json.Marshal(results)
-		if err != nil {
-			return
-		}
-		fmt.Fprintf(w, "data: %s\n\n", data)
-		flusher.Flush()
-	}
-
-	send() // 立即推送一次
-
-	ticker := time.NewTicker(2 * time.Second)
-	defer ticker.Stop()
 	for {
 		select {
 		case <-r.Context().Done():
 			return
-		case <-ticker.C:
-			send()
+		case data := <-ch:
+			fmt.Fprintf(w, "data: %s\n\n", data)
+			flusher.Flush()
 		}
 	}
 }

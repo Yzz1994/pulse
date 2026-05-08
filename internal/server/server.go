@@ -1157,7 +1157,8 @@ func Run() error {
 	jobs.SetNodesHubClientFactory(func(nodeID string, _ jobs.HubCaller) *nodes.Client {
 		return nodes.NewClientWithHub(nodeID, nodeHub)
 	})
-	// hub 注入完毕后再启动 scheduler，保证首次立即执行时所有依赖（hub、nodeAPI）已就绪。
+	// hub 注入完毕后再启动 scheduler 和 metrics hub，保证首次立即执行时所有依赖已就绪。
+	nodeAPI2.StartMetricsHub(sigCtx)
 	scheduler.Start(schedulerCtx)
 	mux.Handle("/v1/system/nodehub/", authManager.Middleware(protectedV1))
 	mux.Handle("/v1/tools/", authManager.Middleware(protectedV1))
