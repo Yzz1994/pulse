@@ -15,7 +15,7 @@ Pulse 由两个二进制组成：
 bash <(curl -fsSL https://raw.githubusercontent.com/0xUnixIO/pulse/main/scripts/install.sh) server
 ```
 
-使用已有 PostgreSQL（强烈推荐用于生产）：
+使用已有 PostgreSQL：
 
 ```bash
 PULSE_DATABASE_URL='postgres://user:pass@host:5432/pulse?sslmode=disable' \
@@ -162,17 +162,20 @@ NodeGate **按需自动启停**：当节点上至少存在一条 host 把它当 
 
 ## 6. 为面板启用 HTTPS（可选，推荐）
 
-控制面板默认通过 `http://<server-ip>:8080/panel` 访问。最简单的方式是用 Cloudflare 反代 + 它自带的 SSL：
+控制面板默认 `http://<server-ip>:8080/panel`。推荐用前一步启用的 NodeGate 作为反向代理：
 
-1. **DNS**：在 Cloudflare 添加 `panel.example.com` A 记录指向 server 的公网 IP，**开启橙云代理**（Proxied）。
-2. **SSL/TLS → Overview**：模式选 **Flexible**（CF↔server 走 HTTP）。
-   - 想要 CF↔server 也加密，可以在 server 前置一层 Caddy/Nginx 终止 TLS，再把 CF 模式调成 **Full** 或 **Full (strict)**。
-3. **SSL/TLS → Edge Certificates**：打开 **Always Use HTTPS**，浏览器访问自动跳 HTTPS。
-4. （可选）Origin Rules / Page Rules 把 `panel.example.com` → `:8080` 端口转发，避免在面板地址里带端口。
+**前置**：已按第 5 步至少有一台节点开启 NodeGate（含 ACME Email + Cloudflare API Token）。
 
-完成后 `https://panel.example.com/panel` 即可访问。订阅链接会自动用域名（panel 通过 `X-Forwarded-Host` 感知，无需改环境变量）。
+1. **DNS**：在 Cloudflare 把 `panel.example.com` 解析到**那台 NodeGate 节点的公网 IP**（不是 server）。**关闭橙云代理**（灰云 / DNS only），让 TLS 直达 NodeGate。
+2. **面板 → NodeGate → 选节点 → 添加路由**：
+   - SNI：`panel.example.com`
+   - 模式：`http-reverse`
+   - 后端：`<server 内网或公网 IP>:8080`（节点能访问到 server 的地址即可）
+3. 保存。证书由 Let's Encrypt 走 DNS-01 自动签发，几十秒后 `https://panel.example.com/panel` 即可访问。
 
-> 不想用 Cloudflare：用 Caddy/Nginx 反代到 `http://127.0.0.1:8080`，或参考 [docs/sniproxy.md](docs/sniproxy.md) 把面板挂到节点 NodeGate 的 `http-reverse` 路由上。
+订阅链接会自动切到 `https://panel.example.com/sub/...`（panel 通过 `X-Forwarded-Host` 感知真实域名，无需改环境变量）。
+
+> **备选**：用 Caddy/Nginx 自行反代到 `http://127.0.0.1:8080`；或在 Cloudflare 用橙云 + Flexible SSL（CF→server 走 HTTP，安全性较弱）。
 
 ## 卸载
 
