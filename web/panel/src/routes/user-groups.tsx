@@ -645,22 +645,22 @@ export default function UserGroupsPage() {
     api
       .get<InboundsResponse>("/inbounds")
       .then((res) => setAllInbounds(res.inbounds ?? []))
-      .catch((err) => { if (!handleAuthError(err)) console.warn("加载 inbounds 失败", err); });
+      .catch((err) => { handleAuthError(err); });
 
     api
       .get<NodesResponse>("/nodes")
       .then((res) => setAllNodes(res.nodes ?? []))
-      .catch((err) => { if (!handleAuthError(err)) console.warn("加载 nodes 失败", err); });
+      .catch((err) => { handleAuthError(err); });
 
     api
       .get<{ hosts: Host[] }>("/hosts")
       .then((res) => setAllHosts(res.hosts ?? []))
-      .catch((err) => { if (!handleAuthError(err)) console.warn("加载 hosts 失败", err); });
+      .catch((err) => { handleAuthError(err); });
 
     api
       .get<PlansResponse>("/plans")
       .then((res) => setAllPlans(res.plans ?? []))
-      .catch((err) => { if (!handleAuthError(err)) console.warn("加载 plans 失败", err); });
+      .catch((err) => { handleAuthError(err); });
   }, [handleAuthError]);
 
   function openCreateDialog() {

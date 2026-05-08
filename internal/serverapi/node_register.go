@@ -11,9 +11,6 @@ import (
 
 // RegisterNodeRegisterAPI 注册节点自注册接口（公开，无鉴权）。节点启动时
 // 通过它把自身 BaseURL 上报给控制面，控制面 evict 节点 client 缓存。
-//
-// 历史上还提供过 /v1/node-setup/cert 用于分发服务端 mTLS 客户端证书；现已
-// 改为 enrollment 流程，该接口已删除。
 func RegisterNodeRegisterAPI(publicMux *http.ServeMux, store nodes.Store, evictClient func(string)) {
 	publicMux.HandleFunc("POST /v1/node-register", func(w http.ResponseWriter, r *http.Request) {
 		var req struct {

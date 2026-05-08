@@ -71,8 +71,8 @@ func Run() error {
 	geoipDB := geoip.NewDB(filepath.Join(cfg.DataDir, "geoip"))
 	authManager := auth.NewManager(db.SessionStore(), &adminStoreAdapter{userStore})
 
-	// usageBuf 接收来自 node 的主动 push usage 帧；SyncUsage job 优先从此 buffer
-	// drain 累计 delta。client-cleanup 完成后已彻底移除 HTTP fallback。
+	// usageBuf 接收来自 node 的主动 push usage 帧；SyncUsage job 从此 buffer
+	// drain 累计 delta。
 	usageBuf := nodes.NewUsageBuffer()
 
 	// 启动调度器

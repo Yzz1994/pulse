@@ -126,16 +126,7 @@ func (s *SelfSyncHandler) applyAsync(nodeID string) {
 	}
 }
 
-// applyNode 通过 HubCaller（而非直接 *nodes.Client）下发配置。
-//
-// 当前实现：构造一个走 HubCaller 的 NodeDialer，复用现有 ApplyNode 函数。
-// nodes.Client 内部 RPC 路径是基于本地 dial 的；要走 hub 需要扩展 client 适配 hub。
-// client-short todo 会做这个适配；本 todo 在该适配落地之前，回退为：
-//   - 通过 HubCaller 直接调用 "ApplyNodeConfig" method（如未来定义），或
-//   - 找不到 hub-aware client 适配时，记录降级日志并返回 ErrHubClientNotWired。
-//
-// 为不阻塞本 todo，这里采用最简方案：要求调用方在初始化 SelfSyncHandler 时
-// 注入 HubCaller 适配过的 NodeDialer（通过 Wire），在缺失时返回错误。
+// applyNode 通过 HubCaller 适配的 NodeDialer 下发节点配置。
 func (s *SelfSyncHandler) applyNode(ctx context.Context, nodeID string) error {
 	if s.HubCaller == nil {
 		return errors.New("selfsync: HubCaller not configured")
@@ -158,14 +149,8 @@ func short(h string) string {
 	return h[:12]
 }
 
-// hubDialer 构造一个走 HubCaller 的 NodeDialer。
-//
-// 当前 nodes.Client 仍使用本地 dial 的实现，client-short todo 会将其改为 hub-aware。
-// 在该改动落地前，此 dialer 仍调用 nodes.NewHubClient（若存在）；不存在则返回错误。
-// 为最小可用，此处委托给 nodes 包导出的工厂函数 NewHubClient（约定）。
-//
-// 如果 nodes 包尚未提供 NewHubClient，调用方可在 wiring 阶段提供自定义
-// NodeDialer 替代（见 SelfSyncHandler 的扩展字段 CustomDialer）。
+// hubDialer 构造一个走 HubCaller 的 NodeDialer，依赖 nodes 包通过
+// SetNodesHubClientFactory 注入的工厂函数。
 func hubDialer(hc HubCaller) NodeDialer {
 	return func(nodeID string) (*nodes.Client, error) {
 		if f := nodesNewHubClient; f != nil {
@@ -175,17 +160,11 @@ func hubDialer(hc HubCaller) NodeDialer {
 	}
 }
 
-// nodesNewHubClient 是一个可注入的工厂；server.go 在 wire-up 时通过
-// SetNodesHubClientFactory 注入，避免 jobs 强依赖 nodes 包内未来才会提供的 API。
+// nodesNewHubClient 由 server.go 在 wire-up 阶段通过 SetNodesHubClientFactory
+// 注入，避免 jobs 包反向依赖 nodes 包。
 var nodesNewHubClient func(nodeID string, hc HubCaller) *nodes.Client
 
 // SetNodesHubClientFactory 注入 hub-aware client 工厂。
-//
-// 由 client-short todo 提供的 nodes.NewHubClient 可直接传入：
-//
-//	jobs.SetNodesHubClientFactory(func(id string, hc jobs.HubCaller) *nodes.Client {
-//	    return nodes.NewHubClient(id, hubCallerAdapter{hc})
-//	})
 func SetNodesHubClientFactory(f func(nodeID string, hc HubCaller) *nodes.Client) {
 	nodesNewHubClient = f
 }

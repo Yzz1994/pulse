@@ -9,9 +9,6 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
-// 注：所有历史 ALTER TABLE 迁移均已在 2026-04 完成并部署到生产。
-// 新字段直接写入 CREATE TABLE IF NOT EXISTS 语句，不再需要迁移函数。
-
 type DB struct {
 	conn *pgxpool.Pool
 }
@@ -636,24 +633,17 @@ func (db *DB) init() error {
 			PRIMARY KEY (group_id, user_id)
 		)`,
 		`CREATE INDEX IF NOT EXISTS idx_user_group_members_user ON user_group_members(user_id)`,
-		// user_inbounds 新增 group_id 列（'' 表示直接分配，非空表示来自用户组）
 		`ALTER TABLE user_inbounds ADD COLUMN IF NOT EXISTS group_id TEXT NOT NULL DEFAULT ''`,
 		`CREATE INDEX IF NOT EXISTS idx_user_inbounds_group ON user_inbounds(group_id) WHERE group_id != ''`,
-		// plans 表：inbound_ids → user_group_ids（套餐绑定用户组，不再直接绑定 inbound）
 		`ALTER TABLE plans ADD COLUMN IF NOT EXISTS user_group_ids TEXT NOT NULL DEFAULT ''`,
-		// nodes 表：NodeGate 自定义监听端口 / ACME 邮箱 / 面板域名 / 额外代理（0 或 '' = 默认）
 		`ALTER TABLE nodes ADD COLUMN IF NOT EXISTS https_port INTEGER NOT NULL DEFAULT 0`,
 		`ALTER TABLE nodes ADD COLUMN IF NOT EXISTS acme_email TEXT NOT NULL DEFAULT ''`,
 		`ALTER TABLE nodes ADD COLUMN IF NOT EXISTS panel_domain TEXT NOT NULL DEFAULT ''`,
 		`ALTER TABLE nodes ADD COLUMN IF NOT EXISTS extra_proxies TEXT NOT NULL DEFAULT ''`,
-		// hosts 表：NodeGate 每 host HTTPS 监听端口
 		`ALTER TABLE hosts ADD COLUMN IF NOT EXISTS https_port INTEGER NOT NULL DEFAULT 0`,
-		// hosts 表：cert_domain 已合并到 sni 字段，relay_port 已合并到 port 字段
 		`ALTER TABLE hosts DROP COLUMN IF EXISTS cert_domain`,
 		`ALTER TABLE hosts DROP COLUMN IF EXISTS relay_port`,
-		// nodes 表：新增 tls_mode，支持 direct 模式（Xray 自持证书，NodeGate passthrough）
 		`ALTER TABLE nodes ADD COLUMN IF NOT EXISTS tls_mode TEXT NOT NULL DEFAULT ''`,
-		// tls_cert_domain 已废弃（域名从 inbound Host SNI 自动收集）
 		`ALTER TABLE nodes DROP COLUMN IF EXISTS tls_cert_domain`,
 		`CREATE TABLE IF NOT EXISTS node_latency_samples (
 			id         BIGSERIAL PRIMARY KEY,
@@ -680,15 +670,10 @@ func (db *DB) init() error {
 		`CREATE INDEX IF NOT EXISTS idx_access_logs_created_at ON access_logs(created_at DESC)`,
 		`CREATE INDEX IF NOT EXISTS idx_access_logs_username ON access_logs(username)`,
 		`CREATE INDEX IF NOT EXISTS idx_access_logs_node_id ON access_logs(node_id)`,
-		`ALTER TABLE access_logs ADD COLUMN IF NOT EXISTS source_port TEXT NOT NULL DEFAULT ''`,
-		`ALTER TABLE access_logs ADD COLUMN IF NOT EXISTS remote_ip   TEXT NOT NULL DEFAULT ''`,
-		`ALTER TABLE access_logs ADD COLUMN IF NOT EXISTS protocol    TEXT NOT NULL DEFAULT ''`,
-		`ALTER TABLE access_logs ADD COLUMN IF NOT EXISTS inbound_tag TEXT NOT NULL DEFAULT ''`,
 		`ALTER TABLE nodes ADD COLUMN IF NOT EXISTS is_landing BOOLEAN NOT NULL DEFAULT TRUE`,
 		`ALTER TABLE users ADD COLUMN IF NOT EXISTS uuid TEXT NOT NULL DEFAULT ''`,
 		`ALTER TABLE users ADD COLUMN IF NOT EXISTS secret TEXT NOT NULL DEFAULT ''`,
-		// 存量用户初始化全局凭证：只对 uuid 或 secret 为空的字段单独补齐，
-		// 避免已设置 uuid 的用户被重启时 secret 字段的 OR 触发重新覆盖。
+		// 为空的 user 凭证从其 user_inbounds 任一非空记录回填（一次性补齐，幂等）。
 		`UPDATE users u SET uuid = (SELECT ui.uuid FROM user_inbounds ui WHERE ui.user_id = u.id AND ui.uuid != '' LIMIT 1)
 		 WHERE u.uuid = '' AND EXISTS (SELECT 1 FROM user_inbounds ui WHERE ui.user_id = u.id AND ui.uuid != '')`,
 		`UPDATE users u SET secret = (SELECT ui.secret FROM user_inbounds ui WHERE ui.user_id = u.id AND ui.secret != '' LIMIT 1)
@@ -715,7 +700,6 @@ func (db *DB) init() error {
 			user_id    TEXT NOT NULL,
 			expires_at TIMESTAMPTZ NOT NULL
 		)`,
-		`ALTER TABLE portal_sessions ADD COLUMN IF NOT EXISTS expires_at TIMESTAMPTZ`,
 		// enroll_tokens：节点 enrollment 一次性令牌
 		`CREATE TABLE IF NOT EXISTS enroll_tokens (
 			token        TEXT PRIMARY KEY,

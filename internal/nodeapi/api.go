@@ -1,8 +1,7 @@
-// Package nodeapi 暴露给 nodeagent dispatcher 调用的业务函数集合。
+// Package nodeapi 提供节点侧 RPC method 的业务实现。
 //
-// 历史上本包同时提供 HTTP handlers 与业务方法；现在节点端不再监听 HTTP，
-// 所有 method 都通过 nodehub gRPC 双向流由控制面下发，dispatch 层调用这里
-// 的 Do* 函数执行。本文件保留：
+// 节点端不监听 HTTP，所有 method 通过 nodehub gRPC 双向流由控制面下发，
+// dispatch 层调用本包的 Do* 函数执行。本文件包含：
 //   - API 结构体 + 构造器 + Manager 切换逻辑
 //   - 所有 Do* 业务方法（Runtime / Status / Usage / Config / Logs / Start /
 //     Stop / Restart / AddUser / RemoveUser / Update / EnsureCert）

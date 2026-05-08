@@ -333,9 +333,7 @@ export default function UsersPage() {
       setAllPlans(plansData.plans ?? []);
       setAllUserGroups(userGroupsData.user_groups ?? []);
     } catch (err) {
-      if (!handleAuthError(err)) {
-        console.error("Failed to fetch inbounds:", err);
-      }
+      handleAuthError(err);
     } finally {
       setInboundsLoading(false);
     }
@@ -350,9 +348,7 @@ export default function UsersPage() {
         );
         return (data.inbounds ?? []).map((ib) => ib.inbound_id);
       } catch (err) {
-        if (!handleAuthError(err)) {
-          console.error("Failed to fetch user inbounds:", err);
-        }
+        handleAuthError(err);
         return [];
       }
     },

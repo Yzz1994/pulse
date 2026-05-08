@@ -120,11 +120,6 @@ echo "$ENROLL_TOKEN" | bash <(curl -fsSL https://raw.githubusercontent.com/0xUni
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 ```
 
-> 旧的 `--cert <BASE64>`（手动粘贴 server 客户端证书）流程已废弃，传入会被忽略并打印警告。
-> 已存在的 `/etc/pulse/server_client_cert.pem` 会被自动重命名为 `.deprecated`。
-> 旧的 `PULSE_NODE_ADDR` / `PULSE_NODE_PORT` / `PULSE_NODE_TLS_*` / `PULSE_NODE_CA_FILE`
-> 等环境变量在升级时会被脚本主动清除。
-
 **node 安装脚本环境变量：**
 
 | 变量 | 默认值 | 说明 |
