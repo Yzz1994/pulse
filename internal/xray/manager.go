@@ -538,6 +538,8 @@ func (m *Manager) parseSessionLog(line string) {
 		m.sessionProtocol[sessionID] = "ss2022"
 	case strings.Contains(rest, " proxy/shadowsocks:"):
 		m.sessionProtocol[sessionID] = "shadowsocks"
+	case strings.Contains(rest, " proxy/hysteria:") || strings.Contains(rest, " proxy/hysteria/"):
+		m.sessionProtocol[sessionID] = "hysteria"
 	}
 
 	// dispatcher 行：记录最近的 session ID，供 access log 行关联

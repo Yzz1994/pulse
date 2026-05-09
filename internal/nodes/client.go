@@ -339,6 +339,10 @@ type SNIProxySyncRequest struct {
 	CloudflareToken string          `json:"cloudflare_token,omitempty"`
 	ACMEStaging     bool            `json:"acme_staging,omitempty"`
 	Routes          []SNIProxyRoute `json:"routes"`
+	// CertDomains 仅用于触发 certmgr 申请证书但不参与 NodeGate 路由表
+	// 的额外域名（如 hy2 inbound 的 SNI：UDP/QUIC 由 Xray 直接持证，
+	// 但证书仍由节点 certmgr 通过 ACME DNS-01 申请并落盘）。
+	CertDomains []string `json:"cert_domains,omitempty"`
 }
 
 // SyncSNIProxy 把内置 SNI 代理的完整配置推送给节点，节点端热更新。

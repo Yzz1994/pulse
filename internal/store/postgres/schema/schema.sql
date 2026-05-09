@@ -13,7 +13,8 @@ CREATE TABLE IF NOT EXISTS inbounds (
     reality_handshake_addr TEXT NOT NULL DEFAULT '',
     reality_short_id       TEXT NOT NULL DEFAULT '',
     outbound_id            TEXT NOT NULL DEFAULT '',
-    traffic_rate           DOUBLE PRECISION NOT NULL DEFAULT 1.0
+    traffic_rate           DOUBLE PRECISION NOT NULL DEFAULT 1.0,
+    extra                  TEXT NOT NULL DEFAULT ''
 );
 
 -- hosts：客户端连接模板（地址 + TLS 客户端参数）

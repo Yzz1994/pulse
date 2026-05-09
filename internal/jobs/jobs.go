@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log"
 	"net/url"
+	"path/filepath"
 	"strings"
 	"sync"
 	"time"
@@ -16,6 +17,21 @@ import (
 	"pulse/internal/routerules"
 	"pulse/internal/users"
 )
+
+// NodeCertStoragePath 是 pulse-node 上 certmgr 默认的证书落盘根目录。
+// 必须与 sniproxy 同步逻辑、节点端 certmgr.Config.StoragePath 三处保持一致。
+const NodeCertStoragePath = "/var/lib/pulse-node/certs"
+
+// nodeCertPath 按 certmagic 约定推导节点上指定域名的 cert / key 路径。
+// panel 端无法 stat 节点磁盘，只生成预测路径；运行时 xray 加载时若文件不存在会自行报错。
+func nodeCertPath(domain string) (certFile, keyFile string, err error) {
+	if domain == "" {
+		return "", "", fmt.Errorf("hy2 cert path: domain is required")
+	}
+	dir := filepath.Join(NodeCertStoragePath, "certificates",
+		"acme-v02.api.letsencrypt.org-directory", domain)
+	return filepath.Join(dir, domain+".crt"), filepath.Join(dir, domain+".key"), nil
+}
 
 // mu 保护三个 job 之间的数据一致性。
 // 所有 job 均使用 UpsertUser 全字段覆盖写，因此读-改-写必须互斥。
@@ -841,6 +857,7 @@ func ApplyNodeUsers(ctx context.Context, client *nodes.Client, nodeInbounds []in
 		AllInboundMap:  allInboundMap,
 		AllNodeMap:     allNodeMap,
 		UserInboundMap: userInboundMap,
+		CertPathFor:    nodeCertPath,
 	})
 	if err != nil {
 		return nodes.Status{}, "", err

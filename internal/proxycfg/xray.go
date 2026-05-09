@@ -47,6 +47,10 @@ type BuildOptions struct {
 	AllInboundMap  map[string]inbounds.Inbound
 	AllNodeMap     map[string]nodes.Node
 	UserInboundMap map[string]users.UserInbound
+	// CertPathFor 根据域名返回本机已托管的 TLS 证书 / 私钥路径。
+	// hy2 inbound 必须由 Xray 自己加载 TLS 证书（UDP/QUIC，无法由 NodeGate 终止）。
+	// 返回的路径必须是 Xray 进程可读的本地文件。nil 时 hy2 inbound 渲染会失败。
+	CertPathFor func(domain string) (certFile, keyFile string, err error)
 }
 
 // Xray 配置顶层结构
@@ -101,12 +105,50 @@ type xrayAnyTLSUser struct {
 }
 
 type xrayInboundSettings struct {
-	Clients    []xrayClient     `json:"clients,omitempty"`
-	Users      []xrayAnyTLSUser `json:"users,omitempty"`      // anytls
-	Decryption string           `json:"decryption,omitempty"` // vless 必须 "none"
-	Network    string           `json:"network,omitempty"`    // ss
-	Method     string           `json:"method,omitempty"`     // ss
-	Password   string           `json:"password,omitempty"`   // ss server PSK（单用户）
+	Clients    []xrayClient        `json:"clients,omitempty"`
+	Users      []xrayAnyTLSUser    `json:"users,omitempty"`      // anytls
+	Decryption string              `json:"decryption,omitempty"` // vless 必须 "none"
+	Network    string              `json:"network,omitempty"`    // ss
+	Method     string              `json:"method,omitempty"`     // ss
+	Password   string              `json:"password,omitempty"`   // ss server PSK（单用户）
+	Version    int                 `json:"version,omitempty"`    // hy2 固定 2
+	HyClients  []xrayHysteriaUser  `json:"-"`                    // 仅内部，序列化时若非空 -> 覆盖 Clients
+}
+
+// MarshalJSON：当 HyClients 非空时（hy2），把它序列化为 "clients"，避免与 vless/trojan
+// 的 xrayClient 共用结构。其余协议保持原样。
+func (s xrayInboundSettings) MarshalJSON() ([]byte, error) {
+	type alias xrayInboundSettings
+	if len(s.HyClients) == 0 {
+		return json.Marshal(alias(s))
+	}
+	out := struct {
+		Version int                `json:"version,omitempty"`
+		Clients []xrayHysteriaUser `json:"clients"`
+	}{
+		Version: s.Version,
+		Clients: s.HyClients,
+	}
+	return json.Marshal(out)
+}
+
+type xrayHysteriaUser struct {
+	Auth  string `json:"auth"`
+	Email string `json:"email"`
+	Level int    `json:"level"`
+}
+
+type xrayHysteriaSettings struct {
+	Version        int              `json:"version"`
+	Auth           string           `json:"auth,omitempty"`           // obfs salamander 密码（启用混淆时）
+	UdpIdleTimeout int              `json:"udpIdleTimeout,omitempty"` // 秒
+	Masquerade     *xrayMasquerade  `json:"masquerade,omitempty"`
+}
+
+type xrayMasquerade struct {
+	Type        string `json:"type"`                  // proxy / file / string / lazy
+	URL         string `json:"url,omitempty"`         // type=proxy
+	RewriteHost bool   `json:"rewriteHost,omitempty"`
 }
 
 type xrayClient struct {
@@ -118,11 +160,12 @@ type xrayClient struct {
 }
 
 type xrayStream struct {
-	Network         string               `json:"network"`
-	Security        string               `json:"security,omitempty"`
-	TLSSettings     *xrayTLSSettings     `json:"tlsSettings,omitempty"`
-	RealitySettings *xrayRealitySettings `json:"realitySettings,omitempty"`
-	WSSettings      *xrayWSSettings      `json:"wsSettings,omitempty"`
+	Network          string                `json:"network"`
+	Security         string                `json:"security,omitempty"`
+	TLSSettings      *xrayTLSSettings      `json:"tlsSettings,omitempty"`
+	RealitySettings  *xrayRealitySettings  `json:"realitySettings,omitempty"`
+	WSSettings       *xrayWSSettings       `json:"wsSettings,omitempty"`
+	HysteriaSettings *xrayHysteriaSettings `json:"hysteriaSettings,omitempty"`
 }
 
 type xrayTLSSettings struct {
@@ -242,6 +285,61 @@ func BuildXrayConfig(nodeInbounds []inbounds.Inbound, userAccesses []users.UserI
 
 		// portforward：由 NodeGate layer4 处理，Xray 不需要生成任何配置。
 		if ib.Protocol == "portforward" {
+			continue
+		}
+
+		// hy2：UDP/QUIC，Xray 自己监听公网并加载 TLS 证书（NodeGate 不能终止 UDP）。
+		if ib.Protocol == "hy2" {
+			extra := parseHy2Extra(ib.Extra)
+			if opts.CertPathFor == nil {
+				return "", fmt.Errorf("hy2 inbound %q: BuildOptions.CertPathFor is required", ib.Tag)
+			}
+			if extra.SNI == "" {
+				return "", fmt.Errorf("hy2 inbound %q: extra.sni is required (must match a managed cert domain)", ib.Tag)
+			}
+			certFile, keyFile, err := opts.CertPathFor(extra.SNI)
+			if err != nil {
+				return "", fmt.Errorf("hy2 inbound %q: load cert for %s: %w", ib.Tag, extra.SNI, err)
+			}
+			hyUsers := make([]xrayHysteriaUser, 0, len(ibAccesses))
+			for _, acc := range ibAccesses {
+				u, ok := userMap[acc.UserID]
+				if !ok {
+					continue
+				}
+				email := u.Username + UserInboundSep + tag
+				hyUsers = append(hyUsers, xrayHysteriaUser{Auth: u.Secret, Email: email, Level: 0})
+				if _, dup := seenUsers[email]; !dup {
+					seenUsers[email] = struct{}{}
+				}
+			}
+			sort.Slice(hyUsers, func(i, j int) bool { return hyUsers[i].Email < hyUsers[j].Email })
+			hySettings := &xrayHysteriaSettings{
+				Version:        2,
+				Auth:           ib.Password, // obfs-password（仅在启用 obfs 时由 fork 校验）
+				UdpIdleTimeout: extra.UDPIdleTimeoutSec,
+			}
+			if extra.MasqueradeURL != "" {
+				hySettings.Masquerade = &xrayMasquerade{Type: "proxy", URL: extra.MasqueradeURL, RewriteHost: true}
+			}
+			stream := &xrayStream{
+				Network:  "hysteria",
+				Security: "tls",
+				TLSSettings: &xrayTLSSettings{
+					ServerName:   extra.SNI,
+					Certificates: []xrayCertificate{{CertificateFile: certFile, KeyFile: keyFile}},
+				},
+				HysteriaSettings: hySettings,
+			}
+			xib := xrayInbound{
+				Tag:            tag,
+				Listen:         "0.0.0.0",
+				Port:           ib.Port,
+				Protocol:       "hysteria",
+				Settings:       xrayInboundSettings{Version: 2, HyClients: hyUsers},
+				StreamSettings: stream,
+			}
+			xrayInbounds = append(xrayInbounds, xib)
 			continue
 		}
 
@@ -761,4 +859,24 @@ func tlsStreamNodeGateFallback(protocol string) *xrayStream {
 		}
 	}
 	return &xrayStream{Network: "tcp", Security: "none"}
+}
+
+// hy2Extra 是 Inbound.Extra 中 hy2 协议约定的字段集合。
+type hy2Extra struct {
+	SNI               string `json:"sni"`
+	MasqueradeURL     string `json:"masquerade_url"`
+	UDPIdleTimeoutSec int    `json:"udp_idle_timeout_sec"`
+}
+
+// parseHy2Extra 容错解析 Inbound.Extra；非法 JSON 视为空配置。
+func parseHy2Extra(raw string) hy2Extra {
+	var e hy2Extra
+	if raw == "" {
+		return e
+	}
+	_ = json.Unmarshal([]byte(raw), &e)
+	if e.UDPIdleTimeoutSec <= 0 {
+		e.UDPIdleTimeoutSec = 60
+	}
+	return e
 }

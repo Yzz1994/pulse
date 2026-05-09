@@ -649,7 +649,7 @@ func randomToken(size int) string {
 
 func supportedProtocol(value string) bool {
 	switch value {
-	case "vless", "trojan", "shadowsocks", "anytls":
+	case "vless", "trojan", "shadowsocks", "anytls", "hy2":
 		return true
 	default:
 		return false

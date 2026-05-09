@@ -35,7 +35,8 @@ var schemaMigrations = []migration{
 				reality_handshake_addr TEXT NOT NULL DEFAULT '',
 				reality_short_id       TEXT NOT NULL DEFAULT '',
 				outbound_id            TEXT NOT NULL DEFAULT '',
-				traffic_rate           DOUBLE PRECISION NOT NULL DEFAULT 1.0
+				traffic_rate           DOUBLE PRECISION NOT NULL DEFAULT 1.0,
+				extra                  TEXT NOT NULL DEFAULT ''
 			)`,
 			`CREATE TABLE IF NOT EXISTS hosts (
 				id                 TEXT PRIMARY KEY,
@@ -391,6 +392,13 @@ var schemaMigrations = []migration{
 			`CREATE INDEX IF NOT EXISTS idx_enroll_tokens_expires ON enroll_tokens(expires_at)`,
 			`CREATE UNIQUE INDEX IF NOT EXISTS idx_users_username ON users(username)`,
 			`CREATE UNIQUE INDEX IF NOT EXISTS idx_users_sub_token ON users(sub_token) WHERE sub_token <> ''`,
+		},
+	},
+	{
+		version: 2,
+		label:   "inbounds.extra (协议私有 JSON 配置)",
+		stmts: []string{
+			`ALTER TABLE inbounds ADD COLUMN IF NOT EXISTS extra TEXT NOT NULL DEFAULT ''`,
 		},
 	},
 }

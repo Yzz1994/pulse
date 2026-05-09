@@ -76,6 +76,7 @@ type Inbound struct {
 	RealityShortID       string
 	OutboundID           string
 	TrafficRate          float64
+	Extra                string
 }
 
 type IpSentinelConfig struct {

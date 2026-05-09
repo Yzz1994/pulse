@@ -78,7 +78,7 @@ func (q *Queries) GetHostByID(ctx context.Context, id string) (Host, error) {
 const getInboundByID = `-- name: GetInboundByID :one
 SELECT id, node_id, protocol, tag, port,
        method, password, security, reality_private_key, reality_public_key,
-       reality_handshake_addr, reality_short_id, outbound_id, traffic_rate
+       reality_handshake_addr, reality_short_id, outbound_id, traffic_rate, extra
 FROM inbounds WHERE id = $1
 `
 
@@ -100,6 +100,7 @@ func (q *Queries) GetInboundByID(ctx context.Context, id string) (Inbound, error
 		&i.RealityShortID,
 		&i.OutboundID,
 		&i.TrafficRate,
+		&i.Extra,
 	)
 	return i, err
 }
@@ -211,7 +212,7 @@ func (q *Queries) ListHostsByInbound(ctx context.Context, inboundID string) ([]H
 const listInbounds = `-- name: ListInbounds :many
 SELECT id, node_id, protocol, tag, port,
        method, password, security, reality_private_key, reality_public_key,
-       reality_handshake_addr, reality_short_id, outbound_id, traffic_rate
+       reality_handshake_addr, reality_short_id, outbound_id, traffic_rate, extra
 FROM inbounds ORDER BY id
 `
 
@@ -239,6 +240,7 @@ func (q *Queries) ListInbounds(ctx context.Context) ([]Inbound, error) {
 			&i.RealityShortID,
 			&i.OutboundID,
 			&i.TrafficRate,
+			&i.Extra,
 		); err != nil {
 			return nil, err
 		}
@@ -253,7 +255,7 @@ func (q *Queries) ListInbounds(ctx context.Context) ([]Inbound, error) {
 const listInboundsByNode = `-- name: ListInboundsByNode :many
 SELECT id, node_id, protocol, tag, port,
        method, password, security, reality_private_key, reality_public_key,
-       reality_handshake_addr, reality_short_id, outbound_id, traffic_rate
+       reality_handshake_addr, reality_short_id, outbound_id, traffic_rate, extra
 FROM inbounds WHERE node_id = $1 ORDER BY id
 `
 
@@ -281,6 +283,7 @@ func (q *Queries) ListInboundsByNode(ctx context.Context, nodeID string) ([]Inbo
 			&i.RealityShortID,
 			&i.OutboundID,
 			&i.TrafficRate,
+			&i.Extra,
 		); err != nil {
 			return nil, err
 		}
@@ -386,8 +389,8 @@ const upsertInbound = `-- name: UpsertInbound :exec
 INSERT INTO inbounds (
     id, node_id, protocol, tag, port,
     method, password, security, reality_private_key, reality_public_key,
-    reality_handshake_addr, reality_short_id, outbound_id, traffic_rate
-) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
+    reality_handshake_addr, reality_short_id, outbound_id, traffic_rate, extra
+) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
 ON CONFLICT(id) DO UPDATE SET
     node_id                = excluded.node_id,
     protocol               = excluded.protocol,
@@ -401,7 +404,8 @@ ON CONFLICT(id) DO UPDATE SET
     reality_handshake_addr = excluded.reality_handshake_addr,
     reality_short_id       = excluded.reality_short_id,
     outbound_id            = excluded.outbound_id,
-    traffic_rate           = excluded.traffic_rate
+    traffic_rate           = excluded.traffic_rate,
+    extra                  = excluded.extra
 `
 
 type UpsertInboundParams struct {
@@ -419,6 +423,7 @@ type UpsertInboundParams struct {
 	RealityShortID       string
 	OutboundID           string
 	TrafficRate          float64
+	Extra                string
 }
 
 // ─── Inbounds ─────────────────────────────────────────────────────────────────
@@ -438,6 +443,7 @@ func (q *Queries) UpsertInbound(ctx context.Context, arg UpsertInboundParams) er
 		arg.RealityShortID,
 		arg.OutboundID,
 		arg.TrafficRate,
+		arg.Extra,
 	)
 	return err
 }

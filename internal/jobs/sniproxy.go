@@ -1,6 +1,7 @@
 package jobs
 
 import (
+	"encoding/json"
 	"fmt"
 	"strings"
 
@@ -176,13 +177,61 @@ func BuildSNIProxySyncReq(
 	req := nodes.SNIProxySyncRequest{
 		ACMEEmail:       node.ACMEEmail,
 		CloudflareToken: cfToken,
-		CertStoragePath: "/var/lib/pulse-node/certs",
+		CertStoragePath: NodeCertStoragePath,
 		Routes:          routes,
 	}
+
+	// hy2 inbound 的 SNI 不参与 NodeGate TCP 路由，但需要 certmgr 通过 ACME 申请证书。
+	// 优先用 Inbound.Extra.sni，其次回退到该 inbound 关联 Host 的 SNI / Address。
+	hy2Seen := make(map[string]struct{})
+	for _, ib := range nodeInbounds {
+		if ib.Protocol != "hy2" {
+			continue
+		}
+		var domain string
+		if e := parseHy2SNI(ib.Extra); e != "" {
+			domain = e
+		} else {
+			hosts, _ := ibStore.ListHostsByInbound(ib.ID)
+			for _, h := range hosts {
+				if h.SNI != "" {
+					domain = h.SNI
+					break
+				}
+				if h.Address != "" {
+					domain = h.Address
+					break
+				}
+			}
+		}
+		if domain == "" {
+			continue
+		}
+		if _, dup := hy2Seen[domain]; dup {
+			continue
+		}
+		hy2Seen[domain] = struct{}{}
+		req.CertDomains = append(req.CertDomains, domain)
+	}
+
 	if listenPort > 0 && len(routes) > 0 {
 		req.Listen = fmt.Sprintf(":%d", listenPort)
 	}
 	return req
+}
+
+// parseHy2SNI 容错解析 Inbound.Extra 中 hy2 的 sni 字段。
+func parseHy2SNI(extra string) string {
+	if extra == "" {
+		return ""
+	}
+	var e struct {
+		SNI string `json:"sni"`
+	}
+	if err := json.Unmarshal([]byte(extra), &e); err != nil {
+		return ""
+	}
+	return e.SNI
 }
 
 // splitDomains 把 PanelDomain 字符串按逗号/换行分割成干净的域名列表。

@@ -4,6 +4,7 @@ import (
 	"crypto/hmac"
 	"crypto/sha256"
 	"encoding/base64"
+	"encoding/json"
 	"fmt"
 	"net"
 	"net/url"
@@ -180,6 +181,8 @@ func BuildLinks(accesses []users.UserInbound, ibStore inbounds.InboundStore, use
 			link = shadowsocksLink(e.ib, e.host, acc, name, addr, port)
 		case "anytls":
 			link = anytlsLink(e.ib, e.host, acc, name, addr, port)
+		case "hy2":
+			link = hy2Link(e.ib, e.host, acc, name, addr, port)
 		default:
 			link = vlessLink(e.ib, e.host, acc, name, addr, port)
 		}
@@ -216,6 +219,8 @@ func Link(nodeInbound inbounds.Inbound, host inbounds.Host, access users.UserInb
 		return shadowsocksLink(nodeInbound, host, access, name, addr, port)
 	case "anytls":
 		return anytlsLink(nodeInbound, host, access, name, addr, port)
+	case "hy2":
+		return hy2Link(nodeInbound, host, access, name, addr, port)
 	default: // vless
 		return vlessLink(nodeInbound, host, access, name, addr, port)
 	}
@@ -303,6 +308,55 @@ func anytlsLink(ib inbounds.Inbound, host inbounds.Host, acc users.UserInbound, 
 	return fmt.Sprintf("anytls://%s@%s:%d?%s#%s",
 		url.PathEscape(acc.Secret), addr, port, query.Encode(), url.PathEscape(username),
 	)
+}
+
+// hy2Link 生成 hysteria2 订阅链接：hysteria2://<password>@<host>:<port>?sni=...&insecure=...&obfs=...&obfs-password=...#<name>
+// 客户端兼容：v2rayN / NekoBox / hiddify / Stash 均认 hysteria2:// scheme。
+func hy2Link(ib inbounds.Inbound, host inbounds.Host, acc users.UserInbound, username, addr string, port int) string {
+	query := url.Values{}
+	sni := host.SNI
+	if sni == "" {
+		// hy2 SNI 优先用 Extra.sni（与服务端证书域名一致），其次回退到 host.Address
+		if e := parseHy2ExtraForLink(ib.Extra); e.SNI != "" {
+			sni = e.SNI
+		} else {
+			sni = addr
+		}
+	}
+	query.Set("sni", sni)
+	if host.AllowInsecure {
+		query.Set("insecure", "1")
+	} else {
+		query.Set("insecure", "0")
+	}
+	// obfs：复用 ib.Method / ib.Password。Method == "salamander" 时启用混淆。
+	if ib.Method == "salamander" && ib.Password != "" {
+		query.Set("obfs", "salamander")
+		query.Set("obfs-password", ib.Password)
+	}
+	if host.ALPN != "" {
+		query.Set("alpn", host.ALPN)
+	} else {
+		query.Set("alpn", "h3")
+	}
+	return fmt.Sprintf("hysteria2://%s@%s:%d?%s#%s",
+		url.PathEscape(acc.Secret), addr, port, query.Encode(), url.PathEscape(username),
+	)
+}
+
+// parseHy2ExtraForLink 与 proxycfg.parseHy2Extra 保持字段一致；
+// 复制一份以避免 subscription 包反向依赖 proxycfg。
+func parseHy2ExtraForLink(raw string) struct {
+	SNI string `json:"sni"`
+} {
+	var e struct {
+		SNI string `json:"sni"`
+	}
+	if raw == "" {
+		return e
+	}
+	_ = json.Unmarshal([]byte(raw), &e)
+	return e
 }
 
 func shadowsocksLink(ib inbounds.Inbound, host inbounds.Host, acc users.UserInbound, username, addr string, port int) string {

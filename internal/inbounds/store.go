@@ -12,14 +12,14 @@ var (
 type Inbound struct {
 	ID       string `json:"id"`
 	NodeID   string `json:"node_id"`
-	Protocol string `json:"protocol"` // vless / vmess / trojan / shadowsocks
+	Protocol string `json:"protocol"` // vless / trojan / shadowsocks / anytls / hy2
 	Tag      string `json:"tag"`      // xray inbound tag，同节点内唯一
 	Port     int    `json:"port"`
 	// OutboundID 绑定的出口 ID；空字符串表示直连。
 	OutboundID string `json:"outbound_id,omitempty"`
-	// Shadowsocks 加密方式
+	// Shadowsocks 加密方式；hy2 复用为 obfs 方法（"" / "salamander"）
 	Method string `json:"method,omitempty"`
-	// Shadowsocks 2022 服务端 PSK（仅 2022-blake3-* 系列需要）
+	// Shadowsocks 2022 服务端 PSK；hy2 复用为 obfs 密码
 	Password string `json:"password,omitempty"`
 	// TLS / Reality 服务端配置
 	Security             string `json:"security,omitempty"`              // "reality"（VLESS）
@@ -28,6 +28,9 @@ type Inbound struct {
 	RealityHandshakeAddr string `json:"reality_handshake_addr,omitempty"` // 握手目标 host:port
 	RealityShortID       string  `json:"reality_short_id,omitempty"`
 	TrafficRate          float64 `json:"traffic_rate"` // 流量倍率，默认 1.0，影响用户计费流量
+	// Extra 协议私有杂项配置（JSON）；不同协议读取各自约定的 key。
+	// hy2 约定：{"masquerade_url": "...", "udp_idle_timeout_sec": 60}
+	Extra string `json:"extra,omitempty"`
 }
 
 // Host 表示客户端连接模板：地址 + TLS/传输层配置。

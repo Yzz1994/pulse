@@ -4,8 +4,8 @@
 INSERT INTO inbounds (
     id, node_id, protocol, tag, port,
     method, password, security, reality_private_key, reality_public_key,
-    reality_handshake_addr, reality_short_id, outbound_id, traffic_rate
-) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
+    reality_handshake_addr, reality_short_id, outbound_id, traffic_rate, extra
+) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
 ON CONFLICT(id) DO UPDATE SET
     node_id                = excluded.node_id,
     protocol               = excluded.protocol,
@@ -19,24 +19,25 @@ ON CONFLICT(id) DO UPDATE SET
     reality_handshake_addr = excluded.reality_handshake_addr,
     reality_short_id       = excluded.reality_short_id,
     outbound_id            = excluded.outbound_id,
-    traffic_rate           = excluded.traffic_rate;
+    traffic_rate           = excluded.traffic_rate,
+    extra                  = excluded.extra;
 
 -- name: GetInboundByID :one
 SELECT id, node_id, protocol, tag, port,
        method, password, security, reality_private_key, reality_public_key,
-       reality_handshake_addr, reality_short_id, outbound_id, traffic_rate
+       reality_handshake_addr, reality_short_id, outbound_id, traffic_rate, extra
 FROM inbounds WHERE id = $1;
 
 -- name: ListInbounds :many
 SELECT id, node_id, protocol, tag, port,
        method, password, security, reality_private_key, reality_public_key,
-       reality_handshake_addr, reality_short_id, outbound_id, traffic_rate
+       reality_handshake_addr, reality_short_id, outbound_id, traffic_rate, extra
 FROM inbounds ORDER BY id;
 
 -- name: ListInboundsByNode :many
 SELECT id, node_id, protocol, tag, port,
        method, password, security, reality_private_key, reality_public_key,
-       reality_handshake_addr, reality_short_id, outbound_id, traffic_rate
+       reality_handshake_addr, reality_short_id, outbound_id, traffic_rate, extra
 FROM inbounds WHERE node_id = $1 ORDER BY id;
 
 -- name: DeleteInboundByID :execresult

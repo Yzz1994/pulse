@@ -178,6 +178,25 @@ func (m *Manager) CertInfos() []CertInfo {
 	return out
 }
 
+// GetCertPath 返回指定域名 cert / key 文件的绝对路径，要求两文件都已存在。
+// 适合需要直接持有 PEM 文件路径的场景（例如 hy2 inbound：UDP/QUIC，由 Xray 自己加载证书）。
+func (m *Manager) GetCertPath(domain string) (certFile, keyFile string, err error) {
+	if domain == "" {
+		return "", "", fmt.Errorf("certmgr: domain is required")
+	}
+	dir := filepath.Join(m.storagePath, "certificates",
+		"acme-v02.api.letsencrypt.org-directory", domain)
+	certFile = filepath.Join(dir, domain+".crt")
+	keyFile = filepath.Join(dir, domain+".key")
+	if _, err := os.Stat(certFile); err != nil {
+		return "", "", fmt.Errorf("certmgr: cert not ready for %s: %w", domain, err)
+	}
+	if _, err := os.Stat(keyFile); err != nil {
+		return "", "", fmt.Errorf("certmgr: key not ready for %s: %w", domain, err)
+	}
+	return certFile, keyFile, nil
+}
+
 // Managed 返回当前正在管理的域名快照（无序）。
 func (m *Manager) Managed() []string {
 	m.mu.Lock()

@@ -33,6 +33,10 @@ type ManagerConfig struct {
 
 	// Routes SNI → 后端的路由表。
 	Routes []Route `json:"routes"`
+
+	// CertDomains 仅用于驱动 certmgr 申请证书但不参与 UnifiedProxy 路由的额外域名。
+	// 例如 hy2 inbound 的 SNI：UDP/QUIC 由 Xray 自己持证，但证书仍走节点 ACME 通道。
+	CertDomains []string `json:"cert_domains,omitempty"`
 }
 
 // Manager 是 pulse-node 上的 SNI 代理运行实例：
@@ -170,14 +174,21 @@ func (m *Manager) applyLocked(cfg ManagerConfig, persist bool) error {
 	// 让接下来走重启分支而不是"往死的 proxy 热更新"。
 	m.checkLivenessLocked()
 
-	// 情况 1：无路由 = 完全停止
-	if cfg.Listen == "" || len(cfg.Routes) == 0 {
+	// 情况 1：无 TCP 路由且无 CertDomains = 完全停止；否则即使没有 TCP 路由
+	// 也需要保留 certmgr 来管理 hy2 等"仅证书"域名。
+	if (cfg.Listen == "" || len(cfg.Routes) == 0) && len(cfg.CertDomains) == 0 {
 		m.stopLocked()
 		m.cfg = cfg
 		if persist {
 			_ = m.persistLocked()
 		}
 		return nil
+	}
+
+	// 仅 CertDomains 非空、无 TCP 路由：停掉 UnifiedProxy 但保留/启动 certmgr
+	certOnly := cfg.Listen == "" || len(cfg.Routes) == 0
+	if certOnly {
+		m.stopProxyLocked()
 	}
 
 	// 情况 2：Listen 地址变化或 proxy 不存在 = 重启
@@ -190,8 +201,8 @@ func (m *Manager) applyLocked(cfg ManagerConfig, persist bool) error {
 		m.cfg.CertStoragePath != cfg.CertStoragePath ||
 		m.cfg.ACMEStaging != cfg.ACMEStaging
 
-	// 重建 certmgr（Terminating/HTTPReverse 路由时需要）
-	hasCertRoutes := false
+	// 重建 certmgr（Terminating/HTTPReverse 路由 或 CertDomains 列表非空时需要）
+	hasCertRoutes := len(cfg.CertDomains) > 0
 	for _, r := range cfg.Routes {
 		if r.Mode == ModeTerminating || r.Mode == ModeHTTPReverse {
 			hasCertRoutes = true
@@ -226,7 +237,7 @@ func (m *Manager) applyLocked(cfg ManagerConfig, persist bool) error {
 		m.certs = nil
 	}
 
-	// 同步 certmgr 管理的域名：terminating/http-reverse 路由的 SNI
+	// 同步 certmgr 管理的域名：terminating/http-reverse 路由 SNI + CertDomains 额外域名
 	if m.certs != nil {
 		seen := make(map[string]struct{})
 		var domains []string
@@ -238,13 +249,24 @@ func (m *Manager) applyLocked(cfg ManagerConfig, persist bool) error {
 				}
 			}
 		}
+		for _, d := range cfg.CertDomains {
+			if d == "" {
+				continue
+			}
+			if _, dup := seen[d]; !dup {
+				seen[d] = struct{}{}
+				domains = append(domains, d)
+			}
+		}
 		if err := m.certs.Replace(domains); err != nil {
 			log.Printf("sniproxy: certmgr replace: %v", err)
 		}
 	}
 
-	// 启动或重启 proxy
-	if needRestart {
+	// 启动或重启 proxy（cert-only 模式跳过：UnifiedProxy 已在前面 stopProxyLocked）
+	if certOnly {
+		// 仅持久化新配置，不启动 proxy
+	} else if needRestart {
 		m.stopProxyLocked()
 		proxy := &UnifiedProxy{
 			Addr:    cfg.Listen,

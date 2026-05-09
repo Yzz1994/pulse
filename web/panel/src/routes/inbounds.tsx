@@ -166,13 +166,14 @@ function IconLoader({ className }: { className?: string }) {
 
 // ── Constants ────────────────────────────────────────────────────
 
-const PROTOCOLS: InboundProtocol[] = ["anytls", "vless", "shadowsocks", "trojan"];
+const PROTOCOLS: InboundProtocol[] = ["anytls", "vless", "shadowsocks", "trojan", "hy2"];
 
 const PROTOCOL_BADGE_VARIANT: Record<InboundProtocol, "default" | "secondary" | "outline"> = {
   vless: "default",
   trojan: "secondary",
   shadowsocks: "outline",
   anytls: "outline",
+  hy2: "secondary",
 };
 
 
@@ -230,6 +231,12 @@ interface InboundFormState {
   method: string;
   password: string;
   domain: string;
+  // hy2 专属（保存时序列化进 Inbound.extra JSON）
+  hy2_sni: string;
+  hy2_obfs_enabled: boolean;
+  hy2_obfs_password: string;
+  hy2_masquerade_url: string;
+  hy2_udp_idle_timeout_sec: string;
 }
 
 const EMPTY_FORM: InboundFormState = {
@@ -246,6 +253,11 @@ const EMPTY_FORM: InboundFormState = {
   method: "2022-blake3-aes-128-gcm",
   password: "",
   domain: "",
+  hy2_sni: "",
+  hy2_obfs_enabled: false,
+  hy2_obfs_password: "",
+  hy2_masquerade_url: "https://www.bing.com",
+  hy2_udp_idle_timeout_sec: "60",
 };
 
 // ── Inbound Form Dialog ──────────────────────────────────────────
@@ -311,6 +323,11 @@ function InboundFormDialog({
   useEffect(() => {
     if (!open) return;
     if (inbound) {
+      // 解析 hy2 私有 Extra（容错：非法 JSON 视为空）
+      let hy2: { sni?: string; masquerade_url?: string; udp_idle_timeout_sec?: number } = {};
+      if (inbound.protocol === "hy2" && inbound.extra) {
+        try { hy2 = JSON.parse(inbound.extra) ?? {}; } catch { hy2 = {}; }
+      }
       setForm({
         node_id: inbound.node_id,
         protocol: inbound.protocol,
@@ -325,6 +342,11 @@ function InboundFormDialog({
         method: inbound.method || "2022-blake3-aes-128-gcm",
         password: inbound.password || "",
         domain: inbound.domain || "",
+        hy2_sni: hy2.sni || "",
+        hy2_obfs_enabled: inbound.protocol === "hy2" && inbound.method === "salamander",
+        hy2_obfs_password: inbound.protocol === "hy2" ? (inbound.password || "") : "",
+        hy2_masquerade_url: hy2.masquerade_url || "https://www.bing.com",
+        hy2_udp_idle_timeout_sec: hy2.udp_idle_timeout_sec ? String(hy2.udp_idle_timeout_sec) : "60",
       });
       setSelectedNodeIds([]);
     } else {
@@ -406,6 +428,18 @@ function InboundFormDialog({
       baseData.password = form.password;
     }
 
+    if (form.protocol === "hy2") {
+      // Plan A 字段复用：method=obfs 类型，password=obfs 密码
+      baseData.method = form.hy2_obfs_enabled ? "salamander" : "";
+      baseData.password = form.hy2_obfs_enabled ? form.hy2_obfs_password : "";
+      const extra: Record<string, unknown> = {};
+      if (form.hy2_sni.trim()) extra.sni = form.hy2_sni.trim();
+      if (form.hy2_masquerade_url.trim()) extra.masquerade_url = form.hy2_masquerade_url.trim();
+      const idle = Number(form.hy2_udp_idle_timeout_sec);
+      if (idle > 0) extra.udp_idle_timeout_sec = idle;
+      baseData.extra = JSON.stringify(extra);
+    }
+
     if (isEdit) {
       baseData.node_id = form.node_id;
       await onSubmit(baseData);
@@ -480,6 +514,7 @@ function InboundFormDialog({
 
   const showReality = form.security === "reality";
   const showSS = form.protocol === "shadowsocks";
+  const showHy2 = form.protocol === "hy2";
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -554,6 +589,8 @@ function InboundFormDialog({
                     updateField("security", "reality");
                     generateRealityKeys();
                   } else if (protocol === "trojan" || protocol === "anytls") {
+                    updateField("security", "tls");
+                  } else if (protocol === "hy2") {
                     updateField("security", "tls");
                   } else {
                     updateField("security", "none");
@@ -756,6 +793,66 @@ function InboundFormDialog({
                     </Button>
                   </div>
                 </div>
+              </div>
+            )}
+
+            {showHy2 && (
+              <div className="space-y-4 rounded-lg border border-[hsl(var(--border))] p-4">
+                <p className="text-sm font-medium text-[hsl(var(--foreground))]">Hysteria2 配置</p>
+                <p className="text-xs text-[hsl(var(--muted-foreground))]">
+                  hy2 走 UDP/QUIC，必须由节点 Xray 加载 TLS 证书。请确保 SNI 域名已在节点 certmgr 中托管。
+                </p>
+                <div className="space-y-2">
+                  <Label>SNI / 证书域名</Label>
+                  <Input
+                    value={form.hy2_sni}
+                    onChange={(e) => updateField("hy2_sni", e.target.value)}
+                    placeholder="hy.example.com"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label>伪装 URL（masquerade）</Label>
+                  <Input
+                    value={form.hy2_masquerade_url}
+                    onChange={(e) => updateField("hy2_masquerade_url", e.target.value)}
+                    placeholder="https://www.bing.com"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label>UDP 空闲超时（秒）</Label>
+                  <Input
+                    type="number"
+                    min={10}
+                    max={3600}
+                    value={form.hy2_udp_idle_timeout_sec}
+                    onChange={(e) => updateField("hy2_udp_idle_timeout_sec", e.target.value)}
+                  />
+                </div>
+                <div className="flex items-center gap-2">
+                  <input
+                    id="hy2_obfs_enabled"
+                    type="checkbox"
+                    checked={form.hy2_obfs_enabled}
+                    onChange={(e) => updateField("hy2_obfs_enabled", e.target.checked)}
+                  />
+                  <Label htmlFor="hy2_obfs_enabled" className="cursor-pointer">启用 salamander 混淆</Label>
+                </div>
+                {form.hy2_obfs_enabled && (
+                  <div className="space-y-2">
+                    <Label>混淆密码（obfs-password）</Label>
+                    <div className="flex gap-2">
+                      <Input
+                        value={form.hy2_obfs_password}
+                        onChange={(e) => updateField("hy2_obfs_password", e.target.value)}
+                        placeholder="混淆密码"
+                        className="flex-1 font-mono text-xs"
+                      />
+                      <Button type="button" variant="outline" size="sm" onClick={() => updateField("hy2_obfs_password", generateBase64Key(16))}>
+                        生成
+                      </Button>
+                    </div>
+                  </div>
+                )}
               </div>
             )}
 

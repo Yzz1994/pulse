@@ -188,7 +188,7 @@ export interface CreateNodeRequest {
 
 // ── Inbound types ────────────────────────────────────────────────
 
-export type InboundProtocol = "vless" | "trojan" | "shadowsocks" | "anytls";
+export type InboundProtocol = "vless" | "trojan" | "shadowsocks" | "anytls" | "hy2";
 
 export interface Inbound {
   id: string;
@@ -206,6 +206,8 @@ export interface Inbound {
   reality_short_id: string;
   traffic_rate: number;
   domain?: string;
+  // Extra 协议私有杂项配置（JSON 字符串）；hy2 约定：{"sni":"...","masquerade_url":"...","udp_idle_timeout_sec":60}
+  extra?: string;
 }
 
 export interface InboundsResponse {
@@ -228,6 +230,7 @@ export interface CreateInboundRequest {
   reality_short_id?: string;
   traffic_rate?: number;
   domain?: string;
+  extra?: string;
 }
 
 // ── Outbound types ───────────────────────────────────────────────
