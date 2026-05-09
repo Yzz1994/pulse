@@ -6,6 +6,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"log"
 	"net"
 	"net/url"
 	"sort"
@@ -51,6 +52,10 @@ type BuildOptions struct {
 	// hy2 inbound 必须由 Xray 自己加载 TLS 证书（UDP/QUIC，无法由 NodeGate 终止）。
 	// 返回的路径必须是 Xray 进程可读的本地文件。nil 时 hy2 inbound 渲染会失败。
 	CertPathFor func(domain string) (certFile, keyFile string, err error)
+	// KnownReadyCerts 列出 panel 已确认在节点磁盘上落地的证书域名。
+	// 非 nil 时，hy2 inbound 渲染会先检查 SNI 是否在该集合中：不在则跳过该 inbound
+	// （不报错，仅 warning），下次 apply 待证书就绪后自动加回。nil 表示不检查。
+	KnownReadyCerts map[string]bool
 }
 
 // Xray 配置顶层结构
@@ -297,6 +302,12 @@ func BuildXrayConfig(nodeInbounds []inbounds.Inbound, userAccesses []users.UserI
 			}
 			if extra.SNI == "" {
 				return "", fmt.Errorf("hy2 inbound %q: extra.sni is required (must match a managed cert domain)", ib.Tag)
+			}
+			// 证书未就绪时跳过：xray 加载不存在的证书会让整个 restart 失败。
+			// 等节点 ACME 完成，下一次 apply 会把该 inbound 加回来。
+			if opts.KnownReadyCerts != nil && !opts.KnownReadyCerts[extra.SNI] {
+				log.Printf("warn: hy2 inbound %q skipped (cert for %s not ready yet)", ib.Tag, extra.SNI)
+				continue
 			}
 			certFile, keyFile, err := opts.CertPathFor(extra.SNI)
 			if err != nil {

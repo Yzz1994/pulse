@@ -357,6 +357,16 @@ func (c *Client) SNIProxyStatus(ctx context.Context) (map[string]any, error) {
 	return out, err
 }
 
+// SNIProxyCertReady 返回节点上 certmgr 已经在磁盘上落地的域名列表。
+// 用于 panel 在下发 hy2 inbound 前判断证书是否就绪。
+func (c *Client) SNIProxyCertReady(ctx context.Context) ([]string, error) {
+	var out struct {
+		Domains []string `json:"domains"`
+	}
+	err := c.callHub(ctx, "SNIProxyCertReady", nil, &out)
+	return out.Domains, err
+}
+
 // IPSentinelDetect 触发节点同步 IP 检测。
 func (c *Client) IPSentinelDetect(ctx context.Context) (ipsentinel.DetectResult, error) {
 	var out ipsentinel.DetectResult

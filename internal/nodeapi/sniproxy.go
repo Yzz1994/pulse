@@ -48,3 +48,12 @@ return map[string]any{
 "config":  cfg,
 }
 }
+
+// DoSNIProxyCertReady 返回 certmgr 已经在磁盘上落地的域名列表。
+// panel 在下发 hy2 inbound 前用它判断 xray 直接加载证书是否会失败。
+func (a *API) DoSNIProxyCertReady() map[string]any {
+if a.sniManager == nil {
+return map[string]any{"domains": []string{}}
+}
+return map[string]any{"domains": a.sniManager.ReadyCertDomains()}
+}

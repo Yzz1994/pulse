@@ -178,6 +178,8 @@ func (d *APIDispatcher) Handle(ctx context.Context, method string, body json.Raw
 		return marshal(resp)
 	case "SNIProxyStatus":
 		return marshal(d.api.DoSNIProxyStatus())
+	case "SNIProxyCertReady":
+		return marshal(d.api.DoSNIProxyCertReady())
 
 	// ── IPSentinel ──
 	case "IPSentinelDetect", "IPSentinelDetectGoogle", "IPSentinelRun",

@@ -50,6 +50,27 @@ func isValidDomain(d string) bool {
 	return !strings.Contains(d, "..")
 }
 
+// collectHy2SNIs 提取节点 inbound 列表中所有 hy2 inbound 的 SNI（去重）。
+func collectHy2SNIs(ibs []inbounds.Inbound) []string {
+	seen := make(map[string]struct{})
+	var out []string
+	for _, ib := range ibs {
+		if ib.Protocol != "hy2" {
+			continue
+		}
+		sni := parseHy2SNI(ib.Extra)
+		if sni == "" {
+			continue
+		}
+		if _, dup := seen[sni]; dup {
+			continue
+		}
+		seen[sni] = struct{}{}
+		out = append(out, sni)
+	}
+	return out
+}
+
 // mu 保护三个 job 之间的数据一致性。
 // 所有 job 均使用 UpsertUser 全字段覆盖写，因此读-改-写必须互斥。
 // 锁只包住 DB 读写段，网络 IO（节点流量拉取、配置下发）在锁外执行。
@@ -867,25 +888,9 @@ func ApplyNodeUsers(ctx context.Context, client *nodes.Client, nodeInbounds []in
 		}
 	}
 
-	cfg, err := proxycfg.Build(nodeInbounds, userAccesses, userMap, proxycfg.BuildOptions{
-		OutboundMap:    outboundMap,
-		RouteRules:     globalRouteRules,
-		NodeID:         node.ID,
-		AllInboundMap:  allInboundMap,
-		AllNodeMap:     allNodeMap,
-		UserInboundMap: userInboundMap,
-		CertPathFor:    nodeCertPath,
-	})
-	if err != nil {
-		return nodes.Status{}, "", err
-	}
-
-	status, err := client.Restart(ctx, nodes.ConfigRequest{Config: cfg})
-	if err != nil {
-		return status, cfg, err
-	}
-
-	// 同步路由到 NodeGate
+	// 1) 先同步 NodeGate（注册 hy2 SNI 到 CertDomains，触发 ACME 申请）。
+	//    必须在 build xray 之前，否则 hy2 inbound 的证书路径不存在 → xray 启动失败 → 整个
+	//    apply 报错回滚 → certmgr 永远收不到 sync → 死循环。
 	if ibStore != nil {
 		cfToken := ""
 		if applyOpts.Settings != nil {
@@ -895,6 +900,65 @@ func ApplyNodeUsers(ctx context.Context, client *nodes.Client, nodeInbounds []in
 		if syncErr := client.SyncSNIProxy(ctx, sniReq); syncErr != nil {
 			log.Printf("warn: sniproxy sync: %v", syncErr)
 		}
+	}
+
+	// 2) 若有 hy2 inbound，轮询节点等待证书就绪（最多 60s）。
+	//    超时未就绪的 hy2 inbound 会被本次 build 跳过（仅 warning），下次 apply 自动加回。
+	knownReadyCerts := make(map[string]bool)
+	hy2Domains := collectHy2SNIs(nodeInbounds)
+	if len(hy2Domains) > 0 {
+		waitCtx, cancel := context.WithTimeout(ctx, 60*time.Second)
+		ticker := time.NewTicker(3 * time.Second)
+	pollLoop:
+		for {
+			ready, err := client.SNIProxyCertReady(waitCtx)
+			if err == nil {
+				for _, d := range ready {
+					knownReadyCerts[d] = true
+				}
+				allReady := true
+				for _, d := range hy2Domains {
+					if !knownReadyCerts[d] {
+						allReady = false
+						break
+					}
+				}
+				if allReady {
+					break pollLoop
+				}
+			}
+			select {
+			case <-waitCtx.Done():
+				break pollLoop
+			case <-ticker.C:
+			}
+		}
+		ticker.Stop()
+		cancel()
+		for _, d := range hy2Domains {
+			if !knownReadyCerts[d] {
+				log.Printf("warn: hy2 cert not ready for %s, skipping inbound this round", d)
+			}
+		}
+	}
+
+	cfg, err := proxycfg.Build(nodeInbounds, userAccesses, userMap, proxycfg.BuildOptions{
+		OutboundMap:    outboundMap,
+		RouteRules:     globalRouteRules,
+		NodeID:         node.ID,
+		AllInboundMap:  allInboundMap,
+		AllNodeMap:     allNodeMap,
+		UserInboundMap: userInboundMap,
+		CertPathFor:    nodeCertPath,
+		KnownReadyCerts: knownReadyCerts,
+	})
+	if err != nil {
+		return nodes.Status{}, "", err
+	}
+
+	status, err := client.Restart(ctx, nodes.ConfigRequest{Config: cfg})
+	if err != nil {
+		return status, cfg, err
 	}
 
 	return status, cfg, nil

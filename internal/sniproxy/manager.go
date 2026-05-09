@@ -161,6 +161,25 @@ func (m *Manager) Config() ManagerConfig {
 	return m.cfg
 }
 
+// ReadyCertDomains 返回 certmgr 已经在磁盘上落地（cert+key 都可读）的域名列表。
+// 用于 panel 在下发 hy2 inbound 前确认证书就绪，避免 xray 加载不存在的证书失败。
+func (m *Manager) ReadyCertDomains() []string {
+	m.mu.Lock()
+	cm := m.certs
+	m.mu.Unlock()
+	if cm == nil {
+		return nil
+	}
+	managed := cm.Managed()
+	out := make([]string, 0, len(managed))
+	for _, d := range managed {
+		if _, _, err := cm.GetCertPath(d); err == nil {
+			out = append(out, d)
+		}
+	}
+	return out
+}
+
 // Close 停止代理和证书续期，清理资源。
 func (m *Manager) Close() error {
 	m.mu.Lock()
