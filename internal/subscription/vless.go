@@ -261,6 +261,9 @@ func vlessLink(ib inbounds.Inbound, host inbounds.Host, acc users.UserInbound, u
 			}
 		}
 		if sni == "" {
+			sni = host.SNI
+		}
+		if sni == "" {
 			sni = addr
 		}
 		query.Set("sni", sni)
