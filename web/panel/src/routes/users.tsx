@@ -175,6 +175,14 @@ function generateHexToken(): string {
   return Array.from(bytes, (b) => b.toString(16).padStart(2, "0")).join("");
 }
 
+// 去掉易混淆字符：0/O/1/I/l
+function generatePassword(): string {
+  const chars = "ABCDEFGHJKMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789!@#$%^&*";
+  const bytes = new Uint8Array(16);
+  crypto.getRandomValues(bytes);
+  return Array.from(bytes, (b) => chars[b % chars.length]).join("");
+}
+
 interface UserInboundAccess {
   id: string;
   user_id: string;
@@ -211,6 +219,7 @@ export default function UsersPage() {
 
   // ── Create form state ────────────────────────────────────────
   const [createUsername, setCreateUsername] = useState("");
+  const [createPassword, setCreatePassword] = useState("");
   const [createPlanId, setCreatePlanId] = useState("");
   const [createTrafficGb, setCreateTrafficGb] = useState("");
   const [createExpireAt, setCreateExpireAt] = useState("");
@@ -365,6 +374,7 @@ export default function UsersPage() {
     const in30Days = new Date();
     in30Days.setDate(in30Days.getDate() + 30);
     setCreateUsername("");
+    setCreatePassword("");
     setCreatePlanId("");
     setCreateTrafficGb("100");
     setCreateExpireAt(in30Days.toISOString().slice(0, 10));
@@ -439,6 +449,9 @@ export default function UsersPage() {
       }
       if (createInboundIds.length > 0) {
         body.inbound_ids = createInboundIds;
+      }
+      if (createPassword.trim()) {
+        body.password = createPassword.trim();
       }
 
       await api.post<User>("/users", body);
@@ -905,6 +918,32 @@ export default function UsersPage() {
               />
             </div>
 
+            {/* Password */}
+            <div className="grid gap-2">
+              <Label htmlFor="create-password">门户密码</Label>
+              <div className="flex gap-2">
+                <Input
+                  id="create-password"
+                  type="text"
+                  placeholder="留空则不设置密码"
+                  value={createPassword}
+                  onChange={(e) => setCreatePassword(e.target.value)}
+                  autoComplete="new-password"
+                  className="flex-1 font-mono text-sm"
+                />
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="shrink-0"
+                  onClick={() => setCreatePassword(generatePassword())}
+                  title="随机生成密码"
+                >
+                  随机
+                </Button>
+              </div>
+            </div>
+
             {/* Traffic limit */}
             <div className="grid gap-2">
               <Label htmlFor="create-traffic">流量限额（GB）</Label>
@@ -1246,13 +1285,23 @@ export default function UsersPage() {
                 <div className="flex gap-2">
                   <Input
                     id="edit-portal-password"
-                    type="password"
+                    type="text"
                     placeholder="留空保持不变；输入新密码覆盖"
                     value={editPassword}
                     onChange={(e) => setEditPassword(e.target.value)}
                     autoComplete="new-password"
-                    className="flex-1"
+                    className="flex-1 font-mono text-sm"
                   />
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    className="shrink-0"
+                    onClick={() => setEditPassword(generatePassword())}
+                    title="随机生成密码"
+                  >
+                    随机
+                  </Button>
                   <Button
                     type="button"
                     variant="outline"
