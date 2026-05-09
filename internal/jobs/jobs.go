@@ -28,9 +28,26 @@ func nodeCertPath(domain string) (certFile, keyFile string, err error) {
 	if domain == "" {
 		return "", "", fmt.Errorf("hy2 cert path: domain is required")
 	}
+	if !isValidDomain(domain) {
+		return "", "", fmt.Errorf("hy2 cert path: invalid domain %q", domain)
+	}
 	dir := filepath.Join(NodeCertStoragePath, "certificates",
 		"acme-v02.api.letsencrypt.org-directory", domain)
 	return filepath.Join(dir, domain+".crt"), filepath.Join(dir, domain+".key"), nil
+}
+
+// isValidDomain 校验域名只含合法字符（字母/数字/点/连字符），防止路径穿越。
+func isValidDomain(d string) bool {
+	if d == "" || len(d) > 253 || strings.HasPrefix(d, ".") || strings.HasPrefix(d, "-") {
+		return false
+	}
+	for _, r := range d {
+		if !((r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') ||
+			(r >= '0' && r <= '9') || r == '.' || r == '-') {
+			return false
+		}
+	}
+	return !strings.Contains(d, "..")
 }
 
 // mu 保护三个 job 之间的数据一致性。

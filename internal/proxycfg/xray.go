@@ -170,6 +170,7 @@ type xrayStream struct {
 
 type xrayTLSSettings struct {
 	ServerName   string             `json:"serverName,omitempty"`
+	ALPN         []string           `json:"alpn,omitempty"`
 	Certificates []xrayCertificate  `json:"certificates,omitempty"`
 }
 
@@ -327,6 +328,7 @@ func BuildXrayConfig(nodeInbounds []inbounds.Inbound, userAccesses []users.UserI
 				Security: "tls",
 				TLSSettings: &xrayTLSSettings{
 					ServerName:   extra.SNI,
+					ALPN:         []string{"h3"},
 					Certificates: []xrayCertificate{{CertificateFile: certFile, KeyFile: keyFile}},
 				},
 				HysteriaSettings: hySettings,

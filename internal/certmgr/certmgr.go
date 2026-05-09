@@ -12,6 +12,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"time"
 
@@ -184,6 +185,9 @@ func (m *Manager) GetCertPath(domain string) (certFile, keyFile string, err erro
 	if domain == "" {
 		return "", "", fmt.Errorf("certmgr: domain is required")
 	}
+	if !isValidDomain(domain) {
+		return "", "", fmt.Errorf("certmgr: invalid domain %q", domain)
+	}
 	dir := filepath.Join(m.storagePath, "certificates",
 		"acme-v02.api.letsencrypt.org-directory", domain)
 	certFile = filepath.Join(dir, domain+".crt")
@@ -195,6 +199,19 @@ func (m *Manager) GetCertPath(domain string) (certFile, keyFile string, err erro
 		return "", "", fmt.Errorf("certmgr: key not ready for %s: %w", domain, err)
 	}
 	return certFile, keyFile, nil
+}
+
+func isValidDomain(d string) bool {
+	if d == "" || len(d) > 253 || strings.HasPrefix(d, ".") || strings.HasPrefix(d, "-") {
+		return false
+	}
+	for _, r := range d {
+		if !((r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') ||
+			(r >= '0' && r <= '9') || r == '.' || r == '-') {
+			return false
+		}
+	}
+	return !strings.Contains(d, "..")
 }
 
 // Managed 返回当前正在管理的域名快照（无序）。
