@@ -12,12 +12,11 @@ import (
 "context"
 "errors"
 "log"
-"os"
-"os/exec"
-"time"
+"sync/atomic"
 
 "pulse/internal/buildinfo"
 "pulse/internal/coremanager"
+"pulse/internal/selfupdate"
 "pulse/internal/sniproxy"
 )
 
@@ -47,17 +46,17 @@ func (a *API) activeManager() coremanager.Manager {
 return a.xrManager
 }
 
+var nodeUpdating atomic.Bool
+
 // DoUpdate 触发异步 self-update，返回提示信息。
 func (a *API) DoUpdate() map[string]any {
+if !nodeUpdating.CompareAndSwap(false, true) {
+return map[string]any{"ok": false, "message": "更新已在进行中"}
+}
 go func() {
-time.Sleep(500 * time.Millisecond)
-cmd := exec.Command("sh", "-c",
-`curl -fsSL https://raw.githubusercontent.com/0xUnixIO/pulse/main/scripts/install.sh | sh -s -- node`,
-)
-cmd.Stdout = os.Stdout
-cmd.Stderr = os.Stderr
-if err := cmd.Run(); err != nil {
-log.Printf("node update: install script failed: %v", err)
+defer nodeUpdating.Store(false)
+if err := selfupdate.Apply(context.Background(), "node"); err != nil {
+log.Printf("node update: 更新失败: %v", err)
 }
 }()
 return map[string]any{"ok": true, "message": "节点更新已开始，将在数秒后重启"}
