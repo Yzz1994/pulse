@@ -231,7 +231,7 @@ func vlessLink(ib inbounds.Inbound, host inbounds.Host, acc users.UserInbound, u
 	query.Set("type", "tcp")
 
 	security := host.Security
-	if security == "" || security == "__inherit__" {
+	if security == "" || security == "__inherit__" || security == "none" {
 		security = ib.Security
 	}
 
