@@ -115,7 +115,8 @@ CREATE TABLE IF NOT EXISTS users (
     current_plan_id           TEXT NOT NULL DEFAULT '',
     email                     TEXT NOT NULL DEFAULT '',
     uuid                      TEXT NOT NULL DEFAULT '',
-    secret                    TEXT NOT NULL DEFAULT ''
+    secret                    TEXT NOT NULL DEFAULT '',
+    is_admin                  BOOLEAN NOT NULL DEFAULT false
 );
 
 CREATE UNIQUE INDEX IF NOT EXISTS idx_users_username ON users(username);

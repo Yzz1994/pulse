@@ -122,7 +122,7 @@ SELECT id, username, status, note, expire_at, data_limit_reset_strategy,
        traffic_limit_bytes, upload_bytes, download_bytes, used_bytes,
        raw_upload_bytes, raw_download_bytes,
        on_hold_expire_at, last_traffic_reset_at, online_at, connections, devices,
-       created_at, sub_token, stripe_customer_id, current_plan_id, email, uuid, secret
+       created_at, sub_token, stripe_customer_id, current_plan_id, email, uuid, secret, is_admin
 FROM users
 WHERE id = $1
 `
@@ -155,6 +155,7 @@ func (q *Queries) GetUserByID(ctx context.Context, id string) (User, error) {
 		&i.Email,
 		&i.Uuid,
 		&i.Secret,
+		&i.IsAdmin,
 	)
 	return i, err
 }
@@ -164,7 +165,7 @@ SELECT id, username, status, note, expire_at, data_limit_reset_strategy,
        traffic_limit_bytes, upload_bytes, download_bytes, used_bytes,
        raw_upload_bytes, raw_download_bytes,
        on_hold_expire_at, last_traffic_reset_at, online_at, connections, devices,
-       created_at, sub_token, stripe_customer_id, current_plan_id, email, uuid, secret
+       created_at, sub_token, stripe_customer_id, current_plan_id, email, uuid, secret, is_admin
 FROM users
 WHERE stripe_customer_id = $1
 `
@@ -197,6 +198,7 @@ func (q *Queries) GetUserByStripeCustomerID(ctx context.Context, stripeCustomerI
 		&i.Email,
 		&i.Uuid,
 		&i.Secret,
+		&i.IsAdmin,
 	)
 	return i, err
 }
@@ -206,7 +208,7 @@ SELECT id, username, status, note, expire_at, data_limit_reset_strategy,
        traffic_limit_bytes, upload_bytes, download_bytes, used_bytes,
        raw_upload_bytes, raw_download_bytes,
        on_hold_expire_at, last_traffic_reset_at, online_at, connections, devices,
-       created_at, sub_token, stripe_customer_id, current_plan_id, email, uuid, secret
+       created_at, sub_token, stripe_customer_id, current_plan_id, email, uuid, secret, is_admin
 FROM users
 WHERE sub_token = $1
 `
@@ -239,6 +241,7 @@ func (q *Queries) GetUserBySubToken(ctx context.Context, subToken string) (User,
 		&i.Email,
 		&i.Uuid,
 		&i.Secret,
+		&i.IsAdmin,
 	)
 	return i, err
 }
@@ -269,7 +272,7 @@ SELECT id, username, status, note, expire_at, data_limit_reset_strategy,
        traffic_limit_bytes, upload_bytes, download_bytes, used_bytes,
        raw_upload_bytes, raw_download_bytes,
        on_hold_expire_at, last_traffic_reset_at, online_at, connections, devices,
-       created_at, sub_token, stripe_customer_id, current_plan_id, email, uuid, secret
+       created_at, sub_token, stripe_customer_id, current_plan_id, email, uuid, secret, is_admin
 FROM users
 WHERE id = ANY($1::text[])
 `
@@ -308,6 +311,7 @@ func (q *Queries) GetUsersByIDs(ctx context.Context, dollar_1 []string) ([]User,
 			&i.Email,
 			&i.Uuid,
 			&i.Secret,
+			&i.IsAdmin,
 		); err != nil {
 			return nil, err
 		}
@@ -779,7 +783,7 @@ SELECT id, username, status, note, expire_at, data_limit_reset_strategy,
        traffic_limit_bytes, upload_bytes, download_bytes, used_bytes,
        raw_upload_bytes, raw_download_bytes,
        on_hold_expire_at, last_traffic_reset_at, online_at, connections, devices,
-       created_at, sub_token, stripe_customer_id, current_plan_id, email, uuid, secret
+       created_at, sub_token, stripe_customer_id, current_plan_id, email, uuid, secret, is_admin
 FROM users
 ORDER BY id
 `
@@ -818,6 +822,7 @@ func (q *Queries) ListUsers(ctx context.Context) ([]User, error) {
 			&i.Email,
 			&i.Uuid,
 			&i.Secret,
+			&i.IsAdmin,
 		); err != nil {
 			return nil, err
 		}

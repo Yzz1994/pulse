@@ -128,6 +128,7 @@ export interface User {
   email?: string;
   uuid?: string;
   secret?: string;
+  is_admin?: boolean;
 }
 
 export interface UsersResponse {

@@ -313,6 +313,7 @@ type User struct {
 	Email                  string
 	Uuid                   string
 	Secret                 string
+	IsAdmin                bool
 }
 
 type UserGroup struct {

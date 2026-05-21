@@ -217,6 +217,15 @@ func (a *userAPI) handleUser(w http.ResponseWriter, r *http.Request, userID stri
 	case http.MethodPut:
 		a.handleUpdateUser(w, r, userID)
 	case http.MethodDelete:
+		user, err := a.users.GetUser(userID)
+		if err != nil {
+			writeUserError(w, err)
+			return
+		}
+		if user.IsAdmin {
+			writeJSON(w, http.StatusForbidden, map[string]any{"error": "管理员账号不可删除"})
+			return
+		}
 		// 删除前先收集该用户所在的节点，删除后重新下发配置以踢出用户
 		accesses, _ := a.users.ListUserInboundsByUser(userID)
 		affectedNodeIDs := make(map[string]struct{})

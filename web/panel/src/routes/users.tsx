@@ -817,6 +817,7 @@ export default function UsersPage() {
                         variant="destructive"
                         size="sm"
                         className="h-8 px-3"
+                        disabled={user.is_admin}
                         onClick={() => openDeleteDialog(user)}
                       >
                         {t("common.delete")}

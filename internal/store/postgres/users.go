@@ -474,6 +474,7 @@ func toUser(r sqlcgen.User) (users.User, error) {
 		Email:                  r.Email,
 		UUID:                   r.Uuid,
 		Secret:                 r.Secret,
+		IsAdmin:                r.IsAdmin,
 	}
 	if u.UsedBytes == 0 {
 		u.UsedBytes = u.UploadBytes + u.DownloadBytes
