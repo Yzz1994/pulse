@@ -1,4 +1,5 @@
 import { useEffect, useState, useCallback, useRef, useMemo } from "react";
+import { useTranslation } from "react-i18next";
 import { getTheme } from "@/lib/theme";
 import {
   Card,
@@ -45,11 +46,7 @@ interface Image {
   created_at: string;
 }
 
-const statusLabel: Record<string, string> = {
-  open: "待处理",
-  replied: "已回复",
-  closed: "已关闭",
-};
+
 
 const statusVariant: Record<string, "default" | "secondary" | "outline" | "destructive"> = {
   open: "destructive",
@@ -58,6 +55,12 @@ const statusVariant: Record<string, "default" | "secondary" | "outline" | "destr
 };
 
 export default function TicketsPage() {
+  const { t } = useTranslation();
+  const statusLabel: Record<string, string> = {
+    open: t("tickets.pending"),
+    replied: t("tickets.replied"),
+    closed: t("tickets.closed"),
+  };
   const theme = useMemo(() => getTheme(), []);
 
   const [tickets, setTickets] = useState<Ticket[]>([]);
@@ -181,16 +184,16 @@ export default function TicketsPage() {
   if (!selectedTicket) {
     return (
       <div className="p-4 sm:p-6 lg:p-8">
-        <h1 className="mb-6 text-2xl font-bold text-[hsl(var(--foreground))]">工单管理</h1>
+        <h1 className="mb-6 text-2xl font-bold text-[hsl(var(--foreground))]">{t("tickets.title")}</h1>
 
         <div className="max-w-4xl space-y-4">
           {/* 状态筛选 */}
           <div className="flex gap-2">
             {[
-              { key: "all", label: "全部" },
-              { key: "open", label: "待处理" },
-              { key: "replied", label: "已回复" },
-              { key: "closed", label: "已关闭" },
+              { key: "all", label: t("tickets.all") },
+              { key: "open", label: t("tickets.pending") },
+              { key: "replied", label: t("tickets.replied") },
+              { key: "closed", label: t("tickets.closed") },
             ].map((f) => (
               <Button
                 key={f.key}
@@ -217,7 +220,7 @@ export default function TicketsPage() {
                   ))}
                 </div>
               ) : filtered.length === 0 ? (
-                <p className="text-center text-sm text-[hsl(var(--muted-foreground))] py-8">暂无工单</p>
+                <p className="text-center text-sm text-[hsl(var(--muted-foreground))] py-8">{t("tickets.noTickets")}</p>
               ) : (
                 <div className="space-y-1">
                   {filtered.map((t) => (
@@ -254,7 +257,7 @@ export default function TicketsPage() {
         {/* 顶部栏 */}
         <div className="mb-4 flex items-center gap-3">
           <Button size="sm" variant="outline" onClick={() => { setSelectedTicket(null); fetchTickets(); }}>
-            &larr; 返回
+            {t("tickets.goBack")}
           </Button>
           <h1 className="text-xl font-bold truncate">{selectedTicket.title}</h1>
           <Badge variant={statusVariant[selectedTicket.status]}>
@@ -265,9 +268,9 @@ export default function TicketsPage() {
           </span>
           <div className="ml-auto flex gap-2">
             {selectedTicket.status !== "closed" ? (
-              <Button size="sm" variant="outline" onClick={closeTicket}>关闭工单</Button>
+              <Button size="sm" variant="outline" onClick={closeTicket}>{t("tickets.closeTicket")}</Button>
             ) : (
-              <Button size="sm" variant="outline" onClick={reopenTicket}>重新打开</Button>
+              <Button size="sm" variant="outline" onClick={reopenTicket}>{t("tickets.reopen")}</Button>
             )}
           </div>
         </div>
@@ -293,7 +296,7 @@ export default function TicketsPage() {
                   >
                     <div className="flex items-center gap-2 mb-1">
                       <span className="text-xs font-medium">
-                        {m.is_admin ? "管理员" : selectedTicket.username}
+                        {m.is_admin ? t("tickets.admin") : selectedTicket.username}
                       </span>
                       <span className="text-xs opacity-60">
                         {new Date(m.created_at).toLocaleString("zh-CN")}
@@ -316,7 +319,7 @@ export default function TicketsPage() {
         {selectedTicket.status !== "closed" && (
           <Card className="mt-4">
             <CardHeader>
-              <CardTitle className="text-base font-medium">回复</CardTitle>
+              <CardTitle className="text-base font-medium">{t("tickets.reply")}</CardTitle>
             </CardHeader>
             <Separator />
             <CardContent className="pt-4 space-y-3" data-color-mode={theme === "dark" ? "dark" : "light"}>
@@ -336,7 +339,7 @@ export default function TicketsPage() {
                   {
                     name: "upload-image",
                     keyCommand: "upload-image",
-                    buttonProps: { "aria-label": "上传图片", title: "上传图片" },
+                    buttonProps: { "aria-label": t("tickets.uploadImage"), title: t("tickets.uploadImage") },
                     icon: (
                       <svg viewBox="0 0 16 16" width="12" height="12" fill="currentColor">
                         <path d="M6.002 5.5a1.5 1.5 0 1 1-3 0 1.5 1.5 0 0 1 3 0Z" />
@@ -361,7 +364,7 @@ export default function TicketsPage() {
               />
               <div className="flex items-center gap-3">
                 <Button size="sm" onClick={sendReply} disabled={replying || !replyContent.trim()}>
-                  {replying ? "发送中…" : "发送回复"}
+                  {replying ? t("tickets.sending") : t("tickets.sendReply")}
                 </Button>
               </div>
             </CardContent>

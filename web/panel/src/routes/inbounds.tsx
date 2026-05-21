@@ -1,4 +1,5 @@
 import { useEffect, useState, useCallback, useMemo } from "react";
+import { useTranslation } from "react-i18next";
 import {
   Card,
   CardContent,
@@ -287,6 +288,7 @@ function InboundFormDialog({
   submitting,
   handleAuthError,
 }: InboundFormDialogProps) {
+  const { t } = useTranslation();
   const [form, setForm] = useState<InboundFormState>(EMPTY_FORM);
   const [generatingKeys, setGeneratingKeys] = useState(false);
   const [selectedNodeIds, setSelectedNodeIds] = useState<string[]>([]);
@@ -470,7 +472,7 @@ function InboundFormDialog({
           catch { failed.push(group.name); }
         }
         if (failed.length > 0) {
-          toast(`入站已更新，但用户组同步失败：${failed.join("、")}`, "error");
+          toast(t("inbounds.syncGroupFailed", { groups: failed.join("、") }), "error");
         }
       }
     } else {
@@ -485,7 +487,7 @@ function InboundFormDialog({
         }
       }
       if (createErrors.length > 0) {
-        toast(`以下节点创建失败：${createErrors.join("、")}`, "error");
+        toast(t("inbounds.createNodeFailed", { nodes: createErrors.join("、") }), "error");
       }
       if (createdIds.length === 0) {
         return;
@@ -505,7 +507,7 @@ function InboundFormDialog({
           }
         }
         if (failed.length > 0) {
-          toast(`已创建入站，但加入用户组失败：${failed.join("、")}`, "error");
+          toast(t("inbounds.addToGroupFailed", { groups: failed.join("、") }), "error");
         }
       }
     }
@@ -521,9 +523,9 @@ function InboundFormDialog({
       <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-lg">
         <form onSubmit={handleSubmit}>
           <DialogHeader>
-            <DialogTitle>{isEdit ? "编辑入站" : "添加入站"}</DialogTitle>
+            <DialogTitle>{isEdit ? t("inbounds.editInbound") : t("inbounds.addInbound")}</DialogTitle>
             <DialogDescription>
-              {isEdit ? "修改入站配置参数。" : "配置新的入站连接。"}
+              {isEdit ? t("inbounds.editDesc") : t("inbounds.addDesc")}
             </DialogDescription>
           </DialogHeader>
 
@@ -531,21 +533,21 @@ function InboundFormDialog({
             {/* ── Node selector ──────────────────────────────── */}
             {!isEdit ? (
               <div className="space-y-2">
-                <Label>节点（可多选）</Label>
+                <Label>{t("inbounds.nodeMulti")}</Label>
                 <MultiSelect
                   value={selectedNodeIds}
                   onChange={setSelectedNodeIds}
                   options={nodes.map((n) => ({ value: n.id, label: n.name }))}
-                  placeholder="选择节点..."
-                  countLabel="已选 {n} 个节点"
+                  placeholder={t("inbounds.selectNodes")}
+                  countLabel={t("inbounds.selectedNodes")}
                 />
               </div>
             ) : (
               <div className="space-y-2">
-                <Label>节点</Label>
+                <Label>{t("inbounds.node")}</Label>
                 <Select value={form.node_id} onValueChange={(v) => updateField("node_id", v)}>
                   <SelectTrigger>
-                    <SelectValue placeholder="选择节点" />
+                    <SelectValue placeholder={t("inbounds.selectNode")} />
                   </SelectTrigger>
                   <SelectContent>
                     {nodes.map((n) => (
@@ -561,7 +563,7 @@ function InboundFormDialog({
             {/* ── User group selector ───────────────────────── */}
             {userGroups.length > 0 && (
               <div className="space-y-2">
-                <Label>用户组</Label>
+                <Label>{t("inbounds.userGroup")}</Label>
                 <MultiSelect
                   value={selectedGroupIds}
                   onChange={setSelectedGroupIds}
@@ -571,15 +573,15 @@ function InboundFormDialog({
                       ? `${g.name} · ${g.remark}`
                       : g.name,
                   }))}
-                  placeholder="不加入用户组"
-                  countLabel="已选 {n} 个用户组"
+                  placeholder={t("inbounds.noGroup")}
+                  countLabel={t("inbounds.selectedGroups")}
                 />
               </div>
             )}
 
             {/* ── Protocol selector ─────────────────────────── */}
             <div className="space-y-2">
-              <Label>协议</Label>
+              <Label>{t("inbounds.protocolLabel")}</Label>
               <Select
                 value={form.protocol}
                 onValueChange={(v) => {
@@ -618,7 +620,7 @@ function InboundFormDialog({
             {/* ── Tag ───────────────────────────────────────── */}
             {/* ── Port + Random button ──────────────────────── */}
             <div className="space-y-2">
-              <Label>端口</Label>
+              <Label>{t("inbounds.portLabel")}</Label>
               <div className="flex gap-2">
                 <Input
                   type="number"
@@ -628,7 +630,7 @@ function InboundFormDialog({
                   onChange={(e) => updateField("port", e.target.value)}
                   className="flex-1"
                 />
-                <Button type="button" variant="outline" size="icon" onClick={randomizePort} title="随机端口">
+                <Button type="button" variant="outline" size="icon" onClick={randomizePort} title={t("inbounds.randomPort")}>
                   <IconDice className="h-4 w-4" />
                 </Button>
               </div>
@@ -636,7 +638,7 @@ function InboundFormDialog({
 
             {/* ── Traffic rate ──────────────────────────────── */}
             <div className="space-y-2">
-              <Label>流量倍率</Label>
+              <Label>{t("inbounds.trafficRate")}</Label>
               <Input
                 type="number"
                 min={0.1}
@@ -649,12 +651,12 @@ function InboundFormDialog({
 
             {/* ── Outbound selector ─────────────────────────── */}
             <div className="space-y-2">
-              <Label>出口</Label>
+              <Label>{t("inbounds.outbound")}</Label>
               <SingleSelect
                 value={form.outbound_id || "__direct__"}
                 onChange={(v) => updateField("outbound_id", v === "__direct__" ? "" : v)}
                 options={[
-                  { value: "__direct__", label: "direct (默认)" },
+                  { value: "__direct__", label: t("inbounds.directDefault") },
                   ...outbounds.map((ob) => ({
                     value: ob.id,
                     label: `${ob.name} · ${ob.server} (${ob.protocol})`,
@@ -664,7 +666,7 @@ function InboundFormDialog({
                     label: opt.label,
                   })),
                 ]}
-                placeholder="direct (默认)"
+                placeholder={t("inbounds.directDefault")}
               />
             </div>
 
@@ -672,7 +674,7 @@ function InboundFormDialog({
 
             {/* ── Security ──────────────────────────────────── */}
             <div className="space-y-2">
-              <Label>安全</Label>
+              <Label>{t("inbounds.security")}</Label>
               <div className="flex h-9 items-center rounded-md border border-[hsl(var(--border))] bg-[hsl(var(--muted))] px-3 text-sm text-[hsl(var(--muted-foreground))]">
                 {form.security}
               </div>
@@ -682,7 +684,7 @@ function InboundFormDialog({
             {showReality && (
               <div className="space-y-4 rounded-lg border border-[hsl(var(--border))] p-4">
                 <div className="flex items-center justify-between">
-                  <p className="text-sm font-medium text-[hsl(var(--foreground))]">Reality 配置</p>
+                  <p className="text-sm font-medium text-[hsl(var(--foreground))]">{t("inbounds.realityConfig")}</p>
                   <Button
                     type="button"
                     variant="outline"
@@ -695,54 +697,45 @@ function InboundFormDialog({
                     ) : (
                       <IconKey className="mr-1.5 h-3.5 w-3.5" />
                     )}
-                    生成
+                    {t("common.generate")}
                   </Button>
                 </div>
                 <div className="space-y-2">
-                  <Label>Private Key</Label>
+                  <Label>{t("inbounds.privateKey")}</Label>
                   <Input
                     value={form.reality_private_key}
                     onChange={(e) => updateField("reality_private_key", e.target.value)}
-                    placeholder="私钥"
+                    placeholder={t("inbounds.privateKeyPlaceholder")}
                     className="font-mono text-xs"
                   />
                 </div>
                 <div className="space-y-2">
-                  <Label>Public Key{isEdit ? "（只读，用于订阅链接）" : ""}</Label>
+                  <Label>{isEdit ? t("inbounds.publicKeyReadonly") : t("inbounds.publicKey")}</Label>
                   <Input
                     value={form.reality_public_key}
                     onChange={(e) => updateField("reality_public_key", e.target.value)}
-                    placeholder="公钥"
+                    placeholder={t("inbounds.publicKeyPlaceholder")}
                     className="font-mono text-xs"
                     readOnly={isEdit}
                   />
                 </div>
                 <div className="space-y-2">
-                  <Label>Handshake 地址</Label>
+                  <Label>{t("inbounds.handshakeAddr")}</Label>
                   <Input
                     value={form.reality_handshake_addr}
                     onChange={(e) => updateField("reality_handshake_addr", e.target.value)}
                     placeholder="www.microsoft.com"
                   />
                   <p className="text-xs text-[hsl(var(--muted-foreground))]">
-                    建议用{" "}
-                    <a
-                      href="https://github.com/XTLS/RealiTLScanner"
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="underline underline-offset-2 hover:text-[hsl(var(--foreground))]"
-                    >
-                      RealiTLScanner
-                    </a>{" "}
-                    扫描节点 IP 获取最佳目标站点。
+                    {t("inbounds.handshakeHint")}
                   </p>
                 </div>
                 <div className="space-y-2">
-                  <Label>Short ID</Label>
+                  <Label>{t("inbounds.shortId")}</Label>
                   <Input
                     value={form.reality_short_id}
                     onChange={(e) => updateField("reality_short_id", e.target.value)}
-                    placeholder="短 ID"
+                    placeholder={t("inbounds.shortIdPlaceholder")}
                     className="font-mono text-xs"
                   />
                 </div>
@@ -752,16 +745,16 @@ function InboundFormDialog({
             {/* ── TLS note ───────────────────────────────────── */}
             {form.security === "tls" && (
               <div className="rounded-lg border border-[hsl(var(--border))] p-4">
-                <p className="text-xs text-[hsl(var(--muted-foreground))]">Trojan TLS 由 NodeGate 负责终止，无需在此配置证书。</p>
+                <p className="text-xs text-[hsl(var(--muted-foreground))]">{t("inbounds.tlsNote")}</p>
               </div>
             )}
 
             {/* ── Shadowsocks fields ────────────────────────── */}
             {showSS && (
               <div className="space-y-4 rounded-lg border border-[hsl(var(--border))] p-4">
-                <p className="text-sm font-medium text-[hsl(var(--foreground))]">Shadowsocks 配置</p>
+                <p className="text-sm font-medium text-[hsl(var(--foreground))]">{t("inbounds.ssConfig")}</p>
                 <div className="space-y-2">
-                  <Label>加密方式</Label>
+                  <Label>{t("inbounds.encryptMethod")}</Label>
                   <Select value={form.method} onValueChange={(v) => {
                     updateField("method", v);
                     const len = v.includes("128") ? 16 : 32;
@@ -780,16 +773,16 @@ function InboundFormDialog({
                   </Select>
                 </div>
                 <div className="space-y-2">
-                  <Label>密码</Label>
+                  <Label>{t("common.password")}</Label>
                   <div className="flex gap-2">
                     <Input
                       value={form.password}
                       onChange={(e) => updateField("password", e.target.value)}
-                      placeholder="密码"
+                      placeholder={t("common.password")}
                       className="flex-1 font-mono text-xs"
                     />
                     <Button type="button" variant="outline" size="sm" onClick={generateSSPassword}>
-                      生成
+                      {t("common.generate")}
                     </Button>
                   </div>
                 </div>
@@ -798,12 +791,12 @@ function InboundFormDialog({
 
             {showHy2 && (
               <div className="space-y-4 rounded-lg border border-[hsl(var(--border))] p-4">
-                <p className="text-sm font-medium text-[hsl(var(--foreground))]">Hysteria2 配置</p>
+                <p className="text-sm font-medium text-[hsl(var(--foreground))]">{t("inbounds.hy2Config")}</p>
                 <p className="text-xs text-[hsl(var(--muted-foreground))]">
-                  hy2 走 UDP/QUIC，必须由节点 Xray 加载 TLS 证书。请确保 SNI 域名已在节点 certmgr 中托管。
+                  {t("inbounds.hy2Note")}
                 </p>
                 <div className="space-y-2">
-                  <Label>SNI / 证书域名</Label>
+                  <Label>{t("inbounds.sniDomain")}</Label>
                   <Input
                     value={form.hy2_sni}
                     onChange={(e) => updateField("hy2_sni", e.target.value)}
@@ -811,7 +804,7 @@ function InboundFormDialog({
                   />
                 </div>
                 <div className="space-y-2">
-                  <Label>伪装 URL（masquerade）</Label>
+                  <Label>{t("inbounds.masqueradeURL")}</Label>
                   <Input
                     value={form.hy2_masquerade_url}
                     onChange={(e) => updateField("hy2_masquerade_url", e.target.value)}
@@ -819,7 +812,7 @@ function InboundFormDialog({
                   />
                 </div>
                 <div className="space-y-2">
-                  <Label>UDP 空闲超时（秒）</Label>
+                  <Label>{t("inbounds.udpIdleTimeout")}</Label>
                   <Input
                     type="number"
                     min={10}
@@ -835,20 +828,20 @@ function InboundFormDialog({
                     checked={form.hy2_obfs_enabled}
                     onChange={(e) => updateField("hy2_obfs_enabled", e.target.checked)}
                   />
-                  <Label htmlFor="hy2_obfs_enabled" className="cursor-pointer">启用 salamander 混淆</Label>
+                  <Label htmlFor="hy2_obfs_enabled" className="cursor-pointer">{t("inbounds.obfsEnabled")}</Label>
                 </div>
                 {form.hy2_obfs_enabled && (
                   <div className="space-y-2">
-                    <Label>混淆密码（obfs-password）</Label>
+                    <Label>{t("inbounds.obfsPassword")}</Label>
                     <div className="flex gap-2">
                       <Input
                         value={form.hy2_obfs_password}
                         onChange={(e) => updateField("hy2_obfs_password", e.target.value)}
-                        placeholder="混淆密码"
+                        placeholder={t("inbounds.obfsPassword")}
                         className="flex-1 font-mono text-xs"
                       />
                       <Button type="button" variant="outline" size="sm" onClick={() => updateField("hy2_obfs_password", generateBase64Key(16))}>
-                        生成
+                        {t("common.generate")}
                       </Button>
                     </div>
                   </div>
@@ -861,11 +854,11 @@ function InboundFormDialog({
           <DialogFooter className="mt-6">
             <DialogClose asChild>
               <Button type="button" variant="outline" disabled={submitting}>
-                取消
+                {t("common.cancel")}
               </Button>
             </DialogClose>
             <Button type="submit" disabled={!canSubmit || submitting}>
-              {submitting ? "保存中…" : isEdit ? "保存" : "添加"}
+              {submitting ? t("common.saving") : isEdit ? t("common.save") : t("common.add")}
             </Button>
           </DialogFooter>
         </form>
@@ -885,27 +878,28 @@ interface DeleteDialogProps {
 }
 
 function DeleteDialog({ open, onOpenChange, inbound, onConfirm, deleting }: DeleteDialogProps) {
+  const { t } = useTranslation();
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
-          <DialogTitle>确认删除</DialogTitle>
+          <DialogTitle>{t("common.confirmDelete")}</DialogTitle>
           <DialogDescription>
-            确定要删除入站{" "}
+            {t("inbounds.confirmDeleteInbound")}{" "}
             <span className="font-semibold text-[hsl(var(--foreground))]">
               {inbound ? `${inbound.protocol}:${inbound.port}` : ""}
             </span>{" "}
-            吗？此操作不可撤销。
+            {t("common.irreversibleAction")}
           </DialogDescription>
         </DialogHeader>
         <DialogFooter className="mt-4">
           <DialogClose asChild>
             <Button type="button" variant="outline" disabled={deleting}>
-              取消
+              {t("common.cancel")}
             </Button>
           </DialogClose>
           <Button variant="destructive" onClick={onConfirm} disabled={deleting}>
-            {deleting ? "删除中…" : "确认删除"}
+            {deleting ? t("common.deleting") : t("common.confirmDelete")}
           </Button>
         </DialogFooter>
       </DialogContent>
@@ -952,6 +946,7 @@ function CFDomainPickerDialog({
   handleAuthError,
   nodeId,
 }: CFDomainPickerProps) {
+  const { t } = useTranslation();
   const [nodeDomains, setNodeDomains] = useState<NodeDomain[]>([]);
   const [loading, setLoading] = useState(false);
 
@@ -964,7 +959,7 @@ function CFDomainPickerDialog({
         setNodeDomains((res.node_domains ?? []).filter((d) => d.node_id === nodeId))
       )
       .catch((err) => {
-        if (!handleAuthError(err)) toast.error("加载域名列表失败");
+        if (!handleAuthError(err)) toast.error(t("inbounds.loadDomainFailed"));
       })
       .finally(() => setLoading(false));
   }, [open, handleAuthError, nodeId]);
@@ -973,8 +968,8 @@ function CFDomainPickerDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-h-[80vh] overflow-y-auto sm:max-w-md">
         <DialogHeader>
-          <DialogTitle>从 CF 域名选择</DialogTitle>
-          <DialogDescription>选择已解析到此节点的域名，自动填充地址。</DialogDescription>
+          <DialogTitle>{t("inbounds.cfDomainSelect")}</DialogTitle>
+          <DialogDescription>{t("inbounds.cfDomainDesc")}</DialogDescription>
         </DialogHeader>
 
         {loading ? (
@@ -983,7 +978,7 @@ function CFDomainPickerDialog({
           </div>
         ) : nodeDomains.length === 0 ? (
           <p className="py-6 text-center text-sm text-[hsl(var(--muted-foreground))]">
-            暂无已解析到此节点的域名。
+            {t("inbounds.noNodeDomains")}
           </p>
         ) : (
           <div className="space-y-1">
@@ -1009,7 +1004,7 @@ function CFDomainPickerDialog({
 
         <DialogFooter>
           <DialogClose asChild>
-            <Button type="button" variant="outline">取消</Button>
+            <Button type="button" variant="outline">{t("common.cancel")}</Button>
           </DialogClose>
         </DialogFooter>
       </DialogContent>
@@ -1090,6 +1085,7 @@ function HostFormDialog({
   onSaved,
   handleAuthError,
 }: HostFormDialogProps) {
+  const { t } = useTranslation();
   const [form, setForm] = useState<HostFormState>(EMPTY_HOST_FORM);
   const [submitting, setSubmitting] = useState(false);
   const [showRelay, setShowRelay] = useState(false);
@@ -1146,7 +1142,7 @@ function HostFormDialog({
     try {
       const res = await cfApi.listDomains();
       const zone = res.domains?.[0];
-      if (!zone) { toast.error("暂无已管理的 CF 域名"); return; }
+      if (!zone) { toast.error(t("inbounds.cfNoDomains")); return; }
       const parts: string[] = ["cdn"];
       const country = slugPart(form.country);
       if (country) parts.push(country);
@@ -1161,7 +1157,7 @@ function HostFormDialog({
       const remark = [nodeName, inboundProtocol, displayPort, outboundName].filter(Boolean).join(" ");
       setAutoGen({ zone, subdomain, remark });
     } catch (err) {
-      if (!handleAuthError(err)) toast.error("获取域名失败");
+      if (!handleAuthError(err)) toast.error(t("inbounds.cfFetchFailed"));
     }
   };
 
@@ -1180,10 +1176,10 @@ function HostFormDialog({
       const fqdn = `${autoGen.subdomain}.${autoGen.zone.zone_name}`;
       updateField("address", fqdn);
       updateField("sni", fqdn);
-      toast.success(`已创建 ${fqdn}`);
+      toast.success(t("inbounds.cfCreated", { fqdn }));
       setAutoGen(null);
     } catch (err) {
-      if (!handleAuthError(err)) toast.error("创建 DNS 记录失败");
+      if (!handleAuthError(err)) toast.error(t("inbounds.cfCreateFailed"));
     } finally {
       setAutoGenApplying(false);
     }
@@ -1243,7 +1239,7 @@ function HostFormDialog({
       onSaved();
     } catch (err) {
       if (!handleAuthError(err)) {
-        toast(err instanceof Error ? err.message : "保存失败", "error");
+        toast(err instanceof Error ? err.message : t("inbounds.saveFailed"), "error");
       }
     } finally {
       setSubmitting(false);
@@ -1256,9 +1252,9 @@ function HostFormDialog({
       <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-2xl">
         <form onSubmit={handleSubmit}>
           <DialogHeader>
-            <DialogTitle>{isEdit ? "编辑连接地址" : "添加连接地址"}</DialogTitle>
+            <DialogTitle>{isEdit ? t("inbounds.editHost") : t("inbounds.addHost")}</DialogTitle>
             <DialogDescription>
-              {isEdit ? "修改连接地址配置。" : "为入站添加新的连接地址。"}
+              {isEdit ? t("inbounds.editHostDesc") : t("inbounds.addHostDesc")}
             </DialogDescription>
           </DialogHeader>
 
@@ -1269,12 +1265,12 @@ function HostFormDialog({
               <div className="space-y-4">
                 {/* Address (required) */}
                 <div className="space-y-2">
-                  <Label>地址 *</Label>
+                  <Label>{t("inbounds.addressRequired")}</Label>
                   <div className="flex items-center gap-2">
                     <Input
                       value={form.address}
                       onChange={(e) => updateField("address", e.target.value)}
-                      placeholder="域名或 IP"
+                      placeholder={t("inbounds.domainOrIP")}
                       required
                       className="flex-1"
                     />
@@ -1283,7 +1279,7 @@ function HostFormDialog({
                       variant="outline"
                       size="icon"
                       className="shrink-0"
-                      title="从 CF 域名选择"
+                      title={t("inbounds.cfDomainSelect")}
                       onClick={() => setPickerOpen(true)}
                     >
                       <IconCloudPick className="h-4 w-4" />
@@ -1293,7 +1289,7 @@ function HostFormDialog({
                       variant="outline"
                       size="icon"
                       className="shrink-0"
-                      title="自动生成域名"
+                      title={t("inbounds.autoGenDomain")}
                       onClick={handleAutoGen}
                     >
                       <IconWand className="h-4 w-4" />
@@ -1303,7 +1299,7 @@ function HostFormDialog({
                   {/* 自动生成确认区 */}
                   {autoGen && (
                     <div className="rounded-md border border-[hsl(var(--border))] bg-[hsl(var(--muted)/0.4)] p-3 space-y-3">
-                      <p className="text-xs text-[hsl(var(--muted-foreground))]">将创建 DNS A 记录</p>
+                      <p className="text-xs text-[hsl(var(--muted-foreground))]">{t("inbounds.willCreateDNS")}</p>
                       <div className="flex items-center gap-2">
                         <Input
                           value={autoGen.subdomain}
@@ -1311,7 +1307,7 @@ function HostFormDialog({
                             setAutoGen((prev) => prev ? { ...prev, subdomain: e.target.value } : null)
                           }
                           className="flex-1 font-mono text-sm"
-                          placeholder="子域名"
+                          placeholder={t("inbounds.subdomain")}
                         />
                         <span className="shrink-0 text-sm text-[hsl(var(--muted-foreground))]">
                           .{autoGen.zone.zone_name}
@@ -1321,18 +1317,18 @@ function HostFormDialog({
                         </span>
                       </div>
                       <div className="space-y-1">
-                        <Label className="text-xs">订阅名（同步到 CF 记录 comment）</Label>
+                        <Label className="text-xs">{t("inbounds.subName")}</Label>
                         <Input
                           value={autoGen.remark}
                           onChange={(e) =>
                             setAutoGen((prev) => prev ? { ...prev, remark: e.target.value } : null)
                           }
-                          placeholder="订阅显示名 / CF comment"
+                          placeholder={t("inbounds.subNamePlaceholder")}
                         />
                       </div>
                       <div className="flex justify-end gap-2">
                         <Button type="button" variant="outline" size="sm" onClick={() => setAutoGen(null)}>
-                          取消
+                          {t("common.cancel")}
                         </Button>
                         <Button
                           type="button"
@@ -1340,7 +1336,7 @@ function HostFormDialog({
                           disabled={autoGenApplying || !autoGen.subdomain.trim() || !nodeIp}
                           onClick={handleAutoGenConfirm}
                         >
-                          {autoGenApplying ? "创建中…" : "确认"}
+                          {autoGenApplying ? t("inbounds.confirmCreating") : t("common.confirm")}
                         </Button>
                       </div>
                     </div>
@@ -1349,14 +1345,14 @@ function HostFormDialog({
 
                 {/* Port */}
                 <div className="space-y-2">
-                  <Label>端口</Label>
+                  <Label>{t("inbounds.hostPort")}</Label>
                   <Input
                     type="number"
                     min={1}
                     max={65535}
                     value={form.port}
                     onChange={(e) => updateField("port", e.target.value)}
-                    placeholder="端口"
+                    placeholder={t("inbounds.portPlaceholder")}
                   />
                 </div>
               </div>
@@ -1365,7 +1361,7 @@ function HostFormDialog({
               <div className="space-y-3 rounded-md border border-[hsl(var(--border))] p-3">
                 <div className="flex items-center justify-between">
                   <p className="text-xs font-medium text-[hsl(var(--muted-foreground))]">
-                    节点命名（留空则回退到订阅名/标签）
+                    {t("inbounds.nodeNaming")}
                   </p>
                   <Button
                     type="button"
@@ -1374,14 +1370,14 @@ function HostFormDialog({
                     className="h-6 px-2 text-xs"
                     disabled={!nodeIp || geoLooking}
                     onClick={handleGeoLookup}
-                    title="根据连接地址自动填入国家、地区、网络（需在设置中配置 MaxMind License Key）"
+                    title={t("inbounds.geoAutoFillTitle")}
                   >
-                    {geoLooking ? "查询中…" : "IP 自动填入"}
+                    {geoLooking ? t("inbounds.geoLooking") : t("inbounds.geoAutoFill")}
                   </Button>
                 </div>
                 <div className="grid grid-cols-2 gap-2">
                   <div className="space-y-1">
-                    <Label className="text-xs">国家</Label>
+                    <Label className="text-xs">{t("inbounds.country")}</Label>
                     <Input
                       value={form.country}
                       onChange={(e) => updateField("country", e.target.value)}
@@ -1390,16 +1386,16 @@ function HostFormDialog({
                     />
                   </div>
                   <div className="space-y-1">
-                    <Label className="text-xs">地区</Label>
+                    <Label className="text-xs">{t("inbounds.region")}</Label>
                     <Input
                       value={form.region}
                       onChange={(e) => updateField("region", e.target.value)}
-                      placeholder="香港"
+                      placeholder={t("inbounds.regionPlaceholder")}
                       className="h-8 text-sm"
                     />
                   </div>
                   <div className="space-y-1">
-                    <Label className="text-xs">网络</Label>
+                    <Label className="text-xs">{t("inbounds.network")}</Label>
                     <Input
                       value={form.network}
                       onChange={(e) => updateField("network", e.target.value)}
@@ -1408,26 +1404,26 @@ function HostFormDialog({
                     />
                   </div>
                   <div className="space-y-1">
-                    <Label className="text-xs">入口</Label>
+                    <Label className="text-xs">{t("inbounds.entry")}</Label>
                     <Input
                       value={form.entry}
                       onChange={(e) => updateField("entry", e.target.value)}
-                      placeholder="深圳（选填）"
+                      placeholder={t("inbounds.entryPlaceholder")}
                       className="h-8 text-sm"
                     />
                   </div>
                 </div>
                 <div className="space-y-1">
-                  <Label className="text-xs">业务标签</Label>
+                  <Label className="text-xs">{t("inbounds.businessTags")}</Label>
                   <Input
                     value={form.tags}
                     onChange={(e) => updateField("tags", e.target.value)}
-                    placeholder="NF·GPT（选填，多个用 · 分隔）"
+                    placeholder={t("inbounds.tagsPlaceholder")}
                     className="h-8 text-sm"
                   />
                 </div>
                 <p className="text-xs text-[hsl(var(--muted-foreground))]">
-                  编号自动生成，倍率来自入站配置，均无需手动填写。
+                  {t("inbounds.namingAutoNote")}
                 </p>
               </div>
             </div>
@@ -1438,7 +1434,7 @@ function HostFormDialog({
               className="flex items-center gap-1 text-sm font-medium text-[hsl(var(--primary))] hover:underline"
               onClick={() => setShowRelay((v) => !v)}
             >
-              {showRelay ? "▾ 前置中转" : "▸ 前置中转"}
+              {showRelay ? `▾ ${t("inbounds.relayToggle")}` : `▸ ${t("inbounds.relayToggle")}`}
             </button>
 
             {showRelay && (() => {
@@ -1455,7 +1451,7 @@ function HostFormDialog({
               return (
                 <div className="rounded-lg border border-[hsl(var(--border))] p-4 space-y-3">
                   <div className="space-y-1">
-                    <Label>前置节点（可选）</Label>
+                    <Label>{t("inbounds.relayNodeOptional")}</Label>
                     <Select
                       value={form.relay_node_id || "__none__"}
                       onValueChange={(v) => {
@@ -1468,32 +1464,32 @@ function HostFormDialog({
                       }}
                     >
                       <SelectTrigger>
-                        <SelectValue placeholder="不使用前置节点" />
+                        <SelectValue placeholder={t("inbounds.noRelayNode")} />
                       </SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="__none__">不使用前置节点</SelectItem>
+                        <SelectItem value="__none__">{t("inbounds.noRelayNode")}</SelectItem>
                         {nodes.map((n) => (
                           <SelectItem key={n.id} value={n.id}>{n.name}</SelectItem>
                         ))}
                       </SelectContent>
                     </Select>
                     {nodeGateDisabled && (
-                      <p className="text-xs text-[hsl(var(--muted-foreground))]">
-                        ℹ 该节点 NodeGate 暂无路由（未监听）。保存后将自动下发并启用；如仍未生效，请到 NodeGate 页面查看节点错误。
-                      </p>
+                        <p className="text-xs text-[hsl(var(--muted-foreground))]">
+                          {t("inbounds.relayNoRoute")}
+                        </p>
                     )}
                   </div>
 
                   {form.relay_node_id && (
                     <>
                       {portConflict && (
-                        <p className="text-xs text-[hsl(var(--destructive))]">
-                          该端口已被同一前置节点的其他连接地址占用
+                          <p className="text-xs text-[hsl(var(--destructive))]">
+                          {t("inbounds.portConflictHost")}
                         </p>
                       )}
                       <div className="grid gap-3 grid-cols-2">
                         <div className="space-y-1">
-                          <Label>NodeGate HTTPS 端口</Label>
+                          <Label>{t("inbounds.nodegateHttpsPort")}</Label>
                           <Input
                             type="number"
                             min={0}
@@ -1503,20 +1499,20 @@ function HostFormDialog({
                             placeholder="443"
                             className="font-mono text-xs"
                           />
-                          <p className="text-xs text-[hsl(var(--muted-foreground))]">
-                            落地节点 NodeGate 监听端口，0 = 节点默认
+                            <p className="text-xs text-[hsl(var(--muted-foreground))]">
+                            {t("inbounds.nodegateHttpsPortHint")}
                           </p>
                         </div>
                         <div className="space-y-1">
-                          <Label>SNI / 落地域名</Label>
+                          <Label>{t("inbounds.sniLandingDomain")}</Label>
                           <Input
                             value={form.sni}
                             onChange={(e) => updateField("sni", e.target.value)}
-                            placeholder="落地节点的域名"
+                            placeholder={t("inbounds.sniLandingPlaceholder")}
                             className="font-mono text-xs"
                           />
                           <p className="text-xs text-[hsl(var(--muted-foreground))]">
-                            客户端 TLS SNI，同时用于落地节点 NodeGate 路由和证书申请
+                            {t("inbounds.sniClientNote")}
                           </p>
                         </div>
                       </div>
@@ -1530,11 +1526,11 @@ function HostFormDialog({
           <DialogFooter className="mt-6">
             <DialogClose asChild>
               <Button type="button" variant="outline" disabled={submitting}>
-                取消
+                {t("common.cancel")}
               </Button>
             </DialogClose>
             <Button type="submit" disabled={!canSubmit || submitting}>
-              {submitting ? "保存中…" : isEdit ? "保存" : "添加"}
+              {submitting ? t("common.saving") : isEdit ? t("common.save") : t("common.add")}
             </Button>
           </DialogFooter>
         </form>
@@ -1573,6 +1569,7 @@ interface HostsDialogProps {
 }
 
 function HostsDialog({ open, onOpenChange, inbound, nodeIp = "", nodeId, nodes, allHosts = [], nodeIpMap, outboundName = "", handleAuthError, onChanged }: HostsDialogProps) {
+  const { t } = useTranslation();
   const [hosts, setHosts] = useState<Host[]>([]);
   const [loading, setLoading] = useState(false);
   const [editingHost, setEditingHost] = useState<Host | null>(null);
@@ -1637,21 +1634,21 @@ function HostsDialog({ open, onOpenChange, inbound, nodeIp = "", nodeId, nodes, 
         <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-2xl">
           <DialogHeader>
             <DialogTitle>
-              连接地址 — {inbound ? `${inbound.protocol}:${inbound.port}` : ""}
+              {t("inbounds.hostsDialogTitle", { info: inbound ? `${inbound.protocol}:${inbound.port}` : "" })}
             </DialogTitle>
             <DialogDescription>
-              每条连接地址对应用户订阅中的一个节点记录。
+              {t("inbounds.hostsDialogDesc")}
             </DialogDescription>
           </DialogHeader>
 
           <div className="mt-4">
             <div className="mb-4 flex items-center justify-between">
               <p className="text-sm text-[hsl(var(--muted-foreground))]">
-                共 {hosts.length} 条记录
+                {t("inbounds.totalRecords", { count: hosts.length })}
               </p>
               <Button size="sm" onClick={openAddHost}>
                 <IconPlus className="mr-1.5 h-3.5 w-3.5" />
-                添加连接地址
+                {t("inbounds.addHostShort")}
               </Button>
             </div>
 
@@ -1661,9 +1658,9 @@ function HostsDialog({ open, onOpenChange, inbound, nodeIp = "", nodeId, nodes, 
               </div>
             ) : hosts.length === 0 ? (
               <div className="py-8 text-center">
-                <p className="mb-1 text-sm font-medium text-[hsl(var(--foreground))]">暂无连接地址</p>
+                <p className="mb-1 text-sm font-medium text-[hsl(var(--foreground))]">{t("inbounds.noHostsTitle")}</p>
                 <p className="text-xs text-[hsl(var(--muted-foreground))]">
-                  点击上方按钮添加第一个连接地址。
+                  {t("inbounds.noHostsHint")}
                 </p>
               </div>
             ) : (
@@ -1671,10 +1668,10 @@ function HostsDialog({ open, onOpenChange, inbound, nodeIp = "", nodeId, nodes, 
                 <Table>
                   <TableHeader>
                     <TableRow>
-                      <TableHead className="px-3">订阅名</TableHead>
-                      <TableHead className="px-3">地址</TableHead>
-                      <TableHead className="px-3">端口</TableHead>
-                      <TableHead className="px-3 text-right">操作</TableHead>
+                      <TableHead className="px-3">{t("inbounds.hostTableSubName")}</TableHead>
+                      <TableHead className="px-3">{t("inbounds.hostTableAddress")}</TableHead>
+                      <TableHead className="px-3">{t("inbounds.hostTablePort")}</TableHead>
+                      <TableHead className="px-3 text-right">{t("inbounds.hostTableActions")}</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -1696,7 +1693,7 @@ function HostsDialog({ open, onOpenChange, inbound, nodeIp = "", nodeId, nodes, 
                               size="sm"
                               onClick={() => openEditHost(h)}
                               className="h-8 w-8 p-0"
-                              title="编辑"
+                              title={t("common.edit")}
                             >
                               <IconEdit className="h-4 w-4" />
                             </Button>
@@ -1706,7 +1703,7 @@ function HostsDialog({ open, onOpenChange, inbound, nodeIp = "", nodeId, nodes, 
                               onClick={() => handleDeleteHost(h.id)}
                               disabled={deleting === h.id}
                               className="h-8 w-8 p-0 text-[hsl(var(--destructive))] hover:text-[hsl(var(--destructive))]"
-                              title="删除"
+                              title={t("common.delete")}
                             >
                               {deleting === h.id ? (
                                 <IconLoader className="h-4 w-4 animate-spin" />
@@ -1726,7 +1723,7 @@ function HostsDialog({ open, onOpenChange, inbound, nodeIp = "", nodeId, nodes, 
 
           <DialogFooter className="mt-4">
             <DialogClose asChild>
-              <Button variant="outline">关闭</Button>
+              <Button variant="outline">{t("common.close")}</Button>
             </DialogClose>
           </DialogFooter>
         </DialogContent>
@@ -1768,6 +1765,7 @@ interface UserListDialogProps {
 }
 
 function UserListDialog({ open, onOpenChange, inbound, handleAuthError }: UserListDialogProps) {
+  const { t } = useTranslation();
   const [users, setUsers] = useState<User[]>([]);
   const [loading, setLoading] = useState(false);
 
@@ -1794,16 +1792,16 @@ function UserListDialog({ open, onOpenChange, inbound, handleAuthError }: UserLi
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
-          <DialogTitle>关联用户</DialogTitle>
+          <DialogTitle>{t("inbounds.userListTitle")}</DialogTitle>
           <DialogDescription>
-            入站 <span className="font-medium text-[hsl(var(--foreground))]">{inbound ? `${inbound.protocol}:${inbound.port}` : ""}</span> 当前关联的用户
+            {t("inbounds.userListDesc", { info: inbound ? `${inbound.protocol}:${inbound.port}` : "" })}
           </DialogDescription>
         </DialogHeader>
         <ScrollArea className="max-h-[60vh]">
           {loading ? (
-            <p className="py-6 text-center text-sm text-[hsl(var(--muted-foreground))]">加载中…</p>
+            <p className="py-6 text-center text-sm text-[hsl(var(--muted-foreground))]">{t("common.loading")}</p>
           ) : users.length === 0 ? (
-            <p className="py-6 text-center text-sm text-[hsl(var(--muted-foreground))]">暂无关联用户</p>
+            <p className="py-6 text-center text-sm text-[hsl(var(--muted-foreground))]">{t("inbounds.noAssociatedUsers")}</p>
           ) : (
             <div className="divide-y divide-[hsl(var(--border))]">
               {users.map((u) => (
@@ -1833,6 +1831,7 @@ interface UserAllocDialogProps {
 }
 
 function UserAllocDialog({ open, onOpenChange, inbound, handleAuthError, onSaved }: UserAllocDialogProps) {
+  const { t } = useTranslation();
   const [allUsers, setAllUsers] = useState<User[]>([]);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [searchFilter, setSearchFilter] = useState("");
@@ -1903,7 +1902,7 @@ function UserAllocDialog({ open, onOpenChange, inbound, handleAuthError, onSaved
       onOpenChange(false);
     } catch (err) {
       if (!handleAuthError(err)) {
-        toast(err instanceof Error ? err.message : "分配失败", "error");
+        toast(err instanceof Error ? err.message : t("inbounds.allocFailed"), "error");
       }
     } finally {
       setSaving(false);
@@ -1927,9 +1926,9 @@ function UserAllocDialog({ open, onOpenChange, inbound, handleAuthError, onSaved
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-lg">
         <DialogHeader>
-          <DialogTitle>分配用户 — {inbound ? `${inbound.protocol}:${inbound.port}` : ""}</DialogTitle>
+          <DialogTitle>{t("inbounds.userAllocTitle", { info: inbound ? `${inbound.protocol}:${inbound.port}` : "" })}</DialogTitle>
           <DialogDescription>
-            为入站 <span className="font-semibold">{inbound ? `${inbound.protocol}:${inbound.port}` : ""}</span> 分配可使用的用户。
+            {t("inbounds.userAllocDesc", { info: inbound ? `${inbound.protocol}:${inbound.port}` : "" })}
           </DialogDescription>
         </DialogHeader>
 
@@ -1941,7 +1940,7 @@ function UserAllocDialog({ open, onOpenChange, inbound, handleAuthError, onSaved
           <div className="mt-4 space-y-3">
             {/* 搜索 */}
             <Input
-              placeholder="搜索用户名…"
+              placeholder={t("inbounds.searchUsername")}
               value={searchFilter}
               onChange={(e) => setSearchFilter(e.target.value)}
             />
@@ -1950,14 +1949,14 @@ function UserAllocDialog({ open, onOpenChange, inbound, handleAuthError, onSaved
             <div className="flex items-center justify-between">
               <div className="flex gap-2">
                 <Button type="button" variant="outline" size="sm" onClick={selectAll}>
-                  全选
+                  {t("inbounds.selectAll")}
                 </Button>
                 <Button type="button" variant="outline" size="sm" onClick={selectNone}>
-                  全不选
+                  {t("inbounds.selectNone")}
                 </Button>
               </div>
               <span className="text-sm text-[hsl(var(--muted-foreground))]">
-                已选 {selectedIds.size}/{allUsers.length} 用户
+                {t("inbounds.selectedCount", { selected: selectedIds.size, total: allUsers.length })}
               </span>
             </div>
 
@@ -1965,7 +1964,7 @@ function UserAllocDialog({ open, onOpenChange, inbound, handleAuthError, onSaved
             <ScrollArea className="max-h-[50vh] rounded-md border border-[hsl(var(--border))] p-2">
               {filteredUsers.length === 0 ? (
                 <p className="py-4 text-center text-sm text-[hsl(var(--muted-foreground))]">
-                  {allUsers.length === 0 ? "暂无用户" : "无匹配用户"}
+                  {allUsers.length === 0 ? t("inbounds.noUsers") : t("inbounds.noMatchUsers")}
                 </p>
               ) : (
                 filteredUsers.map((u) => (
@@ -1991,11 +1990,11 @@ function UserAllocDialog({ open, onOpenChange, inbound, handleAuthError, onSaved
         <DialogFooter className="mt-4">
           <DialogClose asChild>
             <Button type="button" variant="outline" disabled={saving}>
-              取消
+              {t("common.cancel")}
             </Button>
           </DialogClose>
           <Button onClick={handleSave} disabled={loading || saving}>
-            {saving ? "保存中…" : "保存"}
+            {saving ? t("common.saving") : t("common.save")}
           </Button>
         </DialogFooter>
       </DialogContent>
@@ -2006,6 +2005,7 @@ function UserAllocDialog({ open, onOpenChange, inbound, handleAuthError, onSaved
 // ── Main Page ────────────────────────────────────────────────────
 
 export default function InboundsPage() {
+  const { t } = useTranslation();
 
   const [inbounds, setInbounds] = useState<Inbound[]>([]);
   const [userCounts, setUserCounts] = useState<Record<string, number>>({});
@@ -2110,7 +2110,7 @@ export default function InboundsPage() {
       })
       .catch((err) => {
         if (!handleAuthError(err)) {
-          setError(err instanceof Error ? err.message : "加载失败");
+          setError(err instanceof Error ? err.message : t("inbounds.loadFailed"));
         }
       })
       .finally(() => setLoading(false));
@@ -2133,7 +2133,7 @@ export default function InboundsPage() {
       return result;
     } catch (err) {
       if (!handleAuthError(err)) {
-        toast(err instanceof Error ? err.message : "保存失败", "error");
+        toast(err instanceof Error ? err.message : t("inbounds.saveFailed"), "error");
       }
       throw err;
     } finally {
@@ -2152,7 +2152,7 @@ export default function InboundsPage() {
       fetchData();
     } catch (err) {
       if (!handleAuthError(err)) {
-        toast(err instanceof Error ? err.message : "删除失败", "error");
+        toast(err instanceof Error ? err.message : t("common.deleteFailed"), "error");
       }
     } finally {
       setDeleting(false);
@@ -2199,11 +2199,11 @@ export default function InboundsPage() {
             <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-[hsl(var(--destructive))]/10 text-[hsl(var(--destructive))]">
               <IconAlert className="h-6 w-6" />
             </div>
-            <p className="mb-1 font-semibold text-[hsl(var(--foreground))]">加载失败</p>
+            <p className="mb-1 font-semibold text-[hsl(var(--foreground))]">{t("inbounds.loadFailed")}</p>
             <p className="mb-4 text-sm text-[hsl(var(--muted-foreground))]">{error}</p>
             <Button onClick={fetchData} variant="outline">
               <IconRefresh className="mr-2 h-4 w-4" />
-              重试
+              {t("common.retry")}
             </Button>
           </CardContent>
         </Card>
@@ -2216,21 +2216,21 @@ export default function InboundsPage() {
       {/* ── Header ──────────────────────────────────────────────── */}
       <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-[hsl(var(--foreground))]">入站</h1>
+          <h1 className="text-2xl font-bold text-[hsl(var(--foreground))]">{t("inbounds.title")}</h1>
           <p className="mt-1 text-sm text-[hsl(var(--muted-foreground))]">
-            管理入站连接及协议配置。
+            {t("inbounds.pageSubtitle")}
           </p>
         </div>
         <Button onClick={openCreate} className="self-start sm:self-auto">
           <IconPlus className="mr-2 h-4 w-4" />
-          添加入站
+          {t("inbounds.addInbound")}
         </Button>
       </div>
 
       {/* ── Search ──────────────────────────────────────────────── */}
       <div className="mb-3">
         <Input
-          placeholder="搜索 tag、协议、节点、端口…"
+          placeholder={t("inbounds.searchPlaceholder")}
           value={search}
           onChange={(e) => setSearch(e.target.value)}
           className="max-w-sm"
@@ -2244,13 +2244,13 @@ export default function InboundsPage() {
             <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-[hsl(var(--muted))]">
               <IconInbox className="h-6 w-6 text-[hsl(var(--muted-foreground))]" />
             </div>
-            <p className="mb-1 font-semibold text-[hsl(var(--foreground))]">暂无入站</p>
+            <p className="mb-1 font-semibold text-[hsl(var(--foreground))]">{t("inbounds.noInbounds")}</p>
             <p className="mb-4 text-sm text-[hsl(var(--muted-foreground))]">
-              添加第一个入站开始使用。
+              {t("inbounds.firstInbound")}
             </p>
             <Button onClick={openCreate}>
               <IconPlus className="mr-2 h-4 w-4" />
-              添加入站
+              {t("inbounds.addInbound")}
             </Button>
           </CardContent>
         </Card>
@@ -2262,12 +2262,12 @@ export default function InboundsPage() {
           <Table containerClassName="flex-1 overflow-auto">
             <TableHeader className="sticky top-0 z-10 bg-[hsl(var(--card))]">
               <TableRow>
-                <TableHead className="px-4 w-px whitespace-nowrap">协议</TableHead>
-                <TableHead className="px-4 w-px whitespace-nowrap text-right">用户</TableHead>
-                <TableHead className="px-4">节点</TableHead>
-                <TableHead className="hidden px-4 w-[120px] max-w-[120px] lg:table-cell">出口</TableHead>
-                <TableHead className="hidden px-4 lg:table-cell">订阅名</TableHead>
-                <TableHead className="sticky right-0 bg-[hsl(var(--card))] px-4 w-px whitespace-nowrap text-right">操作</TableHead>
+                <TableHead className="px-4 w-px whitespace-nowrap">{t("inbounds.tableProtocol")}</TableHead>
+                <TableHead className="px-4 w-px whitespace-nowrap text-right">{t("common.users")}</TableHead>
+                <TableHead className="px-4">{t("common.node")}</TableHead>
+                <TableHead className="hidden px-4 w-[120px] max-w-[120px] lg:table-cell">{t("inbounds.tableOutbound")}</TableHead>
+                <TableHead className="hidden px-4 lg:table-cell">{t("inbounds.tableSubName")}</TableHead>
+                <TableHead className="sticky right-0 bg-[hsl(var(--card))] px-4 w-px whitespace-nowrap text-right">{t("inbounds.tableActions")}</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -2276,7 +2276,7 @@ export default function InboundsPage() {
               ) : filteredInbounds.length === 0 ? (
                 <TableRow>
                   <TableCell colSpan={6} className="h-24 text-center text-[hsl(var(--muted-foreground))]">
-                    没有匹配的入站
+                    {t("inbounds.noMatchInbounds")}
                   </TableCell>
                 </TableRow>
               ) : (
@@ -2311,7 +2311,7 @@ export default function InboundsPage() {
                           </TooltipTrigger>
                           <TooltipContent side="top">
                             <span className="font-mono text-xs select-all">
-                              {nodeIpMap.get(ib.node_id) ?? "无 IP 信息"}
+                              {nodeIpMap.get(ib.node_id) ?? t("inbounds.noIpInfo")}
                             </span>
                           </TooltipContent>
                         </Tooltip>
@@ -2342,15 +2342,15 @@ export default function InboundsPage() {
                       {(() => {
                         const hosts = allHosts.filter((h) => h.inbound_id === ib.id);
                         if (hosts.length === 0) {
-                          return <span className="text-xs text-[hsl(var(--muted-foreground))]">无连接地址</span>;
+                          return <span className="text-xs text-[hsl(var(--muted-foreground))]">{t("inbounds.noHostAddr")}</span>;
                         }
                         const first = hosts[0]!;
                         const name = previewName(first, ib.traffic_rate);
-                        const allNames = hosts.map((h) => previewName(h, ib.traffic_rate) || "(未填命名字段)");
+                        const allNames = hosts.map((h) => previewName(h, ib.traffic_rate) || t("inbounds.unnamedField"));
                         return (
                           <div className="flex items-center gap-1.5 min-w-0">
                             <span className={`truncate text-sm ${name ? "text-[hsl(var(--foreground))]" : "text-[hsl(var(--muted-foreground))] italic"}`}>
-                              {name || "(未填命名字段)"}
+                              {name || t("inbounds.unnamedField")}
                             </span>
                             {hosts.length > 1 && (
                               <TooltipProvider delayDuration={200}>
@@ -2379,20 +2379,20 @@ export default function InboundsPage() {
                         <DropdownMenu>
                           <DropdownMenuTrigger asChild>
                             <Button variant="ghost" size="sm" className="h-8 w-8 p-0">
-                              <span className="sr-only">更多操作</span>
+                              <span className="sr-only">{t("inbounds.moreActions")}</span>
                               <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" className="h-4 w-4"><circle cx="12" cy="5" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="12" cy="19" r="1"/></svg>
                             </Button>
                           </DropdownMenuTrigger>
                           <DropdownMenuContent align="end">
-                            <DropdownMenuItem onClick={() => openHosts(ib)}>连接地址</DropdownMenuItem>
-                            <DropdownMenuItem onClick={() => openUserAlloc(ib)}>分配用户</DropdownMenuItem>
-                            <DropdownMenuItem onClick={() => openEdit(ib)}>编辑</DropdownMenuItem>
+                            <DropdownMenuItem onClick={() => openHosts(ib)}>{t("inbounds.host")}</DropdownMenuItem>
+                            <DropdownMenuItem onClick={() => openUserAlloc(ib)}>{t("inbounds.userAllocMenu")}</DropdownMenuItem>
+                            <DropdownMenuItem onClick={() => openEdit(ib)}>{t("common.edit")}</DropdownMenuItem>
                             <DropdownMenuSeparator />
                             <DropdownMenuItem
                               onClick={() => openDelete(ib)}
                               className="text-[hsl(var(--destructive))]"
                             >
-                              删除
+                              {t("common.delete")}
                             </DropdownMenuItem>
                           </DropdownMenuContent>
                         </DropdownMenu>

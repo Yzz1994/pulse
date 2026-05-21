@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from "react";
+import { useTranslation } from "react-i18next";
 import { Card, CardContent, CardHeader } from "@/components/ui";
 import { getTheme, toggleTheme, type Theme } from "@/lib/theme";
 import {
@@ -258,6 +259,7 @@ function SummaryCard({
 /* ── Uptime Bar Chart ─────────────────────────────────────────────── */
 
 function UptimeBars({ bars }: { bars: UptimeBar[] }) {
+  const { t } = useTranslation();
   if (!bars.length) return null;
   return (
     <div className="space-y-1.5">
@@ -267,20 +269,19 @@ function UptimeBars({ bars }: { bars: UptimeBar[] }) {
             <div
               className="h-6 rounded-sm transition-opacity hover:opacity-80"
               style={uptimeBarStyle(bar.online_pct)}
-              title={`${formatBarLabel(bar.label)}: ${bar.online_pct < 0 ? "无数据" : `${bar.online_pct}%`}`}
+              title={`${formatBarLabel(bar.label)}: ${bar.online_pct < 0 ? t("stat.noDataTooltip") : `${bar.online_pct}%`}`}
             />
-            {/* Tooltip on hover */}
             <div className="pointer-events-none absolute bottom-full left-1/2 z-10 mb-1.5 -translate-x-1/2 whitespace-nowrap rounded-md border border-[hsl(var(--border))] bg-zinc-900 px-2 py-1 text-xs text-zinc-300 opacity-0 shadow-lg transition-opacity group-hover:opacity-100">
               {formatBarLabel(bar.label)}
               {": "}
-              {bar.online_pct < 0 ? "无数据" : `${bar.online_pct}%`}
+              {bar.online_pct < 0 ? t("stat.noDataTooltip") : `${bar.online_pct}%`}
             </div>
           </div>
         ))}
       </div>
       <div className="flex justify-between text-[11px] text-zinc-500">
-        <span>3d前</span>
-        <span>现在</span>
+        <span>{t("stat.threeDaysAgo")}</span>
+        <span>{t("stat.now")}</span>
       </div>
     </div>
   );
@@ -292,6 +293,7 @@ const SPARK_ISP_COLOR: Record<string, string> = { ct: "#ef4444", cu: "#3b82f6", 
 const ISP_ORDER = ["ct", "cu", "cm"] as const;
 
 function LatencySparkline({ samples }: { samples: LatencySample[] }) {
+  const { t } = useTranslation();
   const containerRef = useRef<HTMLDivElement>(null);
   const [hoverX, setHoverX] = useState<number | null>(null); // 0–100 viewBox units
 
@@ -400,7 +402,7 @@ function LatencySparkline({ samples }: { samples: LatencySample[] }) {
             {hoverPoints.map((p) => (
               <div key={p.isp} className="flex items-center gap-2">
                 <span className="inline-block h-1.5 w-2.5 rounded-full" style={{ background: SPARK_ISP_COLOR[p.isp] }} />
-                <span className="text-zinc-400">{ISP_LABEL[p.isp] ?? p.isp}</span>
+                <span className="text-zinc-400">{ISP_KEYS[p.isp] ? t(ISP_KEYS[p.isp]!) : p.isp}</span>
                 <span className="ml-auto pl-3 font-medium tabular-nums text-zinc-100">{p.rtt} ms</span>
               </div>
             ))}
@@ -429,7 +431,7 @@ function LatencySparkline({ samples }: { samples: LatencySample[] }) {
           <div key={isp} className="grid items-center py-0.5" style={{ gridTemplateColumns: "1fr 3rem 3rem 3rem 3rem" }}>
             <span className="flex items-center gap-1.5 text-zinc-400">
               <span className="inline-block h-1.5 w-2.5 shrink-0 rounded-full" style={{ background: SPARK_ISP_COLOR[isp] }} />
-              {ISP_LABEL[isp] ?? isp}
+              {ISP_KEYS[isp] ? t(ISP_KEYS[isp]!) : isp}
             </span>
             <span className="text-right tabular-nums text-zinc-500">{min}</span>
             <span className="text-right tabular-nums font-medium text-zinc-200">{avg}</span>
@@ -455,8 +457,9 @@ const NETWORK_COLOR: Record<string, string> = {
 };
 
 function TracerouteRecord({ item }: { item: TracerouteSnapshotItem }) {
+  const { t } = useTranslation();
   const [expanded, setExpanded] = useState(false);
-  const dirLabel = item.direction === "inbound" ? "[回程]" : "[去程]";
+  const dirLabel = item.direction === "inbound" ? `[${t("stat.inbound")}]` : `[${t("stat.outbound")}]`;
   const timeStr = formatTime(item.created_at);
   const isGood = item.quality === "CN2 GIA" || item.quality === "联通 AS9929";
 
@@ -477,7 +480,7 @@ function TracerouteRecord({ item }: { item: TracerouteSnapshotItem }) {
       >
         <div className="flex flex-1 items-center gap-2 min-w-0">
           <span className={`shrink-0 rounded px-1.5 py-0.5 text-[10px] font-medium ${item.direction === "inbound" ? "bg-blue-500/15 text-blue-400" : "bg-purple-500/15 text-purple-400"}`}>
-            {item.direction === "inbound" ? "回程" : "去程"}
+            {item.direction === "inbound" ? t("stat.inbound") : t("stat.outbound")}
           </span>
           {item.quality && (
             <span className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] font-semibold ${qualityColor(item.quality)}`}>
@@ -505,7 +508,7 @@ function TracerouteRecord({ item }: { item: TracerouteSnapshotItem }) {
                 {/* 网络类型标签 */}
                 <span className="w-10 shrink-0">
                   {isPrivate ? (
-                    <span className="text-zinc-600">内网</span>
+                    <span className="text-zinc-600">{t("stat.privateIP")}</span>
                   ) : hop.network ? (
                     <span className={`rounded px-1 py-0.5 text-[10px] font-medium ${NETWORK_COLOR[hop.network] ?? "text-zinc-400"}`}>
                       {hop.network}
@@ -537,13 +540,14 @@ function TracerouteRecord({ item }: { item: TracerouteSnapshotItem }) {
 const TRACEROUTE_DISPLAY_LIMIT = 3;
 
 function NodeTraceroute({ snapshots }: { snapshots: TracerouteSnapshotItem[] }) {
+  const { t } = useTranslation();
   const [showAll, setShowAll] = useState(false);
   if (!snapshots || snapshots.length === 0) return null;
   const visible = showAll ? snapshots : snapshots.slice(0, TRACEROUTE_DISPLAY_LIMIT);
   const hidden = snapshots.length - TRACEROUTE_DISPLAY_LIMIT;
   return (
     <div className="space-y-2">
-      <div className="text-[11px] font-medium text-zinc-400">路由追踪记录</div>
+      <div className="text-[11px] font-medium text-zinc-400">{t("stat.tracerouteRecords")}</div>
       {visible.map(item => (
         <TracerouteRecord key={item.id} item={item} />
       ))}
@@ -552,7 +556,7 @@ function NodeTraceroute({ snapshots }: { snapshots: TracerouteSnapshotItem[] }) 
           onClick={() => setShowAll(true)}
           className="text-[11px] text-zinc-500 hover:text-zinc-300 transition-colors"
         >
-          还有 {hidden} 条 ▼
+          {t("stat.moreRecords", { count: hidden })}
         </button>
       )}
     </div>
@@ -575,7 +579,7 @@ function speedStyle(cur: number, prev: number): React.CSSProperties {
 
 /* ── 延迟图表辅助 ─────────────────────────────────────────────────── */
 
-const ISP_LABEL: Record<string, string> = { ct: "上海电信", cu: "上海联通", cm: "上海移动" };
+const ISP_KEYS: Record<string, string> = { ct: "stat.shanghaiTelecom", cu: "stat.shanghaiUnicom", cm: "stat.shanghaiMobile" };
 const ISP_COLOR: Record<string, string> = { ct: "#ef4444", cu: "#3b82f6", cm: "#22c55e" };
 
 function buildLatencyChartData(samples: LatencySample[]) {
@@ -601,6 +605,7 @@ function buildLatencyChartData(samples: LatencySample[]) {
 /* ── 节点详情弹窗 ─────────────────────────────────────────────────── */
 
 function NodeDetailDialog({ node, onClose }: { node: Node; onClose: () => void }) {
+  const { t } = useTranslation();
   const [expandedSnap, setExpandedSnap] = useState<string | null>(null);
 
   // ESC 关闭
@@ -650,12 +655,12 @@ function NodeDetailDialog({ node, onClose }: { node: Node; onClose: () => void }
           {/* 解锁情况 */}
           {hasChecks && (
             <div>
-              <p className="mb-2 text-xs font-semibold text-[hsl(var(--muted-foreground))] uppercase tracking-wide">解锁情况</p>
+              <p className="mb-2 text-xs font-semibold text-[hsl(var(--muted-foreground))] uppercase tracking-wide">{t("stat.unlockStatus")}</p>
               <div className="space-y-3">
                 {(["direct_checks", "proxied_checks"] as const).map((key) => {
                   const checks = node[key];
                   if (!checks?.length) return null;
-                  const label = key === "direct_checks" ? "直连" : "代理";
+                  const label = key === "direct_checks" ? t("stat.direct") : t("stat.proxied");
                   return (
                     <div key={key}>
                       <p className="mb-1.5 text-[11px] font-medium text-zinc-500">{label}</p>
@@ -686,7 +691,7 @@ function NodeDetailDialog({ node, onClose }: { node: Node; onClose: () => void }
           {/* 延迟折线图 */}
           {hasLatency ? (
             <div>
-              <p className="mb-2 text-xs font-semibold text-[hsl(var(--muted-foreground))] uppercase tracking-wide">上海三网延迟（过去 1h）</p>
+              <p className="mb-2 text-xs font-semibold text-[hsl(var(--muted-foreground))] uppercase tracking-wide">{t("stat.latencyTitle")}</p>
               <ResponsiveContainer width="100%" height={200}>
                 <LineChart data={latencyData} margin={{ top: 4, right: 8, left: -10, bottom: 0 }}>
                   <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" opacity={0.5} />
@@ -694,9 +699,9 @@ function NodeDetailDialog({ node, onClose }: { node: Node; onClose: () => void }
                   <YAxis tick={{ fontSize: 10, fill: "hsl(var(--muted-foreground))" }} tickLine={false} axisLine={false} unit="ms" width={42} />
                   <RechartsTooltip
                     contentStyle={{ background: "hsl(var(--background))", border: "1px solid hsl(var(--border))", borderRadius: 8, fontSize: 12 }}
-                    formatter={(v: unknown, name: unknown) => [`${v} ms`, ISP_LABEL[String(name)] ?? String(name)] as [string, string]}
+                    formatter={(v: unknown, name: unknown) => [`${v} ms`, ISP_KEYS[String(name)] ? t(ISP_KEYS[String(name)]!) : String(name)] as [string, string]}
                   />
-                  <Legend formatter={(v) => <span style={{ fontSize: 11 }}>{ISP_LABEL[v] ?? v}</span>} />
+                  <Legend formatter={(v) => <span style={{ fontSize: 11 }}>{ISP_KEYS[v] ? t(ISP_KEYS[v]!) : v}</span>} />
                   {(["ct", "cu", "cm"] as const).map((isp) => (
                     <Line key={isp} type="monotone" dataKey={isp} stroke={ISP_COLOR[isp]} strokeWidth={1.5} dot={false} activeDot={{ r: 3 }} connectNulls={false} />
                   ))}
@@ -705,14 +710,14 @@ function NodeDetailDialog({ node, onClose }: { node: Node; onClose: () => void }
             </div>
           ) : (
             <div className="rounded-lg border border-[hsl(var(--border))] py-6 text-center text-xs text-[hsl(var(--muted-foreground))]">
-              暂无延迟数据（每分钟采样，部署后约 1 分钟内出现）
+              {t("stat.noLatencyData")}
             </div>
           )}
 
           {/* 路由追踪快照 */}
           {hasTraceroute && (
             <div>
-              <p className="mb-2 text-xs font-semibold text-[hsl(var(--muted-foreground))] uppercase tracking-wide">路由追踪快照</p>
+              <p className="mb-2 text-xs font-semibold text-[hsl(var(--muted-foreground))] uppercase tracking-wide">{t("stat.tracerouteSnapshot")}</p>
               <div className="space-y-2">
                 {node.traceroutes!.map((snap, i) => {
                   const key = `${snap.direction}-${snap.target}-${i}`;
@@ -727,7 +732,7 @@ function NodeDetailDialog({ node, onClose }: { node: Node; onClose: () => void }
                       >
                         <span className="flex items-center gap-2">
                           <span className={`rounded px-1.5 py-0.5 text-[10px] font-medium ${snap.direction === "inbound" ? "bg-blue-500/15 text-blue-400" : "bg-purple-500/15 text-purple-400"}`}>
-                            {snap.direction === "inbound" ? "回程" : "去程"}
+                            {snap.direction === "inbound" ? t("stat.inbound") : t("stat.outbound")}
                           </span>
                           <span className="font-mono text-[hsl(var(--foreground))]">{snap.target}</span>
                           {snap.quality && (
@@ -743,7 +748,7 @@ function NodeDetailDialog({ node, onClose }: { node: Node; onClose: () => void }
                               <tr>
                                 <th className="px-2 py-1 text-left text-[hsl(var(--muted-foreground))] font-medium">#</th>
                                 <th className="px-2 py-1 text-left text-[hsl(var(--muted-foreground))] font-medium">IP</th>
-                                <th className="px-2 py-1 text-left text-[hsl(var(--muted-foreground))] font-medium">网络</th>
+                                <th className="px-2 py-1 text-right text-[hsl(var(--muted-foreground))] font-medium">{t("stat.network")}</th>
                                 <th className="px-2 py-1 text-right text-[hsl(var(--muted-foreground))] font-medium">RTT</th>
                               </tr>
                             </thead>
@@ -774,7 +779,7 @@ function NodeDetailDialog({ node, onClose }: { node: Node; onClose: () => void }
           )}
 
           {!hasLatency && !hasTraceroute && (
-            <p className="text-center text-xs text-[hsl(var(--muted-foreground))] py-4">暂无详细数据</p>
+            <p className="text-center text-xs text-[hsl(var(--muted-foreground))] py-4">{t("stat.noDetailedData")}</p>
           )}
         </div>
       </div>
@@ -783,6 +788,7 @@ function NodeDetailDialog({ node, onClose }: { node: Node; onClose: () => void }
 }
 
 function NodeCard({ node, metrics, prevMetrics }: { node: Node; metrics?: NodeMetrics; prevMetrics?: NodeMetrics }) {
+  const { t } = useTranslation();
   const hasSpeed = metrics && (metrics.upload_speed > 0 || metrics.download_speed > 0);
   const [dialogOpen, setDialogOpen] = useState(false);
   const closeDialog = useCallback(() => setDialogOpen(false), []);
@@ -840,7 +846,7 @@ function NodeCard({ node, metrics, prevMetrics }: { node: Node; metrics?: NodeMe
               disabled={!hasDetail}
               className="flex items-center gap-1 rounded-md border border-[hsl(var(--border))] px-2 py-0.5 text-xs transition-colors disabled:cursor-default disabled:opacity-30 text-[hsl(var(--muted-foreground))] hover:enabled:border-[hsl(var(--ring))] hover:enabled:text-[hsl(var(--foreground))]"
             >
-              详情
+              {t("stat.details")}
               <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" className="h-3 w-3">
                 <polyline points="9 18 15 12 9 6" />
               </svg>
@@ -868,6 +874,7 @@ function PageHeader({
   updatedAt: string | undefined;
   nodeCount: number;
 }) {
+  const { t } = useTranslation();
   const [theme, setTheme] = useState<Theme>(getTheme);
 
   return (
@@ -894,7 +901,7 @@ function PageHeader({
             Pulse
           </span>
           <span className="hidden text-sm text-zinc-400 sm:inline">
-            · 节点状态
+            · {t("stat.title")}
           </span>
         </div>
 
@@ -902,7 +909,7 @@ function PageHeader({
         <div className="flex items-center gap-3 text-xs text-zinc-400">
           {updatedAt && (
             <span className="hidden sm:inline">
-              更新于 {formatTime(updatedAt)}
+              {t("stat.updatedAt", { time: formatTime(updatedAt) })}
             </span>
           )}
           <span className="flex items-center gap-1.5">
@@ -910,12 +917,12 @@ function PageHeader({
               <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-75" />
               <span className="relative inline-flex h-2 w-2 rounded-full bg-emerald-500" />
             </span>
-            {nodeCount} 节点
+            {t("stat.nodeCount", { count: nodeCount })}
           </span>
           <button
             onClick={() => setTheme(toggleTheme())}
             className="rounded-md p-1.5 hover:bg-[hsl(var(--accent))] transition-colors"
-            title={theme === "dark" ? "切换浅色模式" : "切换深色模式"}
+            title={theme === "dark" ? t("common.switchLight") : t("common.switchDark")}
           >
             {theme === "dark" ? (
               <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -936,6 +943,7 @@ function PageHeader({
 /* ── Empty State ──────────────────────────────────────────────────── */
 
 function EmptyState() {
+  const { t } = useTranslation();
   return (
     <div className="flex flex-col items-center justify-center py-24 text-center">
       <svg
@@ -953,7 +961,7 @@ function EmptyState() {
         <line x1="6" y1="6" x2="6.01" y2="6" />
         <line x1="6" y1="18" x2="6.01" y2="18" />
       </svg>
-      <p className="text-sm text-zinc-400">暂无节点检测数据</p>
+      <p className="text-sm text-zinc-400">{t("stat.noData")}</p>
     </div>
   );
 }
@@ -961,9 +969,10 @@ function EmptyState() {
 /* ── Page Footer ──────────────────────────────────────────────────── */
 
 function PageFooter() {
+  const { t } = useTranslation();
   return (
     <footer className="border-t border-[hsl(var(--border))] py-6 text-center text-xs text-zinc-500">
-      Pulse · 节点状态
+      Pulse · {t("stat.title")}
     </footer>
   );
 }
@@ -971,6 +980,7 @@ function PageFooter() {
 /* ── Main Page Component ──────────────────────────────────────────── */
 
 export default function StatPage() {
+  const { t } = useTranslation();
   const [data, setData] = useState<StatData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -1007,7 +1017,7 @@ export default function StatPage() {
 
       es.onerror = () => {
         es?.close();
-        setError("连接断开，正在重连…");
+        setError(t("stat.reconnecting"));
         retryTimer = setTimeout(connect, 5_000);
       };
     };
@@ -1039,7 +1049,7 @@ export default function StatPage() {
           <LoadingSkeleton />
         ) : error ? (
           <div className="flex flex-col items-center justify-center py-24 text-center">
-            <p className="text-sm text-red-400">加载失败: {error}</p>
+            <p className="text-sm text-red-400">{t("stat.loadFailed", { error })}</p>
           </div>
         ) : !data || !data.nodes.length ? (
           <EmptyState />
@@ -1048,11 +1058,11 @@ export default function StatPage() {
             {/* ── Summary Stats Row ── */}
             <div className="grid grid-cols-2 gap-3 sm:gap-4">
               <SummaryCard
-                label="节点总数"
+                label={t("stat.totalNodes")}
                 value={data.node_count}
               />
               <SummaryCard
-                label="平均可用率"
+                label={t("stat.avgUptime")}
                 value={avgUptimeDisplay}
                 suffix={data.avg_uptime_pct >= 0 ? "%" : undefined}
                 colorClass={avgUptimeColor}

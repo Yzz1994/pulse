@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import { Link, Outlet, useRouterState, useNavigate } from "@tanstack/react-router";
+import { useTranslation } from "react-i18next";
 import {
   Button,
   Separator,
@@ -14,24 +15,25 @@ import { getTheme, toggleTheme, type Theme } from "@/lib/theme";
 import { Toaster, toast } from "@/components/ui";
 
 const navItems = [
-  { to: "/panel/dashboard", label: "Dashboard", icon: BarChartIcon },
-  { to: "/panel/users", label: "Users", icon: UsersIcon },
-  { to: "/panel/user-groups", label: "User Groups", icon: GroupIcon },
-  { to: "/panel/nodes", label: "Nodes", icon: ServerIcon },
-  { to: "/panel/inbounds", label: "Inbounds", icon: ArrowDownIcon },
-  { to: "/panel/outbounds", label: "Outbounds", icon: ArrowUpIcon },
-  { to: "/panel/routerules", label: "Route Rules", icon: RouteRuleIcon },
-  { to: "/panel/domains", label: "Domains", icon: DomainIcon },
-  { to: "/panel/sniproxy", label: "NodeGate", icon: GlobeIcon },
-  { to: "/panel/latency", label: "Latency", icon: LatencyIcon },
-  { to: "/panel/audit", label: "Audit Logs", icon: ShieldIcon },
-  { to: "/panel/plans", label: "Plans", icon: TagIcon },
-  { to: "/panel/announcements", label: "Announcements", icon: AnnouncementIcon },
-  { to: "/panel/tickets", label: "Tickets", icon: TicketIcon },
-  { to: "/panel/settings", label: "Settings", icon: SettingsIcon },
+  { to: "/panel/dashboard", labelKey: "dashboard", icon: BarChartIcon },
+  { to: "/panel/users", labelKey: "users", icon: UsersIcon },
+  { to: "/panel/user-groups", labelKey: "userGroups", icon: GroupIcon },
+  { to: "/panel/nodes", labelKey: "nodes", icon: ServerIcon },
+  { to: "/panel/inbounds", labelKey: "inbounds", icon: ArrowDownIcon },
+  { to: "/panel/outbounds", labelKey: "outbounds", icon: ArrowUpIcon },
+  { to: "/panel/routerules", labelKey: "routeRules", icon: RouteRuleIcon },
+  { to: "/panel/domains", labelKey: "domains", icon: DomainIcon },
+  { to: "/panel/sniproxy", labelKey: "nodeGate", icon: GlobeIcon },
+  { to: "/panel/latency", labelKey: "latency", icon: LatencyIcon },
+  { to: "/panel/audit", labelKey: "auditLogs", icon: ShieldIcon },
+  { to: "/panel/plans", labelKey: "plans", icon: TagIcon },
+  { to: "/panel/announcements", labelKey: "announcements", icon: AnnouncementIcon },
+  { to: "/panel/tickets", labelKey: "tickets", icon: TicketIcon },
+  { to: "/panel/settings", labelKey: "settings", icon: SettingsIcon },
 ] as const;
 
 export default function RootLayout() {
+  const { t, i18n } = useTranslation();
   const router = useRouterState();
   const navigate = useNavigate();
   const currentPath = router.location.pathname;
@@ -39,8 +41,8 @@ export default function RootLayout() {
 
   useEffect(() => {
     const item = navItems.find(({ to }) => currentPath.startsWith(to));
-    document.title = item ? `${item.label} — Pulse` : "Pulse";
-  }, [currentPath]);
+    document.title = item ? `${t(`nav.${item.labelKey}`)} — Pulse` : "Pulse";
+  }, [currentPath, t]);
   const [theme, setTheme] = useState<Theme>(getTheme);
   const [updateChecking, setUpdateChecking] = useState(false);
   const [updateResult, setUpdateResult] = useState<{ has_update: boolean; latest: string; current: string } | null>(null);
@@ -75,9 +77,9 @@ export default function RootLayout() {
     try {
       const r = await api.get<{ has_update: boolean; latest: string; current: string }>("/system/update/check");
       setUpdateResult(r);
-      toast(r.has_update ? `发现新版本 ${r.latest}` : `已是最新版本 ${r.latest}`, "success");
+      toast(r.has_update ? t("update.foundNew", { version: r.latest }) : t("update.alreadyLatest", { version: r.latest }), "success");
     } catch {
-      toast("检查更新失败", "error");
+      toast(t("update.checkFailed"), "error");
     } finally {
       setUpdateChecking(false);
     }
@@ -109,7 +111,7 @@ export default function RootLayout() {
       await new Promise((r) => setTimeout(r, 800));
       window.location.reload();
     } catch {
-      toast("更新失败", "error");
+      toast(t("update.updateFailed"), "error");
       setUpdatePhase("idle");
     }
   }
@@ -147,7 +149,8 @@ export default function RootLayout() {
       {/* Nav links */}
       <nav className="flex-1 overflow-y-auto px-3 py-4">
         <ul className="flex flex-col gap-1">
-          {navItems.map(({ to, label, icon: Icon }) => {
+          {navItems.map(({ to, labelKey, icon: Icon }) => {
+            const label = t(`nav.${labelKey}`);
             const active = currentPath.startsWith(to);
             return (
               <li key={to}>
@@ -190,7 +193,15 @@ export default function RootLayout() {
           ) : (
             <MoonIcon className="h-4 w-4 shrink-0" />
           )}
-          {theme === "dark" ? "浅色模式" : "深色模式"}
+          {theme === "dark" ? t("common.lightMode") : t("common.darkMode")}
+        </Button>
+        <Button
+          variant="ghost"
+          className="w-full justify-start gap-3 text-[hsl(var(--muted-foreground))] hover:bg-[hsl(var(--accent))] hover:text-[hsl(var(--accent-foreground))]"
+          onClick={() => i18n.changeLanguage(i18n.language.startsWith("zh") ? "en" : "zh")}
+        >
+          <LanguageIcon className="h-4 w-4 shrink-0" />
+          {i18n.language.startsWith("zh") ? "English" : "中文"}
         </Button>
         <Button
           variant="ghost"
@@ -205,7 +216,7 @@ export default function RootLayout() {
             )}
           </span>
           <span className="flex flex-col items-start">
-            <span>{updatePhase !== "idle" ? "更新中…" : updateChecking ? "检查中…" : updateResult?.has_update ? `更新到 ${updateResult.latest}` : "检查更新"}</span>
+             <span>{updatePhase !== "idle" ? t("nav.updating") : updateChecking ? t("nav.checking") : updateResult?.has_update ? t("nav.updateTo", { version: updateResult.latest }) : t("nav.checkUpdate")}</span>
             {currentVersion && <span className="text-[10px] opacity-50 font-mono">{currentVersion}</span>}
           </span>
         </Button>
@@ -215,7 +226,7 @@ export default function RootLayout() {
           onClick={handleLogout}
         >
           <LogoutIcon className="h-4 w-4 shrink-0" />
-          登出
+          {t("nav.logout")}
         </Button>
       </div>
     </>
@@ -237,14 +248,14 @@ export default function RootLayout() {
               )}
               <div className="text-center">
                 <p className="text-base font-semibold">
-                  {updatePhase === "downloading" && "正在下载并安装新版本"}
-                  {updatePhase === "restarting"  && "服务重启中"}
-                  {updatePhase === "done"        && "更新完成"}
+                  {updatePhase === "downloading" && t("update.downloading")}
+                  {updatePhase === "restarting"  && t("update.restarting")}
+                  {updatePhase === "done"        && t("update.done")}
                 </p>
                 <p className="mt-1 text-sm text-[hsl(var(--muted-foreground))]">
-                  {updatePhase === "downloading" && "请勿关闭此页面，通常需要 30～60 秒"}
-                  {updatePhase === "restarting"  && "新版本即将就绪，请稍候…"}
-                  {updatePhase === "done"        && "正在刷新页面…"}
+                  {updatePhase === "downloading" && t("update.downloadingHint")}
+                  {updatePhase === "restarting"  && t("update.restartingHint")}
+                  {updatePhase === "done"        && t("update.doneHint")}
                 </p>
               </div>
             </div>
@@ -276,7 +287,7 @@ export default function RootLayout() {
             <button
               onClick={() => setSidebarOpen(true)}
               className="rounded-md p-1.5 text-[hsl(var(--muted-foreground))] hover:bg-[hsl(var(--accent))] hover:text-[hsl(var(--accent-foreground))]"
-              aria-label="打开菜单"
+              aria-label={t("nav.openMenu")}
             >
               <HamburgerIcon className="h-5 w-5" />
             </button>
@@ -587,6 +598,28 @@ function MoonIcon(props: React.SVGProps<SVGSVGElement>) {
       {...props}
     >
       <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z" />
+    </svg>
+  );
+}
+
+function LanguageIcon(props: React.SVGProps<SVGSVGElement>) {
+  return (
+    <svg
+      xmlns="http://www.w3.org/2000/svg"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={2}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      {...props}
+    >
+      <path d="M5 8l6 6" />
+      <path d="M4 14l6-6 2-3" />
+      <path d="M2 5h12" />
+      <path d="M7 2h1" />
+      <path d="M22 22l-5-10-5 10" />
+      <path d="M14 18h6" />
     </svg>
   );
 }

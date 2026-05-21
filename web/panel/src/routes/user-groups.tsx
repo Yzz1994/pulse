@@ -1,4 +1,5 @@
 import { useEffect, useState, useCallback } from "react";
+import { useTranslation } from "react-i18next";
 import {
   Button,
   Input,
@@ -112,6 +113,7 @@ function GroupFormDialog({
   onSaved,
   handleAuthError,
 }: GroupFormDialogProps) {
+  const { t } = useTranslation();
   const [name, setName] = useState("");
   const [remark, setRemark] = useState("");
   const [selectedInboundIds, setSelectedInboundIds] = useState<string[]>([]);
@@ -149,7 +151,7 @@ function GroupFormDialog({
   async function handleSubmit() {
     const trimmedName = name.trim();
     if (!trimmedName) {
-      setError("用户组名称不能为空");
+      setError(t("userGroups.nameEmpty"));
       return;
     }
     setSubmitting(true);
@@ -161,20 +163,20 @@ function GroupFormDialog({
           remark: remark.trim(),
           inbound_ids: selectedInboundIds.join(","),
         });
-        toast.success("用户组已更新");
+        toast.success(t("userGroups.updated"));
       } else {
         await api.post("/user-groups", {
           name: trimmedName,
           remark: remark.trim(),
           inbound_ids: selectedInboundIds.join(","),
         });
-        toast.success("用户组已创建");
+        toast.success(t("userGroups.created"));
       }
       onOpenChange(false);
       onSaved();
     } catch (err) {
       if (handleAuthError(err)) return;
-      setError(err instanceof Error ? err.message : "操作失败");
+      setError(err instanceof Error ? err.message : t("common.operationFailed"));
     } finally {
       setSubmitting(false);
     }
@@ -184,9 +186,9 @@ function GroupFormDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-lg">
         <DialogHeader>
-          <DialogTitle>{group ? "编辑用户组" : "新建用户组"}</DialogTitle>
+          <DialogTitle>{group ? t("userGroups.editGroup") : t("userGroups.newGroupTitle")}</DialogTitle>
           <DialogDescription>
-            {group ? `修改用户组「${group.name}」的信息。` : "创建一个新的用户组。"}
+            {group ? t("userGroups.editGroupDesc", { name: group.name }) : t("userGroups.newGroupDesc")}
           </DialogDescription>
         </DialogHeader>
         <div className="grid gap-4 py-4">
@@ -197,29 +199,29 @@ function GroupFormDialog({
           )}
           <div className="grid gap-2">
             <Label htmlFor="group-name">
-              名称 <span className="text-[hsl(var(--destructive))]">*</span>
+              {t("userGroups.nameRequired")}
             </Label>
             <Input
               id="group-name"
               value={name}
               onChange={(e) => setName(e.target.value)}
-              placeholder="输入用户组名称"
+              placeholder={t("userGroups.namePlaceholder")}
               onKeyDown={(e) => e.key === "Enter" && handleSubmit()}
               autoFocus
             />
           </div>
           <div className="grid gap-2">
-            <Label htmlFor="group-remark">备注</Label>
+            <Label htmlFor="group-remark">{t("common.remark")}</Label>
             <Input
               id="group-remark"
               value={remark}
               onChange={(e) => setRemark(e.target.value)}
-              placeholder="可选备注"
+              placeholder={t("userGroups.remarkPlaceholder")}
             />
           </div>
           <div className="grid gap-2">
             <div className="flex items-center justify-between">
-              <Label>关联 Inbound</Label>
+              <Label>{t("userGroups.associateInbound")}</Label>
               {allInbounds.length > 0 && (
                 <div className="flex gap-2 text-xs">
                   <button
@@ -227,7 +229,7 @@ function GroupFormDialog({
                     className="text-[hsl(var(--muted-foreground))] hover:text-[hsl(var(--foreground))]"
                     onClick={() => setSelectedInboundIds(allInbounds.map((ib) => ib.id))}
                   >
-                    全选
+                    {t("userGroups.selectAll")}
                   </button>
                   <span className="text-[hsl(var(--border))]">·</span>
                   <button
@@ -235,20 +237,20 @@ function GroupFormDialog({
                     className="text-[hsl(var(--muted-foreground))] hover:text-[hsl(var(--foreground))]"
                     onClick={() => setSelectedInboundIds([])}
                   >
-                    全不选
+                    {t("userGroups.deselectAll")}
                   </button>
                 </div>
               )}
             </div>
             {allInbounds.length === 0 ? (
-              <p className="text-sm text-[hsl(var(--muted-foreground))]">暂无可用 Inbound</p>
+              <p className="text-sm text-[hsl(var(--muted-foreground))]">{t("userGroups.noInbounds")}</p>
             ) : (
               <MultiSelect
                 value={selectedInboundIds}
                 onChange={setSelectedInboundIds}
                 options={inboundOptions}
-                placeholder="选择 Inbound..."
-                countLabel="已选 {n} 个 Inbound"
+                placeholder={t("userGroups.selectInbound")}
+                countLabel={t("userGroups.selectedInbounds", { n: "{n}" })}
               />
             )}
           </div>
@@ -256,11 +258,11 @@ function GroupFormDialog({
         <DialogFooter>
           <DialogClose asChild>
             <Button type="button" variant="outline" disabled={submitting}>
-              取消
+              {t("common.cancel")}
             </Button>
           </DialogClose>
           <Button type="button" disabled={submitting} onClick={handleSubmit}>
-            {submitting ? "保存中…" : "确认"}
+            {submitting ? t("common.saving") : t("common.confirm")}
           </Button>
         </DialogFooter>
       </DialogContent>
@@ -279,6 +281,7 @@ interface ApplyPlanDialogProps {
 }
 
 function ApplyPlanDialog({ open, onOpenChange, groupId, plans, handleAuthError }: ApplyPlanDialogProps) {
+  const { t } = useTranslation();
   const [selectedPlanId, setSelectedPlanId] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
@@ -292,18 +295,18 @@ function ApplyPlanDialog({ open, onOpenChange, groupId, plans, handleAuthError }
 
   async function handleSubmit() {
     if (!selectedPlanId) {
-      setError("请选择套餐");
+      setError(t("userGroups.selectPlanWarning"));
       return;
     }
     setSubmitting(true);
     setError("");
     try {
       await api.post(`/user-groups/${groupId}/apply-plan`, { plan_id: selectedPlanId });
-      toast.success("套餐已应用到用户组");
+      toast.success(t("userGroups.planApplied"));
       onOpenChange(false);
     } catch (err) {
       if (handleAuthError(err)) return;
-      setError(err instanceof Error ? err.message : "操作失败");
+      setError(err instanceof Error ? err.message : t("userGroups.planApplyFailed"));
     } finally {
       setSubmitting(false);
     }
@@ -313,8 +316,8 @@ function ApplyPlanDialog({ open, onOpenChange, groupId, plans, handleAuthError }
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-sm">
         <DialogHeader>
-          <DialogTitle>应用套餐</DialogTitle>
-          <DialogDescription>为用户组内所有成员应用所选套餐。</DialogDescription>
+          <DialogTitle>{t("userGroups.applyPlan")}</DialogTitle>
+          <DialogDescription>{t("userGroups.applyPlanDesc")}</DialogDescription>
         </DialogHeader>
         <div className="grid gap-4 py-4">
           {error && (
@@ -323,10 +326,10 @@ function ApplyPlanDialog({ open, onOpenChange, groupId, plans, handleAuthError }
             </div>
           )}
           <div className="grid gap-2">
-            <Label>套餐</Label>
+            <Label>{t("plans.title")}</Label>
             <Select value={selectedPlanId} onValueChange={setSelectedPlanId}>
               <SelectTrigger className="w-full">
-                <SelectValue placeholder="选择套餐..." />
+                <SelectValue placeholder={t("userGroups.selectPlan")} />
               </SelectTrigger>
               <SelectContent>
                 {plans.map((p) => (
@@ -341,11 +344,11 @@ function ApplyPlanDialog({ open, onOpenChange, groupId, plans, handleAuthError }
         <DialogFooter>
           <DialogClose asChild>
             <Button type="button" variant="outline" disabled={submitting}>
-              取消
+              {t("common.cancel")}
             </Button>
           </DialogClose>
           <Button type="button" disabled={submitting} onClick={handleSubmit}>
-            {submitting ? "应用中…" : "确认应用"}
+            {submitting ? t("userGroups.applying") : t("userGroups.confirmApply")}
           </Button>
         </DialogFooter>
       </DialogContent>
@@ -365,6 +368,7 @@ interface AddMemberDialogProps {
 }
 
 function AddMemberDialog({ open, onOpenChange, groupId, existingMemberIds, onAdded, handleAuthError }: AddMemberDialogProps) {
+  const { t } = useTranslation();
   const [users, setUsers] = useState<User[]>([]);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [loading, setLoading] = useState(false);
@@ -376,7 +380,7 @@ function AddMemberDialog({ open, onOpenChange, groupId, existingMemberIds, onAdd
     setLoading(true);
     api.get<UsersResponse>("/users")
       .then((r) => setUsers(r.users ?? []))
-      .catch((err) => { if (!handleAuthError(err)) toast.error("加载用户列表失败"); })
+      .catch((err) => { if (!handleAuthError(err)) toast.error(t("userGroups.loadUsersFailed")); })
       .finally(() => setLoading(false));
   }, [open, handleAuthError]);
 
@@ -391,11 +395,11 @@ function AddMemberDialog({ open, onOpenChange, groupId, existingMemberIds, onAdd
       await Promise.all(
         selectedIds.map((uid) => api.post(`/user-groups/${groupId}/members`, { user_id: uid }))
       );
-      toast.success(`已添加 ${selectedIds.length} 名成员`);
+      toast.success(t("userGroups.addedMembers", { count: selectedIds.length }));
       onOpenChange(false);
       onAdded();
     } catch (err) {
-      if (!handleAuthError(err)) toast.error(err instanceof Error ? err.message : "添加失败");
+      if (!handleAuthError(err)) toast.error(err instanceof Error ? err.message : t("userGroups.addFailed"));
     } finally {
       setSubmitting(false);
     }
@@ -405,28 +409,28 @@ function AddMemberDialog({ open, onOpenChange, groupId, existingMemberIds, onAdd
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-sm">
         <DialogHeader>
-          <DialogTitle>添加成员</DialogTitle>
-          <DialogDescription>选择要加入该用户组的用户。</DialogDescription>
+          <DialogTitle>{t("userGroups.addMember")}</DialogTitle>
+          <DialogDescription>{t("userGroups.addMemberDesc")}</DialogDescription>
         </DialogHeader>
         <div className="py-2">
           {loading ? (
-            <div className="py-4 text-center text-xs text-[hsl(var(--muted-foreground))]">加载中…</div>
+            <div className="py-4 text-center text-xs text-[hsl(var(--muted-foreground))]">{t("common.loading")}</div>
           ) : (
             <MultiSelect
               value={selectedIds}
               onChange={setSelectedIds}
               options={options}
-              placeholder={options.length === 0 ? "所有用户已在组内" : "搜索并选择用户…"}
-              countLabel="已选 {n} 名用户"
+              placeholder={options.length === 0 ? t("userGroups.allUsersInGroup") : t("userGroups.searchSelectUsers")}
+              countLabel={t("userGroups.selectedUsers", { n: "{n}" })}
             />
           )}
         </div>
         <DialogFooter>
           <DialogClose asChild>
-            <Button type="button" variant="outline" disabled={submitting}>取消</Button>
+            <Button type="button" variant="outline" disabled={submitting}>{t("common.cancel")}</Button>
           </DialogClose>
           <Button type="button" disabled={!selectedIds.length || submitting || loading} onClick={handleSubmit}>
-            {submitting ? "添加中…" : `添加${selectedIds.length > 0 ? `（${selectedIds.length}）` : ""}`}
+            {submitting ? t("userGroups.adding") : t("userGroups.addCount", { count: selectedIds.length })}
           </Button>
         </DialogFooter>
       </DialogContent>
@@ -445,6 +449,7 @@ interface MemberSheetProps {
 }
 
 function MemberSheet({ group, open, onOpenChange, allPlans, handleAuthError }: MemberSheetProps) {
+  const { t } = useTranslation();
   const [members, setMembers] = useState<UserGroupMember[]>([]);
   const [membersLoading, setMembersLoading] = useState(false);
   const [addMemberOpen, setAddMemberOpen] = useState(false);
@@ -462,7 +467,7 @@ function MemberSheet({ group, open, onOpenChange, allPlans, handleAuthError }: M
       .then((res) => setMembers(res.members ?? []))
       .catch((err) => {
         if (handleAuthError(err)) return;
-        toast.error(err instanceof Error ? err.message : "加载成员失败");
+        toast.error(err instanceof Error ? err.message : t("userGroups.loadMembersFailed"));
       })
       .finally(() => setMembersLoading(false));
   }, [group, handleAuthError]);
@@ -480,13 +485,13 @@ function MemberSheet({ group, open, onOpenChange, allPlans, handleAuthError }: M
     if (!deletingMember || !group) return;
     try {
       await api.del(`/user-groups/${group.id}/members/${deletingMember.user_id}`);
-      toast.success("成员已移除");
+      toast.success(t("userGroups.memberRemoved"));
       setDeleteMemberConfirm(false);
       setDeletingMember(null);
       fetchMembers();
     } catch (err) {
       if (handleAuthError(err)) return;
-      toast.error(err instanceof Error ? err.message : "移除失败");
+      toast.error(err instanceof Error ? err.message : t("userGroups.removeFailed"));
     }
   }
 
@@ -506,7 +511,7 @@ function MemberSheet({ group, open, onOpenChange, allPlans, handleAuthError }: M
                   className="h-7 text-xs"
                   onClick={() => setApplyPlanOpen(true)}
                 >
-                  应用套餐
+                  {t("userGroups.applyPlan")}
                 </Button>
                 <Button
                   size="sm"
@@ -514,12 +519,12 @@ function MemberSheet({ group, open, onOpenChange, allPlans, handleAuthError }: M
                   onClick={() => setAddMemberOpen(true)}
                 >
                   <IconPlus className="mr-1 h-3 w-3" />
-                  添加成员
+                  {t("userGroups.addMember")}
                 </Button>
               </div>
             </div>
             <SheetDescription>
-              {group.remark ? group.remark : "管理该用户组的成员"}
+              {group.remark ? group.remark : t("userGroups.manageDesc")}
             </SheetDescription>
           </SheetHeader>
 
@@ -536,7 +541,7 @@ function MemberSheet({ group, open, onOpenChange, allPlans, handleAuthError }: M
               </div>
             ) : members.length === 0 ? (
               <div className="flex h-32 items-center justify-center text-sm text-[hsl(var(--muted-foreground))]">
-                暂无成员，点击「添加成员」加入
+                {t("userGroups.noMembers")}
               </div>
             ) : (
               <div className="space-y-1">
@@ -585,9 +590,9 @@ function MemberSheet({ group, open, onOpenChange, allPlans, handleAuthError }: M
       <ConfirmDialog
         open={deleteMemberConfirm}
         onOpenChange={setDeleteMemberConfirm}
-        title="移除成员"
-        description={`确定要将用户「${deletingMember?.username}」从该用户组中移除吗？`}
-        confirmLabel="移除"
+        title={t("userGroups.removeMember")}
+        description={t("userGroups.confirmRemoveMember", { username: deletingMember?.username })}
+        confirmLabel={t("common.delete")}
         onConfirm={handleRemoveMember}
       />
     </>
@@ -597,6 +602,7 @@ function MemberSheet({ group, open, onOpenChange, allPlans, handleAuthError }: M
 // ── 主页面 ────────────────────────────────────────────────────────
 
 export default function UserGroupsPage() {
+  const { t } = useTranslation();
   const [groups, setGroups] = useState<UserGroup[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -633,10 +639,10 @@ export default function UserGroupsPage() {
       .then((res) => setGroups(res.user_groups ?? []))
       .catch((err) => {
         if (handleAuthError(err)) return;
-        setError(err instanceof Error ? err.message : "加载失败");
+        setError(err instanceof Error ? err.message : t("common.loadFailed"));
       })
       .finally(() => setLoading(false));
-  }, [handleAuthError]);
+  }, [handleAuthError, t]);
 
   // 加载所有外部数据
   useEffect(() => {
@@ -688,13 +694,13 @@ export default function UserGroupsPage() {
     setDeleting(true);
     try {
       await api.del(`/user-groups/${deletingGroup.id}`);
-      toast.success(`用户组「${deletingGroup.name}」已删除`);
+      toast.success(t("userGroups.groupDeleted", { name: deletingGroup.name }));
       setDeleteOpen(false);
       setDeletingGroup(null);
       fetchGroups();
     } catch (err) {
       if (handleAuthError(err)) return;
-      toast.error(err instanceof Error ? err.message : "删除失败");
+      toast.error(err instanceof Error ? err.message : t("userGroups.deleteFailed"));
     } finally {
       setDeleting(false);
     }
@@ -706,10 +712,10 @@ export default function UserGroupsPage() {
     try {
       const res = await api.post<{ affected_nodes: string[] }>(`/user-groups/${group.id}/sync`, {});
       const count = (res.affected_nodes ?? []).length;
-      toast.success(`同步完成，影响 ${count} 个节点`);
+      toast.success(t("userGroups.syncDone", { count }));
     } catch (err) {
       if (handleAuthError(err)) return;
-      toast.error(err instanceof Error ? err.message : "同步失败");
+      toast.error(err instanceof Error ? err.message : t("userGroups.syncFailed"));
     } finally {
       setSyncingIds((prev) => {
         const next = new Set(prev);
@@ -723,10 +729,10 @@ export default function UserGroupsPage() {
     <div className="flex h-full flex-col p-4 sm:p-6 lg:p-8">
       {/* 页面标题 */}
       <div className="mb-6 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-        <h1 className="text-2xl font-bold text-[hsl(var(--foreground))]">User Groups</h1>
+        <h1 className="text-2xl font-bold text-[hsl(var(--foreground))]">{t("userGroups.title")}</h1>
         <Button onClick={openCreateDialog}>
           <IconPlus className="mr-1.5 h-4 w-4" />
-          + New Group
+          {t("userGroups.newGroup")}
         </Button>
       </div>
 
@@ -735,7 +741,7 @@ export default function UserGroupsPage() {
         <div className="mb-4 rounded-lg border border-[hsl(var(--destructive))] bg-[hsl(var(--destructive))]/10 px-4 py-3 text-sm text-[hsl(var(--destructive))]">
           {error}
           <Button variant="ghost" size="sm" className="ml-2" onClick={fetchGroups}>
-            重试
+            {t("common.retry")}
           </Button>
         </div>
       )}
@@ -745,11 +751,11 @@ export default function UserGroupsPage() {
         <Table>
           <TableHeader>
             <TableRow>
-              <TableHead>名称</TableHead>
-              <TableHead>备注</TableHead>
-              <TableHead className="text-center">成员数</TableHead>
-              <TableHead className="text-center">Inbound 数</TableHead>
-              <TableHead className="text-right">操作</TableHead>
+              <TableHead>{t("common.name")}</TableHead>
+              <TableHead>{t("common.remark")}</TableHead>
+              <TableHead className="text-center">{t("userGroups.members")}</TableHead>
+              <TableHead className="text-center">{t("userGroups.inboundCount")}</TableHead>
+              <TableHead className="text-right">{t("userGroups.operations")}</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -766,7 +772,7 @@ export default function UserGroupsPage() {
             ) : groups.length === 0 ? (
               <TableRow>
                 <TableCell colSpan={5} className="h-32 text-center text-[hsl(var(--muted-foreground))]">
-                  暂无用户组，点击「+ New Group」创建
+                  {t("userGroups.noGroupsYet")}
                 </TableCell>
               </TableRow>
             ) : (
@@ -798,7 +804,7 @@ export default function UserGroupsPage() {
                           variant="ghost"
                           size="sm"
                           className="h-7 w-7 p-0"
-                          title="同步"
+                          title={t("common.sync")}
                           disabled={isSyncing}
                           onClick={(e) => handleSync(group, e)}
                         >
@@ -808,7 +814,7 @@ export default function UserGroupsPage() {
                           variant="ghost"
                           size="sm"
                           className="h-7 w-7 p-0"
-                          title="编辑"
+                          title={t("common.edit")}
                           onClick={(e) => { e.stopPropagation(); openEditDialog(group); }}
                         >
                           <IconEdit className="h-3.5 w-3.5" />
@@ -817,7 +823,7 @@ export default function UserGroupsPage() {
                           variant="ghost"
                           size="sm"
                           className="h-7 w-7 p-0 text-[hsl(var(--muted-foreground))] hover:text-[hsl(var(--destructive))]"
-                          title="删除"
+                          title={t("common.delete")}
                           onClick={(e) => { e.stopPropagation(); openDeleteDialog(group); }}
                         >
                           <IconTrash className="h-3.5 w-3.5" />
@@ -860,9 +866,9 @@ export default function UserGroupsPage() {
           setDeleteOpen(v);
           if (!v) setDeletingGroup(null);
         }}
-        title="删除用户组"
-        description={`确定要删除用户组「${deletingGroup?.name}」吗？此操作不可撤销。`}
-        confirmLabel="删除"
+        title={t("userGroups.deleteGroup")}
+        description={t("userGroups.confirmDeleteGroup", { name: deletingGroup?.name })}
+        confirmLabel={t("common.delete")}
         onConfirm={handleDelete}
       />
     </div>

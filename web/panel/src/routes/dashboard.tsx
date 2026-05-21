@@ -1,4 +1,5 @@
 import { useEffect, useState, useCallback, useMemo } from "react";
+import { useTranslation } from "react-i18next";
 import {
   AreaChart,
   Area,
@@ -96,6 +97,7 @@ type NodeStatusValue = "online" | "offline" | "loading";
 
 // ── Main page ────────────────────────────────────────────────────
 export default function DashboardPage() {
+  const { t } = useTranslation();
   const handleAuthError = useAuthErrorHandler();
   const [data, setData] = useState<Summary | null>(null);
   const [days, setDays] = useState(7);
@@ -112,7 +114,7 @@ export default function DashboardPage() {
       .then(setData)
       .catch((err) => {
         if (handleAuthError(err)) return;
-        setError(err instanceof Error ? err.message : "加载失败");
+        setError(err instanceof Error ? err.message : t("common.loadFailed"));
       })
       .finally(() => setLoading(false));
   }, [handleAuthError]);
@@ -171,10 +173,10 @@ export default function DashboardPage() {
                 <line x1="12" y1="16" x2="12.01" y2="16" />
               </svg>
             </div>
-            <p className="mb-1 font-semibold text-[hsl(var(--foreground))]">加载失败</p>
+            <p className="mb-1 font-semibold text-[hsl(var(--foreground))]">{t("dashboard.loadFailed")}</p>
             <p className="mb-4 text-sm text-[hsl(var(--muted-foreground))]">{error}</p>
             <Button onClick={() => fetchData(days)} size="sm">
-              重试
+              {t("common.retry")}
             </Button>
           </CardContent>
         </Card>
@@ -209,7 +211,7 @@ export default function DashboardPage() {
       {/* Header + time range */}
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <h1 className="text-2xl font-bold text-[hsl(var(--foreground))]">
-          仪表盘
+          {t("dashboard.title")}
         </h1>
 
         <div className="flex flex-wrap items-center gap-1 rounded-lg bg-[hsl(var(--muted))] p-1">
@@ -225,7 +227,7 @@ export default function DashboardPage() {
                   : "text-[hsl(var(--muted-foreground))] hover:text-[hsl(var(--foreground))]"
               }
             >
-              {opt}天
+              {opt}{t("dashboard.daysUnit")}
             </Button>
           ))}
         </div>
@@ -234,10 +236,10 @@ export default function DashboardPage() {
       {/* Error banner (non-blocking, when we have stale data) */}
       {error && data && (
         <div className="flex items-center gap-2 rounded-lg border border-red-500/30 bg-red-500/10 px-4 py-2 text-sm text-red-400">
-          <span>刷新失败: {error}</span>
-          <Button variant="ghost" size="sm" onClick={() => fetchData(days)} className="ml-auto h-7 text-xs">
-            重试
-          </Button>
+          <span>{`${t("dashboard.refreshing")}: ${error}`}</span>
+            <Button variant="ghost" size="sm" onClick={() => fetchData(days)} className="ml-auto h-7 text-xs">
+              {t("common.retry")}
+            </Button>
         </div>
       )}
 
@@ -248,12 +250,12 @@ export default function DashboardPage() {
           <Card className="p-3">
             <div className="flex items-center justify-between gap-2 mb-1">
               <span className="flex items-center gap-1.5 text-xs text-[hsl(var(--muted-foreground))]">
-                <UsersIcon className="h-3.5 w-3.5" />总用户
+                <UsersIcon className="h-3.5 w-3.5" />{t("dashboard.totalUsers")}
               </span>
               <span className="text-xl font-bold">{data.users_count.toLocaleString()}</span>
             </div>
             <p className="text-xs text-[hsl(var(--muted-foreground))]">
-              活跃 {data.active_users_count} · 禁用 {data.disabled_users_count} · 过期 {data.expired_users_count} · 超限 {data.limited_users_count}
+              {t("dashboard.active")} {data.active_users_count} · {t("dashboard.disabledUsers")} {data.disabled_users_count} · {t("dashboard.expired")} {data.expired_users_count} · {t("dashboard.limited")} {data.limited_users_count}
             </p>
           </Card>
 
@@ -261,7 +263,7 @@ export default function DashboardPage() {
           <Card className="p-3">
             <div className="flex items-center justify-between gap-2 mb-1">
               <span className="flex items-center gap-1.5 text-xs text-[hsl(var(--muted-foreground))]">
-                <OnlineIcon className="h-3.5 w-3.5" />在线用户
+                <OnlineIcon className="h-3.5 w-3.5" />{t("dashboard.onlineUsers")}
               </span>
               <span className="text-xl font-bold">{data.online_users_count.toLocaleString()}</span>
             </div>
@@ -273,10 +275,10 @@ export default function DashboardPage() {
               <button
                 className="flex items-center gap-1.5 text-xs text-[hsl(var(--muted-foreground))] hover:text-[hsl(var(--foreground))] transition-colors cursor-pointer select-none"
                 onClick={() => setTrafficMode(m => m === "actual" ? "billed" : "actual")}
-                title="点击切换实际带宽 / 计费流量"
+                title={t("dashboard.switchTraffic")}
               >
                 <TrafficIcon className="h-3.5 w-3.5" />
-                {trafficMode === "actual" ? "实际带宽" : "计费流量"}
+                {trafficMode === "actual" ? t("dashboard.actualBandwidth") : t("dashboard.billedTraffic")}
                 <span className="opacity-50">⇄</span>
               </button>
               <span className="text-xl font-bold">
@@ -304,11 +306,11 @@ export default function DashboardPage() {
           <Card className="p-3">
             <div className="flex items-center justify-between gap-2 mb-1">
               <span className="flex items-center gap-1.5 text-xs text-[hsl(var(--muted-foreground))]">
-                <ServerIcon className="h-3.5 w-3.5" />节点
+                <ServerIcon className="h-3.5 w-3.5" />{t("dashboard.nodes")}
               </span>
               <span className="text-xl font-bold">{data.nodes_count}</span>
             </div>
-            <p className="text-xs text-[hsl(var(--muted-foreground))]">在线节点</p>
+            <p className="text-xs text-[hsl(var(--muted-foreground))]">{t("dashboard.onlineNodes")}</p>
           </Card>
 
           {/* Today traffic */}
@@ -319,7 +321,7 @@ export default function DashboardPage() {
               <Card className="p-3">
                 <div className="flex items-center justify-between gap-2 mb-1">
                   <span className="flex items-center gap-1.5 text-xs text-[hsl(var(--muted-foreground))]">
-                    <TrafficIcon className="h-3.5 w-3.5" />今日流量
+                    <TrafficIcon className="h-3.5 w-3.5" />{t("dashboard.todayTraffic")}
                   </span>
                   <span className="text-xl font-bold">{formatBytes(todayUp + todayDown)}</span>
                 </div>
@@ -336,11 +338,11 @@ export default function DashboardPage() {
           <Card className="p-3">
             <div className="flex items-center justify-between gap-2 mb-1">
               <span className="flex items-center gap-1.5 text-xs text-[hsl(var(--muted-foreground))]">
-                <TicketIcon className="h-3.5 w-3.5" />待处理工单
+                <TicketIcon className="h-3.5 w-3.5" />{t("dashboard.pendingTickets")}
               </span>
               <span className="text-xl font-bold">{(data.open_tickets_count ?? 0).toLocaleString()}</span>
             </div>
-            <p className="text-xs text-[hsl(var(--muted-foreground))]">未回复工单数</p>
+            <p className="text-xs text-[hsl(var(--muted-foreground))]">{t("dashboard.unrepliedTickets")}</p>
           </Card>
         </div>
       )}
@@ -352,21 +354,21 @@ export default function DashboardPage() {
             <div className="flex items-center gap-2 rounded-lg border border-yellow-500/20 bg-yellow-500/5 px-3 py-2">
               <ClockIcon className="h-4 w-4 text-yellow-500" />
               <span className="text-sm font-semibold text-yellow-600">{data.expiring_users_count}</span>
-              <span className="text-sm text-[hsl(var(--muted-foreground))]">即将过期</span>
+              <span className="text-sm text-[hsl(var(--muted-foreground))]">{t("dashboard.expiringUsers")}</span>
             </div>
           )}
           {data.expired_users_count > 0 && (
             <div className="flex items-center gap-2 rounded-lg border border-red-500/20 bg-red-500/5 px-3 py-2">
               <AlertIcon className="h-4 w-4 text-red-500" />
               <span className="text-sm font-semibold text-red-600">{data.expired_users_count}</span>
-              <span className="text-sm text-[hsl(var(--muted-foreground))]">已过期</span>
+              <span className="text-sm text-[hsl(var(--muted-foreground))]">{t("dashboard.expiredUsers")}</span>
             </div>
           )}
           {data.limited_users_count > 0 && (
             <div className="flex items-center gap-2 rounded-lg border border-orange-500/20 bg-orange-500/5 px-3 py-2">
               <BarChartIcon className="h-4 w-4 text-orange-500" />
               <span className="text-sm font-semibold text-orange-600">{data.limited_users_count}</span>
-              <span className="text-sm text-[hsl(var(--muted-foreground))]">流量超限</span>
+              <span className="text-sm text-[hsl(var(--muted-foreground))]">{t("dashboard.trafficLimited")}</span>
             </div>
           )}
         </div>
@@ -376,7 +378,7 @@ export default function DashboardPage() {
       {data?.node_stats && data.node_stats.length > 0 && (
         <Card>
           <CardContent className="pt-6">
-            <p className="text-sm font-medium text-[hsl(var(--muted-foreground))] mb-3">节点状态</p>
+            <p className="text-sm font-medium text-[hsl(var(--muted-foreground))] mb-3">{t("dashboard.nodeStatus")}</p>
             <div className="flex flex-wrap gap-3">
               {data.node_stats.map((node) => {
                 const status = nodeStatuses.get(node.id);
@@ -408,7 +410,7 @@ export default function DashboardPage() {
         <Card>
           <CardHeader>
             <CardTitle className="text-sm font-medium text-[hsl(var(--muted-foreground))]">
-              每日流量
+              {t("dashboard.dailyTraffic")}
             </CardTitle>
           </CardHeader>
           <CardContent>
@@ -450,7 +452,7 @@ export default function DashboardPage() {
                   <Area
                     type="monotone"
                     dataKey="UploadBytes"
-                    name="上传"
+                    name={t("common.upload")}
                     stroke={BLUE}
                     strokeWidth={2}
                     fill="url(#gradUpload)"
@@ -459,7 +461,7 @@ export default function DashboardPage() {
                   <Area
                     type="monotone"
                     dataKey="DownloadBytes"
-                    name="下载"
+                    name={t("common.download")}
                     stroke={CYAN}
                     strokeWidth={2}
                     fill="url(#gradDownload)"
@@ -479,7 +481,7 @@ export default function DashboardPage() {
           <Card>
             <CardHeader>
               <CardTitle className="text-sm font-medium text-[hsl(var(--muted-foreground))]">
-                节点流量分布
+                {t("dashboard.nodeTrafficDistribution")}
               </CardTitle>
             </CardHeader>
             <CardContent>
@@ -514,14 +516,14 @@ export default function DashboardPage() {
                     />
                     <Bar
                       dataKey="period_upload_bytes"
-                      name="上传"
+                      name={t("common.upload")}
                       fill={PURPLE}
                       radius={[4, 4, 0, 0]}
                       stackId="node"
                     />
                     <Bar
                       dataKey="period_download_bytes"
-                      name="下载"
+                      name={t("common.download")}
                       fill={AMBER}
                       radius={[4, 4, 0, 0]}
                       stackId="node"
@@ -538,7 +540,7 @@ export default function DashboardPage() {
           <Card>
             <CardHeader>
               <CardTitle className="text-sm font-medium text-[hsl(var(--muted-foreground))]">
-                流量排行
+                {t("dashboard.trafficRanking")}
               </CardTitle>
             </CardHeader>
             <CardContent>
@@ -568,7 +570,7 @@ export default function DashboardPage() {
                     <RechartsTooltip content={<BytesTooltip />} cursor={{ fill: "hsl(var(--muted) / 0.3)" }} />
                     <Bar
                       dataKey="UsedBytes"
-                      name="已用流量"
+                      name={t("dashboard.usedTraffic")}
                       fill={CYAN}
                       radius={[0, 4, 4, 0]}
                       barSize={16}
@@ -584,14 +586,14 @@ export default function DashboardPage() {
       {/* ── Today's traffic breakdown ─────────────────────────── */}
       <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
         <TodayTrafficCard
-          title="今日节点流量"
+          title={t("dashboard.todayNodeTraffic")}
           items={(data?.today_node_stats ?? [])
             .filter((n) => n.total_bytes > 0)
             .sort((a, b) => b.total_bytes - a.total_bytes)
             .map((n) => ({ key: n.id, label: n.name, total: n.total_bytes, drilldown: { type: "node" as const, id: n.id, name: n.name } }))}
         />
         <TodayTrafficCard
-          title="今日用户流量"
+          title={t("dashboard.todayUserTraffic")}
           items={(data?.today_user_stats ?? [])
             .filter((u) => u.total_bytes > 0)
             .map((u) => ({ key: u.username, label: u.username, total: u.total_bytes, drilldown: { type: "user" as const, username: u.username } }))}
@@ -601,7 +603,7 @@ export default function DashboardPage() {
       {/* ── Quick access ─────────────────────────────────────── */}
       <Card>
         <CardHeader className="pb-3">
-          <p className="text-sm font-medium text-[hsl(var(--muted-foreground))]">快捷入口</p>
+          <p className="text-sm font-medium text-[hsl(var(--muted-foreground))]">{t("dashboard.quickAccess")}</p>
         </CardHeader>
         <CardContent>
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
@@ -614,7 +616,7 @@ export default function DashboardPage() {
               <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" className="h-4 w-4 shrink-0 text-[hsl(var(--muted-foreground))]">
                 <path d="M22 12h-4l-3 9L9 3l-3 9H2" />
               </svg>
-              <span>状态页</span>
+              <span>{t("dashboard.statusPage")}</span>
               <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" className="ml-auto h-3 w-3 shrink-0 text-[hsl(var(--muted-foreground))]">
                 <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" />
                 <polyline points="15 3 21 3 21 9" />
@@ -631,7 +633,7 @@ export default function DashboardPage() {
                 <circle cx="9" cy="21" r="1" /><circle cx="20" cy="21" r="1" />
                 <path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6" />
               </svg>
-              <span>商店</span>
+              <span>{t("dashboard.shop")}</span>
               <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" className="ml-auto h-3 w-3 shrink-0 text-[hsl(var(--muted-foreground))]">
                 <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" />
                 <polyline points="15 3 21 3 21 9" />
@@ -647,7 +649,7 @@ export default function DashboardPage() {
         <div className="pointer-events-none fixed inset-0 z-50 flex items-start justify-center pt-20">
           <div className="pointer-events-auto flex items-center gap-2 rounded-full bg-[hsl(var(--card))] px-4 py-2 text-sm shadow-lg border border-[hsl(var(--border))]">
             <SpinnerIcon className="h-4 w-4 animate-spin text-[hsl(var(--muted-foreground))]" />
-            <span className="text-[hsl(var(--muted-foreground))]">加载中…</span>
+            <span className="text-[hsl(var(--muted-foreground))]">{t("common.loading")}</span>
           </div>
         </div>
       )}
@@ -759,6 +761,7 @@ function DrilldownDialog({
   drilldown: DrilldownState;
   onClose: () => void;
 }) {
+  const { t } = useTranslation();
   const [loading, setLoading] = useState(false);
   const [nodeUsers, setNodeUsers] = useState<TodayUserStat[] | null>(null);
   const [userNodes, setUserNodes] = useState<TodayNodeStat[] | null>(null);
@@ -784,9 +787,9 @@ function DrilldownDialog({
 
   const title =
     drilldown?.type === "node"
-      ? `${drilldown.name} · 今日用户分布`
+      ? `${drilldown.name} · ${t("dashboard.todayUserTraffic")}`
       : drilldown?.type === "user"
-        ? `${drilldown.username} · 今日节点分布`
+        ? `${drilldown.username} · ${t("dashboard.todayNodeTraffic")}`
         : "";
 
   const items: { key: string; label: string; total: number }[] =
@@ -810,7 +813,7 @@ function DrilldownDialog({
             <SpinnerIcon className="h-5 w-5 animate-spin text-[hsl(var(--muted-foreground))]" />
           </div>
         ) : items.length === 0 ? (
-          <p className="py-6 text-center text-sm text-[hsl(var(--muted-foreground))]">暂无数据</p>
+          <p className="py-6 text-center text-sm text-[hsl(var(--muted-foreground))]">{t("dashboard.noData")}</p>
         ) : (
           <ScrollArea className="max-h-[60vh] pr-3">
             <div className="space-y-3 py-2">

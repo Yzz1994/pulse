@@ -1,4 +1,5 @@
 import { useEffect, useState, useCallback, type FormEvent } from "react";
+import { useTranslation } from "react-i18next";
 import {
   Card,
   CardContent,
@@ -118,9 +119,9 @@ function AlertCircleIcon(props: React.SVGProps<SVGSVGElement>) {
 
 // ── Constants ────────────────────────────────────────────────────
 
-const PLAN_TYPE_LABELS: Record<PlanType, string> = {
-  subscription: "订阅",
-  one_time: "一次性",
+const PLAN_TYPE_KEYS: Record<PlanType, string> = {
+  subscription: "plans.subscription",
+  one_time: "plans.oneTime",
 };
 
 const PLAN_TYPE_BADGE_VARIANT: Record<PlanType, "default" | "secondary"> = {
@@ -128,12 +129,12 @@ const PLAN_TYPE_BADGE_VARIANT: Record<PlanType, "default" | "secondary"> = {
   one_time: "secondary",
 };
 
-const RESET_STRATEGY_LABELS: Record<ResetStrategy, string> = {
-  no_reset: "不重置",
-  day: "每天",
-  week: "每周",
-  month: "每月",
-  year: "每年",
+const RESET_STRATEGY_KEYS: Record<ResetStrategy, string> = {
+  no_reset: "plans.noReset",
+  day: "plans.daily",
+  week: "plans.weekly",
+  month: "plans.monthly",
+  year: "plans.yearly",
 };
 
 const RESET_STRATEGIES: ResetStrategy[] = [
@@ -181,7 +182,7 @@ interface Order {
   last_invoice_id: string;
 }
 
-const ORDER_STATUS_LABEL: Record<string, string> = { paid: "已付款", pending: "待付款", failed: "失败", refunded: "已退款" };
+const ORDER_STATUS_KEYS: Record<string, string> = { paid: "plans.paid", pending: "plans.pending", failed: "plans.failed", refunded: "plans.refunded" };
 
 function orderStatusVariant(status: string): "default" | "secondary" | "destructive" | "outline" {
   switch (status) {
@@ -204,7 +205,7 @@ function formatOrderDate(iso?: string): string {
 // ── Helpers ──────────────────────────────────────────────────────
 
 function formatTraffic(bytes: number): string {
-  if (bytes <= 0) return "无限制";
+  if (bytes <= 0) return "";
   const gb = bytes / (1024 * 1024 * 1024);
   if (gb >= 1024) {
     return `${(gb / 1024).toFixed(2)} TB`;
@@ -280,6 +281,7 @@ function SkeletonRow() {
 // ── Main page ────────────────────────────────────────────────────
 
 export default function PlansPage() {
+  const { t } = useTranslation();
   const handleAuthError = useAuthErrorHandler();
 
   const [plans, setPlans] = useState<Plan[]>([]);
@@ -325,7 +327,7 @@ export default function PlansPage() {
       const res = await api.get<{ orders: Order[] }>("/orders");
       setOrders(res.orders ?? []);
     } catch (err) {
-      if (!handleAuthError(err)) { toast(err instanceof Error ? err.message : "加载账单失败", "error"); }
+      if (!handleAuthError(err)) { toast(err instanceof Error ? err.message : t("plans.loadBillsFailed"), "error"); }
     } finally {
       setOrdersLoading(false);
     }
@@ -352,7 +354,7 @@ export default function PlansPage() {
       })
       .catch((err) => {
         if (handleAuthError(err)) return;
-        setError(err instanceof Error ? err.message : "加载失败");
+        setError(err instanceof Error ? err.message : t("common.loadFailed"));
       })
       .finally(() => setLoading(false));
   }, [handleAuthError]);
@@ -395,7 +397,7 @@ export default function PlansPage() {
       fetchData();
     } catch (err) {
       if (handleAuthError(err)) return;
-      setFormError(err instanceof Error ? err.message : "创建失败");
+      setFormError(err instanceof Error ? err.message : t("common.createFailed"));
     } finally {
       setSubmitting(false);
     }
@@ -438,7 +440,7 @@ export default function PlansPage() {
       fetchData();
     } catch (err) {
       if (handleAuthError(err)) return;
-      setFormError(err instanceof Error ? err.message : "更新失败");
+      setFormError(err instanceof Error ? err.message : t("common.updateFailed"));
     } finally {
       setSubmitting(false);
     }
@@ -463,7 +465,7 @@ export default function PlansPage() {
       fetchData();
     } catch (err) {
       if (handleAuthError(err)) return;
-      setFormError(err instanceof Error ? err.message : "删除失败");
+      setFormError(err instanceof Error ? err.message : t("common.deleteFailed"));
     } finally {
       setSubmitting(false);
     }
@@ -480,13 +482,13 @@ export default function PlansPage() {
               <AlertCircleIcon className="h-6 w-6" />
             </div>
             <p className="mb-1 font-semibold text-[hsl(var(--foreground))]">
-              加载失败
+              {t("common.loadFailed")}
             </p>
             <p className="mb-4 text-sm text-[hsl(var(--muted-foreground))]">
               {error}
             </p>
             <Button variant="outline" onClick={fetchData}>
-              重试
+              {t("common.retry")}
             </Button>
           </CardContent>
         </Card>
@@ -506,23 +508,23 @@ export default function PlansPage() {
         )}
 
         <div className="space-y-2">
-          <Label htmlFor="plan-name">名称 *</Label>
+          <Label htmlFor="plan-name">{t("plans.nameRequired")}</Label>
           <Input
             id="plan-name"
             required
             value={form.name}
             onChange={(e) => patchForm({ name: e.target.value })}
-            placeholder="套餐名称"
+            placeholder={t("plans.namePlaceholder")}
           />
         </div>
 
         <div className="space-y-2">
-          <Label htmlFor="plan-desc">描述</Label>
+          <Label htmlFor="plan-desc">{t("plans.descLabel")}</Label>
           <Textarea
             id="plan-desc"
             value={form.description}
             onChange={(e) => patchForm({ description: e.target.value })}
-            placeholder="套餐描述"
+            placeholder={t("plans.descPlaceholder")}
             rows={3}
           />
         </div>
@@ -550,16 +552,16 @@ export default function PlansPage() {
               }}
             >
               <SelectTrigger>
-                <SelectValue placeholder="选择价格（可选）" />
+                <SelectValue placeholder={t("plans.selectPrice")} />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="__none__">— 不关联 —</SelectItem>
+                <SelectItem value="__none__">{t("plans.noPrice")}</SelectItem>
                 {stripePrices.map((p) => {
                   const amount = (p.unit_amount / 100).toFixed(2);
                   const label = [
                     p.product_name || p.nickname || p.id,
                     `${p.currency.toUpperCase()} ${amount}`,
-                    p.recurring ? "订阅" : "一次性",
+                    p.recurring ? t("plans.subscription") : t("plans.oneTime"),
                   ].filter(Boolean).join(" · ");
                   return (
                     <SelectItem key={p.id} value={p.id}>
@@ -573,7 +575,7 @@ export default function PlansPage() {
             <Input
               value={form.stripe_price_id}
               onChange={(e) => patchForm({ stripe_price_id: e.target.value })}
-              placeholder={pricesLoading ? "加载中…" : "price_xxx（Stripe 未配置时手动填写）"}
+              placeholder={pricesLoading ? t("plans.loadingPrice") : t("plans.priceIdPlaceholder")}
               disabled={pricesLoading}
             />
           )}
@@ -581,17 +583,17 @@ export default function PlansPage() {
 
         <div className="grid grid-cols-2 gap-4">
           <div className="space-y-2">
-            <Label htmlFor="plan-type">类型</Label>
+            <Label htmlFor="plan-type">{t("plans.typeLabel")}</Label>
             <Input
               id="plan-type"
-              value={form.type === "subscription" ? "订阅" : "一次性"}
+              value={form.type === "subscription" ? t("plans.subscription") : t("plans.oneTime")}
               readOnly
               className="opacity-60 cursor-not-allowed"
             />
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="plan-currency">货币</Label>
+            <Label htmlFor="plan-currency">{t("plans.currency")}</Label>
             <Input
               id="plan-currency"
               value={form.currency}
@@ -602,7 +604,7 @@ export default function PlansPage() {
         </div>
 
         <div className="space-y-2">
-          <Label htmlFor="plan-price">价格 (分)</Label>
+          <Label htmlFor="plan-price">{t("plans.priceCents")}</Label>
           <Input
             id="plan-price"
             type="number"
@@ -614,7 +616,7 @@ export default function PlansPage() {
 
         <div className="grid grid-cols-2 gap-4">
           <div className="space-y-2">
-            <Label htmlFor="plan-traffic">流量限额 (GB)</Label>
+            <Label htmlFor="plan-traffic">{t("plans.trafficGB")}</Label>
             <Input
               id="plan-traffic"
               type="number"
@@ -626,12 +628,12 @@ export default function PlansPage() {
                   traffic_limit_gb: Number(e.target.value) || 0,
                 })
               }
-              placeholder="0 = 无限制"
+              placeholder={t("plans.trafficPlaceholder")}
             />
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="plan-duration">时长 (天)</Label>
+            <Label htmlFor="plan-duration">{t("plans.durationDays")}</Label>
             <Input
               id="plan-duration"
               type="number"
@@ -646,7 +648,7 @@ export default function PlansPage() {
         </div>
 
         <div className="space-y-2">
-          <Label htmlFor="plan-reset">流量重置策略</Label>
+          <Label htmlFor="plan-reset">{t("plans.resetStrategy")}</Label>
           <Select
             value={form.data_limit_reset_strategy}
             onValueChange={(v) =>
@@ -659,7 +661,7 @@ export default function PlansPage() {
             <SelectContent>
               {RESET_STRATEGIES.map((s) => (
                 <SelectItem key={s} value={s}>
-                  {RESET_STRATEGY_LABELS[s]}
+                  {t(RESET_STRATEGY_KEYS[s])}
                 </SelectItem>
               ))}
             </SelectContent>
@@ -667,7 +669,7 @@ export default function PlansPage() {
         </div>
 
         <div className="space-y-2">
-          <Label>绑定用户组</Label>
+          <Label>{t("plans.bindGroups")}</Label>
           <MultiSelect
             value={form.user_group_ids}
             onChange={(ids) => patchForm({ user_group_ids: ids })}
@@ -678,14 +680,14 @@ export default function PlansPage() {
                 <span><span className="font-medium">{g.name}</span><span className="ml-2 text-[hsl(var(--muted-foreground))] text-xs">{g.remark}</span></span>
               ) : g.name,
             }))}
-            placeholder="不绑定用户组"
-            countLabel="已选 {n} 个用户组"
+            placeholder={t("plans.noGroups")}
+            countLabel={t("plans.selectedGroups")}
           />
         </div>
 
         <div className="grid grid-cols-2 gap-4">
           <div className="space-y-2">
-            <Label htmlFor="plan-sort">排序</Label>
+            <Label htmlFor="plan-sort">{t("plans.sort")}</Label>
             <Input
               id="plan-sort"
               type="number"
@@ -706,14 +708,14 @@ export default function PlansPage() {
               }
             />
             <Label htmlFor="plan-enabled" className="cursor-pointer">
-              启用
+              {t("plans.enabled")}
             </Label>
           </div>
         </div>
 
         {/* 环境 */}
         <div className="space-y-2">
-          <Label>环境</Label>
+          <Label>{t("plans.env")}</Label>
           <div className="flex rounded-md border border-[hsl(var(--border))] overflow-hidden w-fit">
             {(["live", "test"] as const).map((m) => (
               <button
@@ -729,7 +731,7 @@ export default function PlansPage() {
                     : "text-[hsl(var(--muted-foreground))] hover:bg-[hsl(var(--muted))]",
                 ].join(" ")}
               >
-                {m === "live" ? "生产" : "沙盒"}
+                {m === "live" ? t("plans.production") : t("plans.sandbox")}
               </button>
             ))}
           </div>
@@ -737,7 +739,7 @@ export default function PlansPage() {
 
         {/* 库存设置 */}
         <div className="space-y-2">
-          <Label htmlFor="plan-stock">库存限制</Label>
+          <Label htmlFor="plan-stock">{t("plans.stockLimit")}</Label>
           <div className="flex items-center gap-3">
             <Input
               id="plan-stock"
@@ -748,10 +750,10 @@ export default function PlansPage() {
               className="w-36"
             />
             <span className="text-sm text-[hsl(var(--muted-foreground))]">
-              {form.stock_limit === -1 ? "无限制" : `最多售出 ${form.stock_limit} 份`}
+              {form.stock_limit === -1 ? t("plans.unlimitedStock") : t("plans.maxSold", { count: form.stock_limit })}
             </span>
           </div>
-          <p className="text-xs text-[hsl(var(--muted-foreground))]">-1 表示无限制</p>
+          <p className="text-xs text-[hsl(var(--muted-foreground))]">{t("plans.stockHint")}</p>
         </div>
       </div>
     );
@@ -764,8 +766,8 @@ export default function PlansPage() {
       <Tabs defaultValue="plans" className="flex flex-col flex-1 min-h-0" onValueChange={(v) => { if (v === "billing" && !ordersLoading) fetchOrders(); }}>
         <div className="mb-4">
           <TabsList>
-            <TabsTrigger value="plans">套餐管理</TabsTrigger>
-            <TabsTrigger value="billing">账单</TabsTrigger>
+            <TabsTrigger value="plans">{t("plans.title")}</TabsTrigger>
+            <TabsTrigger value="billing">{t("plans.bills")}</TabsTrigger>
           </TabsList>
         </div>
 
@@ -773,7 +775,7 @@ export default function PlansPage() {
         <TabsContent value="plans" className="flex flex-col flex-1 min-h-0 mt-0">
 
         <div className="mb-4 flex items-center justify-between gap-3">
-        <span className="text-sm text-[hsl(var(--muted-foreground))]">{plans.length} 个套餐</span>
+        <span className="text-sm text-[hsl(var(--muted-foreground))]">{t("plans.planCount", { count: plans.length })}</span>
 
         {/* ── Create dialog ─────────────────────────────────────── */}
         <Dialog
@@ -790,25 +792,25 @@ export default function PlansPage() {
           }}
         >
           <DialogTrigger asChild>
-            <Button>+ 添加套餐</Button>
+            <Button>{t("plans.addPlan")}</Button>
           </DialogTrigger>
           <DialogContent className="sm:max-w-lg max-h-[90vh] overflow-y-auto">
             <form onSubmit={handleCreate}>
               <DialogHeader>
-                <DialogTitle>添加套餐</DialogTitle>
+                <DialogTitle>{t("plans.addPlanTitle")}</DialogTitle>
                 <DialogDescription>
-                  创建一个新的套餐计划。
+                  {t("plans.addPlanDesc")}
                 </DialogDescription>
               </DialogHeader>
               {renderFormFields()}
               <DialogFooter>
                 <DialogClose asChild>
                   <Button type="button" variant="outline">
-                    取消
+                    {t("common.cancel")}
                   </Button>
                 </DialogClose>
                 <Button type="submit" disabled={submitting}>
-                  {submitting ? "创建中…" : "创建"}
+                  {submitting ? t("common.creating") : t("common.create")}
                 </Button>
               </DialogFooter>
             </form>
@@ -821,15 +823,15 @@ export default function PlansPage() {
         <Table containerClassName="flex-1 overflow-auto">
           <TableHeader className="sticky top-0 z-10 bg-[hsl(var(--card))]">
             <TableRow>
-              <TableHead className="px-4">名称</TableHead>
-              <TableHead className="px-4">类型</TableHead>
-              <TableHead className="px-4">价格</TableHead>
-              <TableHead className="px-4">流量限额</TableHead>
-              <TableHead className="px-4">时长</TableHead>
-              <TableHead className="px-4">库存</TableHead>
-              <TableHead className="px-4">环境</TableHead>
-              <TableHead className="px-4">状态</TableHead>
-              <TableHead className="px-4">操作</TableHead>
+              <TableHead className="px-4">{t("common.name")}</TableHead>
+              <TableHead className="px-4">{t("common.type")}</TableHead>
+              <TableHead className="px-4">{t("plans.priceCents")}</TableHead>
+              <TableHead className="px-4">{t("plans.trafficGB")}</TableHead>
+              <TableHead className="px-4">{t("plans.durationDays")}</TableHead>
+              <TableHead className="px-4">{t("plans.stockLimit")}</TableHead>
+              <TableHead className="px-4">{t("plans.env")}</TableHead>
+              <TableHead className="px-4">{t("common.status")}</TableHead>
+              <TableHead className="px-4">{t("common.action")}</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -845,13 +847,13 @@ export default function PlansPage() {
                 >
                   <div className="flex flex-col items-center gap-3">
                     <TagIcon className="h-10 w-10 opacity-40" />
-                    <p>暂无套餐</p>
+                    <p>{t("plans.noPlans")}</p>
                     <Button
                       variant="outline"
                       size="sm"
                       onClick={() => setCreateOpen(true)}
                     >
-                      + 添加套餐
+                      {t("plans.addPlan")}
                     </Button>
                   </div>
                 </TableCell>
@@ -866,41 +868,41 @@ export default function PlansPage() {
                     </TableCell>
                     <TableCell className="px-4">
                       <Badge variant={PLAN_TYPE_BADGE_VARIANT[plan.type as PlanType] ?? "outline"}>
-                        {PLAN_TYPE_LABELS[plan.type as PlanType] ?? plan.type}
+                        {t(PLAN_TYPE_KEYS[plan.type as PlanType] ?? plan.type)}
                       </Badge>
                     </TableCell>
                     <TableCell className="px-4 font-mono text-sm text-[hsl(var(--foreground))]">
                       {formatPrice(plan.price_cents, plan.currency)}
                     </TableCell>
                     <TableCell className="px-4 text-sm text-[hsl(var(--muted-foreground))]">
-                      {formatTraffic(plan.traffic_limit)}
+                      {plan.traffic_limit <= 0 ? t("plans.unlimited") : formatTraffic(plan.traffic_limit)}
                     </TableCell>
                     <TableCell className="px-4 text-sm text-[hsl(var(--muted-foreground))]">
-                      {plan.duration_days}天
+                      {plan.duration_days}{t("plans.daysUnit")}
                     </TableCell>
                     <TableCell className="px-4 text-sm">
                       {remaining === null ? (
-                        <span className="text-[hsl(var(--muted-foreground))]">无限制</span>
+                        <span className="text-[hsl(var(--muted-foreground))]">{t("plans.unlimited")}</span>
                       ) : remaining <= 0 ? (
-                        <span className="text-[hsl(var(--destructive))] font-medium">已售罄</span>
+                        <span className="text-[hsl(var(--destructive))] font-medium">{t("plans.soldOut")}</span>
                       ) : (
                         <span className={remaining <= 5 ? "text-amber-500 font-medium" : "text-[hsl(var(--muted-foreground))]"}>
-                          剩 {remaining} / {plan.stock_limit}
+                          {t("plans.remaining", { remaining, total: plan.stock_limit })}
                         </span>
                       )}
                     </TableCell>
                     <TableCell className="px-4">
                       {plan.mode === "test" ? (
-                        <Badge className="bg-amber-500/15 text-amber-600 hover:bg-amber-500/15 border-0">沙盒</Badge>
+                        <Badge className="bg-amber-500/15 text-amber-600 hover:bg-amber-500/15 border-0">{t("plans.sandbox")}</Badge>
                       ) : (
-                        <Badge className="bg-blue-500/15 text-blue-600 hover:bg-blue-500/15 border-0">生产</Badge>
+                        <Badge className="bg-blue-500/15 text-blue-600 hover:bg-blue-500/15 border-0">{t("plans.production")}</Badge>
                       )}
                     </TableCell>
                     <TableCell className="px-4">
                       {plan.enabled ? (
-                        <Badge className="bg-emerald-500/15 text-emerald-600 hover:bg-emerald-500/15 border-0">启用</Badge>
+                        <Badge className="bg-emerald-500/15 text-emerald-600 hover:bg-emerald-500/15 border-0">{t("plans.enabled")}</Badge>
                       ) : (
-                        <Badge variant="secondary">停用</Badge>
+                        <Badge variant="secondary">{t("plans.disabled")}</Badge>
                       )}
                     </TableCell>
                     <TableCell className="px-4">
@@ -942,20 +944,20 @@ export default function PlansPage() {
         <DialogContent className="sm:max-w-lg max-h-[90vh] overflow-y-auto">
           <form onSubmit={handleEdit}>
             <DialogHeader>
-              <DialogTitle>编辑套餐</DialogTitle>
+              <DialogTitle>{t("plans.editPlanTitle")}</DialogTitle>
               <DialogDescription>
-                修改套餐配置。
+                {t("plans.editPlanDesc")}
               </DialogDescription>
             </DialogHeader>
             {renderFormFields()}
             <DialogFooter>
               <DialogClose asChild>
                 <Button type="button" variant="outline">
-                  取消
+                  {t("common.cancel")}
                 </Button>
               </DialogClose>
               <Button type="submit" disabled={submitting}>
-                {submitting ? "保存中…" : "保存"}
+                {submitting ? t("common.saving") : t("common.save")}
               </Button>
             </DialogFooter>
           </form>
@@ -975,13 +977,13 @@ export default function PlansPage() {
       >
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
-            <DialogTitle>确认删除</DialogTitle>
+            <DialogTitle>{t("common.confirmDelete")}</DialogTitle>
             <DialogDescription>
-              确定要删除套餐{" "}
+              {t("plans.confirmDeletePlan")}{" "}
               <span className="font-semibold text-[hsl(var(--foreground))]">
                 {deletingPlan?.name}
               </span>{" "}
-              吗？此操作不可撤销。
+              {t("common.irreversibleAction")}
             </DialogDescription>
           </DialogHeader>
           {formError && (
@@ -992,7 +994,7 @@ export default function PlansPage() {
           <DialogFooter>
             <DialogClose asChild>
               <Button type="button" variant="outline">
-                取消
+                {t("common.cancel")}
               </Button>
             </DialogClose>
             <Button
@@ -1000,7 +1002,7 @@ export default function PlansPage() {
               disabled={submitting}
               onClick={handleDelete}
             >
-              {submitting ? "删除中…" : "删除"}
+              {submitting ? t("common.deleting") : t("common.delete")}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -1012,19 +1014,19 @@ export default function PlansPage() {
         <TabsContent value="billing" className="flex flex-col flex-1 min-h-0 mt-0">
           <div className="mb-4 flex items-center justify-between gap-3">
             <p className="text-sm text-[hsl(var(--muted-foreground))]">
-              共 {orders.length} 笔订单 ·{" "}
-              已付款 {orders.filter((o) => o.status === "paid").length} 笔 ·{" "}
-              总收入{" "}
+              {t("plans.orderCount", { count: orders.length })}
+              {t("plans.paidCount", { count: orders.filter((o) => o.status === "paid").length })}
+              {t("plans.totalRevenue")}{" "}
               {orders.length > 0
                 ? formatOrderAmount(orders.filter((o) => o.status === "paid").reduce((s, o) => s + o.amount_cents, 0), orders[0]?.currency ?? "usd")
                 : "—"}
             </p>
             <div className="flex items-center gap-2">
               <Button variant="outline" size="sm" onClick={fetchOrders} disabled={ordersLoading} className="h-8">
-                {ordersLoading ? "加载中…" : "刷新"}
+                {ordersLoading ? t("common.loading") : t("common.refresh")}
               </Button>
               <Input
-                placeholder="搜索邮箱 / 订单 ID"
+                placeholder={t("plans.searchPlaceholder")}
                 value={orderSearch}
                 onChange={(e) => setOrderSearch(e.target.value)}
                 className="w-56 h-8 text-sm"
@@ -1036,19 +1038,19 @@ export default function PlansPage() {
             <Table containerClassName="flex-1 overflow-auto">
               <TableHeader className="sticky top-0 z-10 bg-[hsl(var(--card))]">
                 <TableRow>
-                  <TableHead className="w-[180px]">邮箱</TableHead>
-                  <TableHead>状态</TableHead>
-                  <TableHead>金额</TableHead>
-                  <TableHead className="hidden md:table-cell">订阅</TableHead>
-                  <TableHead className="hidden lg:table-cell">创建时间</TableHead>
-                  <TableHead className="hidden lg:table-cell">付款时间</TableHead>
-                  <TableHead className="hidden xl:table-cell text-right">订单 ID</TableHead>
+                  <TableHead className="w-[180px]">{t("plans.email")}</TableHead>
+                  <TableHead>{t("common.status")}</TableHead>
+                  <TableHead>{t("plans.amount")}</TableHead>
+                  <TableHead className="hidden md:table-cell">{t("plans.subscription")}</TableHead>
+                  <TableHead className="hidden lg:table-cell">{t("plans.createTime")}</TableHead>
+                  <TableHead className="hidden lg:table-cell">{t("plans.payTime")}</TableHead>
+                  <TableHead className="hidden xl:table-cell text-right">{t("plans.orderId")}</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {ordersLoading ? (
                   <TableRow>
-                    <TableCell colSpan={7} className="py-8 text-center text-sm text-[hsl(var(--muted-foreground))]">加载中…</TableCell>
+                    <TableCell colSpan={7} className="py-8 text-center text-sm text-[hsl(var(--muted-foreground))]">{t("common.loading")}</TableCell>
                   </TableRow>
                 ) : (() => {
                   const filtered = orderSearch.trim()
@@ -1061,7 +1063,7 @@ export default function PlansPage() {
                   return filtered.length === 0 ? (
                     <TableRow>
                       <TableCell colSpan={7} className="py-8 text-center text-sm text-[hsl(var(--muted-foreground))]">
-                        {orderSearch ? "未找到匹配的订单" : "暂无订单"}
+                        {orderSearch ? t("plans.notFound") : t("plans.noOrders")}
                       </TableCell>
                     </TableRow>
                   ) : filtered.map((order) => (
@@ -1069,7 +1071,7 @@ export default function PlansPage() {
                       <TableCell className="font-mono text-xs">{order.email || "—"}</TableCell>
                       <TableCell>
                         <Badge variant={orderStatusVariant(order.status)}>
-                          {ORDER_STATUS_LABEL[order.status] ?? order.status}
+                          {t(ORDER_STATUS_KEYS[order.status] ?? order.status)}
                         </Badge>
                       </TableCell>
                       <TableCell className="font-medium tabular-nums">
@@ -1077,8 +1079,8 @@ export default function PlansPage() {
                       </TableCell>
                       <TableCell className="hidden md:table-cell">
                         {order.stripe_subscription_id
-                          ? <span className="text-xs text-[hsl(var(--muted-foreground))] font-mono">订阅</span>
-                          : <span className="text-xs text-[hsl(var(--muted-foreground))]">一次性</span>}
+                          ? <span className="text-xs text-[hsl(var(--muted-foreground))] font-mono">{t("plans.subscription")}</span>
+                          : <span className="text-xs text-[hsl(var(--muted-foreground))]">{t("plans.oneTime")}</span>}
                       </TableCell>
                       <TableCell className="hidden lg:table-cell text-xs text-[hsl(var(--muted-foreground))]">
                         {formatOrderDate(order.created_at)}

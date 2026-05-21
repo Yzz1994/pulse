@@ -12,6 +12,7 @@ import {
 import { Button, Badge } from "@/components/ui";
 import { api } from "@/lib/api";
 import { useAuthErrorHandler } from "@/hooks/useAuthErrorHandler";
+import { useTranslation } from "react-i18next";
 import type { Node, NodesResponse } from "@/lib/types";
 
 // ── 类型 ────────────────────────────────────────────────────────
@@ -30,7 +31,7 @@ interface LatencyResponse {
 
 // ── 常量 ────────────────────────────────────────────────────────
 
-const ISP_LABEL: Record<string, string> = { ct: "电信", cu: "联通", cm: "移动" };
+const ISP_LABEL_KEY: Record<string, string> = { ct: "telecom", cu: "unicom", cm: "mobile" };
 
 const ISP_COLOR: Record<string, string> = {
   ct: "#ef4444",
@@ -107,6 +108,7 @@ function CustomTooltip({ active, payload, label, nodeMap }: {
   label?: string;
   nodeMap: Map<string, string>;
 }) {
+  const { t } = useTranslation();
   if (!active || !payload?.length) return null;
   const valid = payload.filter((p) => p.value !== null && p.value !== undefined);
   if (!valid.length) return null;
@@ -121,7 +123,7 @@ function CustomTooltip({ active, payload, label, nodeMap }: {
             <span className="flex items-center gap-1.5 min-w-0">
               <span className="inline-block h-2 w-2 shrink-0 rounded-full" style={{ background: p.color }} />
               <span className="truncate text-[hsl(var(--foreground))]">
-                {nodeName} · {ISP_LABEL[isp ?? ""] ?? isp}
+                {nodeName} · {t(`latency.${ISP_LABEL_KEY[isp ?? ""]}` as "latency.telecom")}
               </span>
             </span>
             <span className="font-bold tabular-nums shrink-0" style={{ color: p.color }}>
@@ -171,13 +173,13 @@ function NodeFilter({
 
 // ── 图例 formatter ───────────────────────────────────────────────
 
-function makeLegendFormatter(nodeMap: Map<string, string>) {
+function makeLegendFormatter(nodeMap: Map<string, string>, t: (key: string) => string) {
   return (value: string) => {
     const [nodeId, isp] = value.split(":");
     const nodeName = nodeMap.get(nodeId ?? "") ?? nodeId;
     return (
       <span className="text-xs text-[hsl(var(--foreground))]">
-        {nodeName} · {ISP_LABEL[isp ?? ""] ?? isp}
+        {nodeName} · {t(`latency.${ISP_LABEL_KEY[isp ?? ""]}` as "latency.telecom")}
       </span>
     );
   };
@@ -186,6 +188,7 @@ function makeLegendFormatter(nodeMap: Map<string, string>) {
 // ── 主页面 ────────────────────────────────────────────────────────
 
 export default function LatencyPage() {
+  const { t } = useTranslation();
   const handleAuthError = useAuthErrorHandler();
   const [rangeMinutes, setRangeMinutes] = useState(60);
   const [loading, setLoading] = useState(false);
@@ -222,7 +225,7 @@ export default function LatencyPage() {
       setSamples(res.samples ?? []);
     } catch (err) {
       if (handleAuthError(err)) return;
-      setError(err instanceof Error ? err.message : "加载失败");
+      setError(err instanceof Error ? err.message : t("common.loadFailed"));
     } finally {
       setLoading(false);
     }
@@ -263,16 +266,16 @@ export default function LatencyPage() {
     [filteredSamples]
   );
 
-  const legendFormatter = useMemo(() => makeLegendFormatter(nodeMap), [nodeMap]);
+  const legendFormatter = useMemo(() => makeLegendFormatter(nodeMap, t), [nodeMap, t]);
 
   return (
     <div className="space-y-4 p-6">
       {/* ── 页头 ─────────────────────────────────────────────── */}
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-semibold">延迟监控</h1>
+          <h1 className="text-2xl font-semibold">{t("latency.title")}</h1>
           <p className="text-sm text-[hsl(var(--muted-foreground))]">
-            各节点 → 上海三网（电信 / 联通 / 移动）TCP 延迟，仅统计非落地节点
+            {t("latency.description")}
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -292,7 +295,7 @@ export default function LatencyPage() {
             onClick={() => fetchData(rangeMinutes)}
             disabled={loading}
           >
-            {loading ? "加载中…" : "刷新"}
+            {loading ? t("common.loading") : t("latency.refresh")}
           </Button>
         </div>
       </div>
@@ -300,7 +303,7 @@ export default function LatencyPage() {
       {/* ── 节点筛选 ──────────────────────────────────────────── */}
       {nonLandingNodes.length > 1 && (
         <div className="flex flex-wrap items-center gap-3">
-          <span className="text-xs text-[hsl(var(--muted-foreground))] shrink-0">节点筛选</span>
+          <span className="text-xs text-[hsl(var(--muted-foreground))] shrink-0">{t("latency.nodeFilter")}</span>
           <NodeFilter
             nodes={nonLandingNodes}
             selected={selectedIds}
@@ -311,7 +314,7 @@ export default function LatencyPage() {
               className="text-xs text-[hsl(var(--muted-foreground))] underline underline-offset-2 hover:text-[hsl(var(--foreground))]"
               onClick={() => setSelectedIds(new Set(nonLandingNodes.map((n) => n.id)))}
             >
-              全选
+              {t("latency.selectAll")}
             </button>
           )}
         </div>
@@ -327,7 +330,7 @@ export default function LatencyPage() {
       <div className="rounded-lg border border-[hsl(var(--border))] bg-[hsl(var(--background))] p-4">
         {data.length === 0 && !loading ? (
           <div className="flex h-64 items-center justify-center text-sm text-[hsl(var(--muted-foreground))]">
-            暂无数据，节点将在下次采样后显示（每分钟一次）
+            {t("latency.noData")}
           </div>
         ) : (
           <ResponsiveContainer width="100%" height={360}>
@@ -377,7 +380,7 @@ export default function LatencyPage() {
 
       {data.length > 0 && (
         <p className="text-xs text-[hsl(var(--muted-foreground))]">
-          每分钟采样一次 · 数据保留 7 天 · null 值表示节点超时或不可达
+          {t("latency.footnote")}
         </p>
       )}
     </div>

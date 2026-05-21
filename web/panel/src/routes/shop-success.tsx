@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import { Card, CardContent, Button } from "@/components/ui";
 import { getTheme, toggleTheme, type Theme } from "@/lib/theme";
 import { copyText } from "@/lib/clipboard";
+import { useTranslation } from "react-i18next";
 
 /* ── Types ────────────────────────────────────────────────────── */
 
@@ -15,11 +16,12 @@ interface OrderInfo {
 
 function ThemeToggle() {
   const [theme, setTheme] = useState<Theme>(getTheme);
+  const { t } = useTranslation();
   return (
     <button
       onClick={() => setTheme(toggleTheme())}
       className="fixed right-4 top-4 z-50 rounded-md p-2 bg-[hsl(var(--card))] border border-[hsl(var(--border))] text-[hsl(var(--muted-foreground))] hover:text-[hsl(var(--foreground))] shadow-sm transition-colors"
-      title={theme === "dark" ? "切换浅色模式" : "切换深色模式"}
+      title={theme === "dark" ? t("shopSuccess.toggleLight") : t("shopSuccess.toggleDark")}
     >
       {theme === "dark" ? (
         <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -39,6 +41,7 @@ export default function ShopSuccessPage() {
   const [error, setError] = useState("");
   const [orderInfo, setOrderInfo] = useState<OrderInfo | null>(null);
   const [copied, setCopied] = useState(false);
+  const { t } = useTranslation();
 
   const sessionId = new URLSearchParams(window.location.search).get(
     "session_id",
@@ -75,7 +78,7 @@ export default function ShopSuccessPage() {
         }
       } catch (err) {
         if (!cancelled)
-          setError(err instanceof Error ? err.message : "加载订单信息失败");
+          setError(err instanceof Error ? err.message : t("shopSuccess.loadOrderFailed"));
       } finally {
         if (!cancelled) setLoading(false);
       }
@@ -95,7 +98,7 @@ export default function ShopSuccessPage() {
         setTimeout(() => setCopied(false), 2000);
       })
       .catch(() => {
-        setError("复制失败，请手动选中链接复制");
+        setError(t("shopSuccess.copyFailed"));
       });
   }
 
@@ -112,7 +115,7 @@ export default function ShopSuccessPage() {
       })
       .then((data: OrderInfo) => setOrderInfo(data))
       .catch((err) =>
-        setError(err instanceof Error ? err.message : "加载订单信息失败"),
+        setError(err instanceof Error ? err.message : t("shopSuccess.loadOrderFailed")),
       )
       .finally(() => setLoading(false));
   }
@@ -142,10 +145,10 @@ export default function ShopSuccessPage() {
             </svg>
           </div>
           <p className="mb-6 text-[hsl(var(--muted-foreground))]">
-            缺少支付会话信息，请从商店重新发起购买。
+            {t("shopSuccess.missingSession")}
           </p>
           <a href="/shop">
-            <Button>返回商店</Button>
+            <Button>{t("shopSuccess.returnShop")}</Button>
           </a>
         </div>
       </div>
@@ -161,7 +164,7 @@ export default function ShopSuccessPage() {
         <div className="flex flex-col items-center gap-4">
           <div className="h-8 w-8 animate-spin rounded-full border-4 border-[hsl(var(--muted))] border-t-[hsl(var(--primary))]" />
           <p className="text-sm text-[hsl(var(--muted-foreground))]">
-            正在加载订单信息…
+            {t("shopSuccess.loadingOrder")}
           </p>
         </div>
       </div>
@@ -197,10 +200,10 @@ export default function ShopSuccessPage() {
           </div>
           <div className="flex items-center justify-center gap-3">
             <Button variant="outline" onClick={handleRetry}>
-              重试
+              {t("common.retry")}
             </Button>
             <a href="/shop">
-              <Button variant="outline">返回商店</Button>
+              <Button variant="outline">{t("shopSuccess.returnShop")}</Button>
             </a>
           </div>
         </div>
@@ -232,10 +235,10 @@ export default function ShopSuccessPage() {
             />
           </svg>
           <h1 className="text-2xl font-bold text-[hsl(var(--foreground))]">
-            支付成功！
+            {t("shopSuccess.paymentSuccess")}
           </h1>
           <p className="text-sm text-[hsl(var(--muted-foreground))]">
-            您的订阅已激活
+            {t("shopSuccess.subscriptionActivated")}
           </p>
         </div>
 
@@ -245,7 +248,7 @@ export default function ShopSuccessPage() {
             {/* Email */}
             <div className="space-y-1.5">
               <p className="text-sm font-medium text-[hsl(var(--muted-foreground))]">
-                账户邮箱
+                {t("shopSuccess.accountEmail")}
               </p>
               <p className="text-base font-medium text-[hsl(var(--foreground))]">
                 {orderInfo?.email}
@@ -256,7 +259,7 @@ export default function ShopSuccessPage() {
             {orderInfo?.sub_url && (
               <div className="space-y-2">
                 <p className="text-sm font-medium text-[hsl(var(--muted-foreground))]">
-                  订阅链接
+                  {t("shopSuccess.subLink")}
                 </p>
                 <div className="flex gap-2">
                   <input
@@ -271,7 +274,7 @@ export default function ShopSuccessPage() {
                     className="shrink-0"
                     onClick={handleCopy}
                   >
-                    {copied ? "已复制" : "复制"}
+                    {copied ? t("common.copied") : t("common.copy")}
                   </Button>
                 </div>
               </div>
@@ -281,7 +284,7 @@ export default function ShopSuccessPage() {
             {orderInfo && !orderInfo.sub_url && (
               <div className="flex items-center gap-2 text-sm text-[hsl(var(--muted-foreground))]">
                 <div className="h-4 w-4 animate-spin rounded-full border-2 border-[hsl(var(--muted))] border-t-[hsl(var(--primary))]" />
-                正在激活订阅，请稍候…
+                {t("shopSuccess.activating")}
               </div>
             )}
 
@@ -289,19 +292,19 @@ export default function ShopSuccessPage() {
             {orderInfo?.sub_url && (
               <div className="rounded-lg border border-[hsl(var(--border))] bg-[hsl(var(--muted))]/50 px-4 py-3">
                 <p className="mb-1 text-sm font-medium text-[hsl(var(--foreground))]">
-                  ⚠️ 重要提示
+                  {t("shopSuccess.importantNotice")}
                 </p>
                 <p className="text-sm text-[hsl(var(--muted-foreground))]">
-                  请妥善保管以下两个链接，它们是您访问服务的唯一凭证：
+                  {t("shopSuccess.noticeText")}
                 </p>
                 <ul className="mt-1 space-y-0.5 text-sm text-[hsl(var(--muted-foreground))]">
-                  <li>• <span className="font-medium text-[hsl(var(--foreground))]">订阅链接</span>：导入代理客户端使用</li>
+                  <li>• <span className="font-medium text-[hsl(var(--foreground))]">{t("shopSuccess.subLink")}</span>：{t("shopSuccess.subLinkImport")}</li>
                   {orderInfo?.portal_url && (
-                    <li>• <span className="font-medium text-[hsl(var(--foreground))]">个人主页</span>：{orderInfo.portal_url}</li>
+                    <li>• <span className="font-medium text-[hsl(var(--foreground))]">{t("shopSuccess.personalPage")}</span>：{orderInfo.portal_url}</li>
                   )}
                 </ul>
                 <p className="mt-2 text-sm text-[hsl(var(--muted-foreground))]">
-                  请勿将以上链接分享给他人。
+                  {t("shopSuccess.shareWarning")}
                 </p>
               </div>
             )}
@@ -311,13 +314,13 @@ export default function ShopSuccessPage() {
               {orderInfo?.portal_url && (
                 <a href={orderInfo.portal_url} className="block">
                   <Button className="w-full">
-                    前往个人主页
+                    {t("shopSuccess.goToPersonal")}
                   </Button>
                 </a>
               )}
               <a href="/shop" className="block">
                 <Button variant="outline" className="w-full">
-                  返回商店
+                  {t("shopSuccess.returnShop")}
                 </Button>
               </a>
             </div>

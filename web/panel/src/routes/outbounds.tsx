@@ -1,4 +1,5 @@
 import { useEffect, useState, useCallback, type FormEvent } from "react";
+import { useTranslation } from "react-i18next";
 import {
   Card,
   CardContent,
@@ -114,13 +115,14 @@ function ProtocolFields({
   form: OutboundForm;
   onChange: (patch: Partial<OutboundForm>) => void;
 }) {
+  const { t } = useTranslation();
   const { protocol } = form;
 
   if (protocol === "ss") {
     return (
       <>
         <div className="space-y-2">
-          <Label htmlFor="ob-method">加密方式</Label>
+          <Label htmlFor="ob-method">{t("outbounds.encryptMethod")}</Label>
           <Select
             value={form.method}
             onValueChange={(v) => onChange({ method: v })}
@@ -138,13 +140,13 @@ function ProtocolFields({
           </Select>
         </div>
         <div className="space-y-2">
-          <Label htmlFor="ob-ss-password">密码</Label>
+          <Label htmlFor="ob-ss-password">{t("common.password")}</Label>
           <Input
             id="ob-ss-password"
             type="password"
             value={form.password}
             onChange={(e) => onChange({ password: e.target.value })}
-            placeholder="密码"
+            placeholder={t("common.password")}
           />
         </div>
       </>
@@ -203,7 +205,7 @@ function ProtocolFields({
             id="ob-flow"
             value={form.flow}
             onChange={(e) => onChange({ flow: e.target.value })}
-            placeholder="xtls-rprx-vision（留空表示不使用）"
+            placeholder={t("outbounds.flow")}
           />
         </div>
       </>
@@ -305,6 +307,7 @@ function ImportDialog({
   const [parsed, setParsed] = useState<ParsedResult[]>([]);
   const [importing, setImporting] = useState(false);
   const [parseError, setParseError] = useState("");
+  const { t } = useTranslation();
 
   function reset() {
     setLinkText("");
@@ -323,7 +326,7 @@ function ImportDialog({
       .filter((r): r is ParsedResult => r !== null);
 
     if (results.length === 0) {
-      setParseError("未能解析任何有效链接");
+      setParseError(t("outbounds.noValidLinks"));
       setParsed([]);
       return;
     }
@@ -341,7 +344,7 @@ function ImportDialog({
       onImport();
       onOpenChange(false);
     } catch (err) {
-      setParseError(err instanceof Error ? err.message : "导入失败");
+      setParseError(err instanceof Error ? err.message : t("outbounds.importFailed"));
     } finally {
       setImporting(false);
     }
@@ -357,9 +360,9 @@ function ImportDialog({
     >
       <DialogContent className="sm:max-w-lg">
         <DialogHeader>
-          <DialogTitle>导入出站</DialogTitle>
+          <DialogTitle>{t("outbounds.importOutbound")}</DialogTitle>
           <DialogDescription>
-            粘贴代理链接批量导入出站配置。
+            {t("outbounds.importDesc")}
           </DialogDescription>
         </DialogHeader>
 
@@ -371,13 +374,13 @@ function ImportDialog({
           )}
 
           <div className="space-y-2">
-            <Label htmlFor="import-links">链接</Label>
+            <Label htmlFor="import-links">{t("outbounds.link")}</Label>
             <Textarea
               id="import-links"
               rows={6}
               value={linkText}
               onChange={(e) => setLinkText(e.target.value)}
-              placeholder="粘贴 ss:// 或 vless:// 链接，每行一个"
+              placeholder={t("outbounds.linkPlaceholder")}
             />
           </div>
 
@@ -387,7 +390,7 @@ function ImportDialog({
             onClick={handleParse}
             disabled={!linkText.trim()}
           >
-            解析
+            {t("outbounds.parse")}
           </Button>
 
           {parsed.length > 0 && (
@@ -395,9 +398,9 @@ function ImportDialog({
               <Table>
                 <TableHeader>
                   <TableRow>
-                    <TableHead className="px-4">名称</TableHead>
-                    <TableHead className="px-4">协议</TableHead>
-                    <TableHead className="px-4">服务器</TableHead>
+                    <TableHead className="px-4">{t("outbounds.name")}</TableHead>
+                    <TableHead className="px-4">{t("outbounds.protocol")}</TableHead>
+                    <TableHead className="px-4">{t("outbounds.server")}</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -433,7 +436,7 @@ function ImportDialog({
         <DialogFooter>
           <DialogClose asChild>
             <Button type="button" variant="outline">
-              取消
+              {t("common.cancel")}
             </Button>
           </DialogClose>
           {parsed.length > 0 && (
@@ -442,7 +445,7 @@ function ImportDialog({
               disabled={importing}
               onClick={handleImport}
             >
-              {importing ? "导入中…" : `导入 (${parsed.length})`}
+              {importing ? t("common.importing") : t("outbounds.importCount", { count: parsed.length })}
             </Button>
           )}
         </DialogFooter>
@@ -454,6 +457,7 @@ function ImportDialog({
 // ── Main page ────────────────────────────────────────────────────
 
 export default function OutboundsPage() {
+  const { t } = useTranslation();
   const handleAuthError = useAuthErrorHandler();
 
   const [outbounds, setOutbounds] = useState<Outbound[]>([]);
@@ -490,7 +494,7 @@ export default function OutboundsPage() {
       .then((res) => setOutbounds(res.outbounds ?? []))
       .catch((err) => {
         if (handleAuthError(err)) return;
-        setError(err instanceof Error ? err.message : "加载失败");
+        setError(err instanceof Error ? err.message : t("common.loadFailed"));
       })
       .finally(() => setLoading(false));
   }, [handleAuthError]);
@@ -557,7 +561,7 @@ export default function OutboundsPage() {
       fetchOutbounds();
     } catch (err) {
       if (handleAuthError(err)) return;
-      setFormError(err instanceof Error ? err.message : "更新失败");
+      setFormError(err instanceof Error ? err.message : t("common.updateFailed"));
     } finally {
       setSubmitting(false);
     }
@@ -582,7 +586,7 @@ export default function OutboundsPage() {
       fetchOutbounds();
     } catch (err) {
       if (handleAuthError(err)) return;
-      setFormError(err instanceof Error ? err.message : "删除失败");
+      setFormError(err instanceof Error ? err.message : t("common.deleteFailed"));
     } finally {
       setSubmitting(false);
     }
@@ -612,13 +616,13 @@ export default function OutboundsPage() {
               </svg>
             </div>
             <p className="mb-1 font-semibold text-[hsl(var(--foreground))]">
-              加载失败
+              {t("common.loadFailed")}
             </p>
             <p className="mb-4 text-sm text-[hsl(var(--muted-foreground))]">
               {error}
             </p>
             <Button variant="outline" onClick={fetchOutbounds}>
-              重试
+              {t("common.retry")}
             </Button>
           </CardContent>
         </Card>
@@ -638,7 +642,7 @@ export default function OutboundsPage() {
         )}
 
         <div className="space-y-2">
-          <Label htmlFor="ob-name">名称 *</Label>
+          <Label htmlFor="ob-name">{t("outbounds.nameRequired")}</Label>
           <Input
             id="ob-name"
             required
@@ -649,7 +653,7 @@ export default function OutboundsPage() {
         </div>
 
         <div className="space-y-2">
-          <Label htmlFor="ob-protocol">协议</Label>
+          <Label htmlFor="ob-protocol">{t("outbounds.protocol")}</Label>
           <Select
             value={form.protocol}
             onValueChange={(v) =>
@@ -670,7 +674,7 @@ export default function OutboundsPage() {
         </div>
 
         <div className="space-y-2">
-          <Label htmlFor="ob-server">服务器 *</Label>
+          <Label htmlFor="ob-server">{t("outbounds.serverRequired")}</Label>
           <Input
             id="ob-server"
             required
@@ -691,11 +695,11 @@ export default function OutboundsPage() {
     <div className="flex h-full flex-col p-4 sm:p-6 lg:p-8">
       <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
         <h1 className="text-2xl font-bold text-[hsl(var(--foreground))]">
-          出站
+          {t("outbounds.title")}
         </h1>
 
         <Button variant="outline" onClick={() => setImportOpen(true)}>
-          导入
+          {t("common.import")}
         </Button>
       </div>
 
@@ -704,10 +708,10 @@ export default function OutboundsPage() {
         <Table containerClassName="flex-1 overflow-auto">
           <TableHeader className="sticky top-0 z-10 bg-[hsl(var(--card))]">
             <TableRow>
-              <TableHead className="px-4">名称</TableHead>
-              <TableHead className="px-4">协议</TableHead>
-              <TableHead className="px-4">服务器</TableHead>
-              <TableHead className="px-4">操作</TableHead>
+              <TableHead className="px-4">{t("outbounds.name")}</TableHead>
+              <TableHead className="px-4">{t("outbounds.protocol")}</TableHead>
+              <TableHead className="px-4">{t("outbounds.server")}</TableHead>
+              <TableHead className="px-4">{t("outbounds.actions")}</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -719,7 +723,7 @@ export default function OutboundsPage() {
                   colSpan={4}
                   className="h-32 text-center text-[hsl(var(--muted-foreground))]"
                 >
-                  暂无出站配置
+                  {t("outbounds.noOutbounds")}
                 </TableCell>
               </TableRow>
             ) : (
@@ -745,14 +749,14 @@ export default function OutboundsPage() {
                         size="sm"
                         onClick={() => openEdit(ob)}
                       >
-                        编辑
+                        {t("common.edit")}
                       </Button>
                       <Button
                         variant="destructive"
                         size="sm"
                         onClick={() => openDelete(ob)}
                       >
-                        删除
+                        {t("common.delete")}
                       </Button>
                     </div>
                   </TableCell>
@@ -778,20 +782,20 @@ export default function OutboundsPage() {
         <DialogContent className="sm:max-w-lg">
           <form onSubmit={handleEdit}>
             <DialogHeader>
-              <DialogTitle>编辑出站</DialogTitle>
+              <DialogTitle>{t("outbounds.editOutbound")}</DialogTitle>
               <DialogDescription>
-                修改出站代理连接配置。
+                {t("outbounds.editDesc")}
               </DialogDescription>
             </DialogHeader>
             {renderFormFields()}
             <DialogFooter>
               <DialogClose asChild>
                 <Button type="button" variant="outline">
-                  取消
+                  {t("common.cancel")}
                 </Button>
               </DialogClose>
               <Button type="submit" disabled={submitting}>
-                {submitting ? "保存中…" : "保存"}
+                {submitting ? t("common.saving") : t("common.save")}
               </Button>
             </DialogFooter>
           </form>
@@ -811,13 +815,13 @@ export default function OutboundsPage() {
       >
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
-            <DialogTitle>确认删除</DialogTitle>
+            <DialogTitle>{t("common.confirmDelete")}</DialogTitle>
             <DialogDescription>
-              确定要删除出站{" "}
+              {t("outbounds.confirmDeleteOutbound")}{" "}
               <span className="font-semibold text-[hsl(var(--foreground))]">
                 {deletingOutbound?.name}
               </span>{" "}
-              吗？此操作不可撤销。
+              {t("common.irreversibleAction")}
             </DialogDescription>
           </DialogHeader>
           {formError && (
@@ -828,7 +832,7 @@ export default function OutboundsPage() {
           <DialogFooter>
             <DialogClose asChild>
               <Button type="button" variant="outline">
-                取消
+                {t("common.cancel")}
               </Button>
             </DialogClose>
             <Button
@@ -836,7 +840,7 @@ export default function OutboundsPage() {
               disabled={submitting}
               onClick={handleDelete}
             >
-              {submitting ? "删除中…" : "删除"}
+              {submitting ? t("common.deleting") : t("common.delete")}
             </Button>
           </DialogFooter>
         </DialogContent>

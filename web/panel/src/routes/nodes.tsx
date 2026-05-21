@@ -40,6 +40,8 @@ import { getToken } from "@/lib/auth";
 import { useAuthErrorHandler } from "@/hooks/useAuthErrorHandler";
 import { formatBytes, formatSpeed } from "@/lib/format";
 import type { Node, NodesResponse, CreateNodeRequest } from "@/lib/types";
+import { useTranslation } from "react-i18next";
+import i18n from "@/i18n";
 
 type DetailMode = "status" | "config" | "logs" | null;
 
@@ -102,7 +104,7 @@ function traceQualityColor(quality: string): string {
 
 function traceFormatTime(iso: string): string {
   try {
-    return new Date(iso).toLocaleString("zh-CN", {
+    return new Date(iso).toLocaleString(i18n.language, {
       month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit",
     });
   } catch { return iso; }
@@ -211,6 +213,7 @@ interface NodeFormDialogProps {
 }
 
 function NodeFormDialog({ open, onOpenChange, node, onSubmit, submitting }: NodeFormDialogProps) {
+  const { t } = useTranslation();
   const [name, setName] = useState("");
   const [baseUrl, setBaseUrl] = useState("");
   const [expireAt, setExpireAt] = useState("");
@@ -256,15 +259,15 @@ function NodeFormDialog({ open, onOpenChange, node, onSubmit, submitting }: Node
       <DialogContent className="sm:max-w-md">
         <form onSubmit={handleSubmit}>
           <DialogHeader>
-            <DialogTitle>{isEdit ? "编辑节点" : "添加节点"}</DialogTitle>
+            <DialogTitle>{isEdit ? t("nodes.editNode") : t("nodes.addNode")}</DialogTitle>
             <DialogDescription>
-              {isEdit ? "修改节点的名称和地址。" : "添加后将生成安装命令，在节点机器上运行即可自动连接。"}
+              {isEdit ? t("nodes.editDesc", { defaultValue: "修改节点的名称和地址。" }) : t("nodes.addDesc", { defaultValue: "添加后将生成安装命令，在节点机器上运行即可自动连接。" })}
             </DialogDescription>
           </DialogHeader>
 
           <div className="mt-4 space-y-4">
             <div className="space-y-2">
-              <Label htmlFor="node-name">节点名称</Label>
+              <Label htmlFor="node-name">{t("nodes.nodeName")}</Label>
               <Input
                 id="node-name"
                 value={name}
@@ -276,7 +279,7 @@ function NodeFormDialog({ open, onOpenChange, node, onSubmit, submitting }: Node
             </div>
             {isEdit && (
               <div className="space-y-2">
-                <Label htmlFor="node-url">地址</Label>
+                 <Label htmlFor="node-url">{t("nodes.address")}</Label>
                 <Input
                   id="node-url"
                   value={baseUrl}
@@ -287,7 +290,7 @@ function NodeFormDialog({ open, onOpenChange, node, onSubmit, submitting }: Node
               </div>
             )}
             <div className="space-y-2">
-              <Label htmlFor="node-expire">到期日期</Label>
+              <Label htmlFor="node-expire">{t("nodes.expireDate")}</Label>
               <Input
                 id="node-expire"
                 type="date"
@@ -296,7 +299,7 @@ function NodeFormDialog({ open, onOpenChange, node, onSubmit, submitting }: Node
               />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="node-panel">控制面板地址</Label>
+              <Label htmlFor="node-panel">{t("nodes.panelAddress")}</Label>
               <Input
                 id="node-panel"
                 value={panelURL}
@@ -305,7 +308,7 @@ function NodeFormDialog({ open, onOpenChange, node, onSubmit, submitting }: Node
               />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="node-remark">备注</Label>
+              <Label htmlFor="node-remark">{t("common.remark")}</Label>
               <Input
                 id="node-remark"
                 value={remark}
@@ -314,12 +317,12 @@ function NodeFormDialog({ open, onOpenChange, node, onSubmit, submitting }: Node
               />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="node-ip-override">GeoIP 地址（可选）</Label>
+               <Label htmlFor="node-ip-override">{t("nodes.geoipAddress")}</Label>
               <Input
                 id="node-ip-override"
                 value={ipOverride}
                 onChange={(e) => setIpOverride(e.target.value)}
-                placeholder="留空则从 base_url 解析，内网地址时填写公网 IP"
+                placeholder={t("nodes.geoipPlaceholder")}
                 className="font-mono text-sm"
               />
             </div>
@@ -327,8 +330,8 @@ function NodeFormDialog({ open, onOpenChange, node, onSubmit, submitting }: Node
               <>
                 <div className="flex items-center justify-between rounded-lg border px-3 py-2">
                   <div>
-                    <p className="text-sm font-medium">落地机</p>
-                    <p className="text-xs text-muted-foreground">落地机不采集流量审计、不做延迟检测和路由追踪</p>
+                    <p className="text-sm font-medium">{t("nodes.landing")}</p>
+                    <p className="text-xs text-muted-foreground">{t("nodes.landingDesc")}</p>
                   </div>
                   <Switch
                     id="node-is-landing"
@@ -338,8 +341,8 @@ function NodeFormDialog({ open, onOpenChange, node, onSubmit, submitting }: Node
                 </div>
                 <div className="flex items-center justify-between rounded-lg border px-3 py-2">
                   <div>
-                    <p className="text-sm font-medium">禁用节点</p>
-                    <p className="text-xs text-muted-foreground">禁用后停止流量同步和配置下发，保留所有配置</p>
+                    <p className="text-sm font-medium">{t("nodes.disableNode")}</p>
+                    <p className="text-xs text-muted-foreground">{t("nodes.disableNodeDesc")}</p>
                   </div>
                   <Switch
                     id="node-disabled"
@@ -353,12 +356,12 @@ function NodeFormDialog({ open, onOpenChange, node, onSubmit, submitting }: Node
 
           <DialogFooter className="mt-6">
             <DialogClose asChild>
-              <Button type="button" variant="outline" disabled={submitting}>
-                取消
+               <Button type="button" variant="outline" disabled={submitting}>
+                {t("common.cancel")}
               </Button>
             </DialogClose>
             <Button type="submit" disabled={!canSubmit || submitting}>
-              {submitting ? "保存中…" : isEdit ? "保存" : "添加"}
+              {submitting ? t("common.saving") : isEdit ? t("common.save") : t("common.add")}
             </Button>
           </DialogFooter>
         </form>
@@ -391,6 +394,7 @@ function InstallCmdDialog({
   const [copied, setCopied] = useState(false);
   const [registered, setRegistered] = useState(false);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const { t } = useTranslation();
 
   useEffect(() => {
     if (!open || !node) return;
@@ -400,7 +404,7 @@ function InstallCmdDialog({
     api
       .post<EnrollTokenResponse>(`/nodes/${node.id}/enroll-token`, {})
       .then(setEnroll)
-      .catch((e: Error) => setError(e.message || "生成安装 token 失败"));
+      .catch((e: Error) => setError(e.message || t("nodes.generateTokenFailed")));
   }, [open, node]);
 
   useEffect(() => {
@@ -413,7 +417,7 @@ function InstallCmdDialog({
     return () => { if (pollRef.current) clearInterval(pollRef.current); };
   }, [open, node, registered]);
 
-  const installCmd = enroll?.install_command ?? (error ?? "正在生成安装 token…");
+  const installCmd = enroll?.install_command ?? (error ?? t("nodes.generatingToken"));
 
   const handleCopy = async (text: string, container?: HTMLElement | null) => {
     if (!text) return;
@@ -430,9 +434,9 @@ function InstallCmdDialog({
     <Dialog open={open} onOpenChange={(o) => { if (!o) onClose(); }}>
       <DialogContent className="sm:max-w-2xl">
         <DialogHeader>
-          <DialogTitle>安装命令</DialogTitle>
+          <DialogTitle>{t("nodes.installCommand")}</DialogTitle>
           <DialogDescription>
-            在目标节点机器上以 root 权限运行以下命令，节点将自动安装并连接到控制面板。Token 1 小时内有效。
+            {t("nodes.installCommandDesc")}
           </DialogDescription>
         </DialogHeader>
         <div className="space-y-3">
@@ -448,12 +452,12 @@ function InstallCmdDialog({
               {copied ? (
                 <>
                   <svg xmlns="http://www.w3.org/2000/svg" className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" /></svg>
-                  已复制
+                  {t("nodes.copied")}
                 </>
               ) : (
                 <>
                   <svg xmlns="http://www.w3.org/2000/svg" className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><rect x="9" y="9" width="13" height="13" rx="2" ry="2" /><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" /></svg>
-                  复制命令
+                  {t("common.copyCommand")}
                 </>
               )}
             </button>
@@ -465,16 +469,16 @@ function InstallCmdDialog({
               {registered ? (
                 <>
                   <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 text-emerald-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" /></svg>
-                  <span className="text-emerald-500">节点已就绪</span>
+                  <span className="text-emerald-500">{t("nodes.nodeReady")}</span>
                 </>
               ) : (
                 <>
                   <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 animate-spin text-[hsl(var(--muted-foreground))]" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" /><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" /></svg>
-                  <span className="text-[hsl(var(--muted-foreground))]">等待节点上线…</span>
+                  <span className="text-[hsl(var(--muted-foreground))]">{t("nodes.waitingOnline")}</span>
                 </>
               )}
             </div>
-            <Button onClick={onClose}>完成</Button>
+            <Button onClick={onClose}>{t("nodes.done")}</Button>
           </div>
         </DialogFooter>
       </DialogContent>
@@ -500,6 +504,7 @@ function ManualUpdateDialog({
   const [error, setError] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
   const [updated, setUpdated] = useState(false);
+  const { t } = useTranslation();
   // 两阶段检测：先等节点离线（确认重启已开始），再等重新上线（确认更新完成）
   const seenOffline = useRef(false);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -513,7 +518,7 @@ function ManualUpdateDialog({
     api
       .post<EnrollTokenResponse>(`/nodes/${node.id}/enroll-token`, {})
       .then(setEnroll)
-      .catch((e: Error) => setError(e.message || "生成安装 token 失败"));
+      .catch((e: Error) => setError(e.message || t("nodes.generateTokenFailed")));
   }, [open, node]);
 
   useEffect(() => {
@@ -532,7 +537,7 @@ function ManualUpdateDialog({
     return () => { if (pollRef.current) clearInterval(pollRef.current); };
   }, [open, node, updated]);
 
-  const installCmd = enroll?.install_command ?? (error ?? "正在获取安装信息…");
+  const installCmd = enroll?.install_command ?? (error ?? t("nodes.gettingInstallInfo"));
 
   const handleCopy = async (container?: HTMLElement | null) => {
     if (!enroll?.install_command) return;
@@ -549,9 +554,9 @@ function ManualUpdateDialog({
     <Dialog open={open} onOpenChange={(o) => { if (!o) onClose(); }}>
       <DialogContent className="sm:max-w-2xl">
         <DialogHeader>
-          <DialogTitle>手动更新节点</DialogTitle>
+          <DialogTitle>{t("nodes.manualUpdateNode")}</DialogTitle>
           <DialogDescription>
-            在目标节点机器上以 root 权限运行以下命令，重新安装节点程序以完成更新。
+            {t("nodes.manualUpdateDesc")}
           </DialogDescription>
         </DialogHeader>
         <div className="space-y-3">
@@ -565,33 +570,33 @@ function ManualUpdateDialog({
           >
             {copied ? (
               <>
-                <svg xmlns="http://www.w3.org/2000/svg" className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" /></svg>
-                已复制
-              </>
-            ) : (
-              <>
-                <svg xmlns="http://www.w3.org/2000/svg" className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><rect x="9" y="9" width="13" height="13" rx="2" ry="2" /><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" /></svg>
-                复制命令
-              </>
-            )}
-          </button>
-        </div>
-        <DialogFooter>
-          <div className="flex w-full items-center justify-between">
-            <div className="flex items-center gap-2 text-sm">
+                 <svg xmlns="http://www.w3.org/2000/svg" className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" /></svg>
+                 {t("nodes.copied")}
+               </>
+             ) : (
+               <>
+                 <svg xmlns="http://www.w3.org/2000/svg" className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><rect x="9" y="9" width="13" height="13" rx="2" ry="2" /><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" /></svg>
+                 {t("common.copyCommand")}
+               </>
+             )}
+           </button>
+         </div>
+         <DialogFooter>
+           <div className="flex w-full items-center justify-between">
+             <div className="flex items-center gap-2 text-sm">
               {updated ? (
                 <>
                   <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 text-emerald-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" /></svg>
-                  <span className="text-emerald-500">节点已就绪</span>
+                  <span className="text-emerald-500">{t("nodes.nodeReady")}</span>
                 </>
               ) : (
                 <>
                   <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 animate-spin text-[hsl(var(--muted-foreground))]" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" /><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" /></svg>
-                  <span className="text-[hsl(var(--muted-foreground))]">等待节点上线…</span>
+                  <span className="text-[hsl(var(--muted-foreground))]">{t("nodes.waitingOnline")}</span>
                 </>
               )}
             </div>
-            <Button onClick={onClose}>完成</Button>
+            <Button onClick={onClose}>{t("nodes.done")}</Button>
           </div>
         </DialogFooter>
       </DialogContent>
@@ -610,23 +615,24 @@ interface DeleteDialogProps {
 }
 
 function DeleteDialog({ open, onOpenChange, node, onConfirm, deleting }: DeleteDialogProps) {
+  const { t } = useTranslation();
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
-          <DialogTitle>确认删除</DialogTitle>
+          <DialogTitle>{t("common.confirmDelete")}</DialogTitle>
           <DialogDescription>
-            确定要删除节点 <span className="font-semibold text-[hsl(var(--foreground))]">{node?.name}</span> 吗？此操作不可撤销。
+            {t("nodes.confirmDeleteNode")} <span className="font-semibold text-[hsl(var(--foreground))]">{node?.name}</span>？{t("common.irreversibleAction")}
           </DialogDescription>
         </DialogHeader>
         <DialogFooter className="mt-4">
           <DialogClose asChild>
             <Button type="button" variant="outline" disabled={deleting}>
-              取消
+              {t("common.cancel")}
             </Button>
           </DialogClose>
           <Button variant="destructive" onClick={onConfirm} disabled={deleting}>
-            {deleting ? "删除中…" : "确认删除"}
+            {deleting ? t("common.deleting") : t("common.confirmDelete")}
           </Button>
         </DialogFooter>
       </DialogContent>
@@ -645,6 +651,7 @@ interface NodeDetailDialogProps {
 }
 
 function NodeDetailDialog({ open, onOpenChange, node, mode, handleAuthError }: NodeDetailDialogProps) {
+  const { t } = useTranslation();
   const [content, setContent] = useState<string>("");
   const [detailLoading, setDetailLoading] = useState(false);
   const [detailError, setDetailError] = useState<string | null>(null);
@@ -678,7 +685,7 @@ function NodeDetailDialog({ open, onOpenChange, node, mode, handleAuthError }: N
       })
       .catch((err) => {
         if (!handleAuthError(err)) {
-          setDetailError(err instanceof Error ? err.message : "加载失败");
+          setDetailError(err instanceof Error ? err.message : t("common.loadFailed"));
         }
       })
       .finally(() => setDetailLoading(false));
@@ -729,7 +736,7 @@ function NodeDetailDialog({ open, onOpenChange, node, mode, handleAuthError }: N
       } catch (err: any) {
         if (err?.name === "AbortError") return;
         setDetailLoading(false);
-        setDetailError(err instanceof Error ? err.message : "连接失败");
+        setDetailError(err instanceof Error ? err.message : t("nodes.connectFailed"));
       }
     })();
 
@@ -744,8 +751,8 @@ function NodeDetailDialog({ open, onOpenChange, node, mode, handleAuthError }: N
   }, [content, mode]);
 
   const titleMap: Record<string, string> = {
-    config: "节点配置",
-    logs: "节点日志",
+    config: t("nodes.nodeConfig"),
+    logs: t("nodes.nodeLogs"),
   };
 
   const dialogWidth = "sm:max-w-2xl";
@@ -759,13 +766,13 @@ function NodeDetailDialog({ open, onOpenChange, node, mode, handleAuthError }: N
             {mode === "logs" && !detailLoading && !detailError && (
               <span className="ml-2 inline-flex items-center gap-1 text-xs font-normal text-green-500">
                 <span className="h-1.5 w-1.5 rounded-full bg-green-500 animate-pulse" />
-                实时
+                {t("nodes.realtime")}
               </span>
             )}
           </DialogTitle>
           <DialogDescription>
-            {mode === "config" && "当前节点 Xray 配置。"}
-            {mode === "logs" && "实时流式日志，关闭弹窗断开连接。"}
+            {mode === "config" && t("nodes.configTitle")}
+            {mode === "logs" && t("nodes.logsTitle")}
           </DialogDescription>
         </DialogHeader>
 
@@ -773,7 +780,7 @@ function NodeDetailDialog({ open, onOpenChange, node, mode, handleAuthError }: N
           {detailLoading && (
             <div className="flex items-center justify-center py-12">
               <div className="h-6 w-6 animate-spin rounded-full border-2 border-[hsl(var(--muted-foreground))] border-t-transparent" />
-              <span className="ml-3 text-sm text-[hsl(var(--muted-foreground))]">加载中…</span>
+              <span className="ml-3 text-sm text-[hsl(var(--muted-foreground))]">{t("common.loading")}</span>
             </div>
           )}
 
@@ -804,14 +811,14 @@ function NodeDetailDialog({ open, onOpenChange, node, mode, handleAuthError }: N
 
           {!detailLoading && !detailError && !content && (
             <p className="py-8 text-center text-sm text-[hsl(var(--muted-foreground))]">
-              无数据
+              {t("common.noData")}
             </p>
           )}
         </div>
 
         <DialogFooter className="mt-4 shrink-0">
           <DialogClose asChild>
-            <Button variant="outline">关闭</Button>
+            <Button variant="outline">{t("common.close")}</Button>
           </DialogClose>
         </DialogFooter>
       </DialogContent>
@@ -906,7 +913,7 @@ function TracerouteDialog({ node, open, onOpenChange }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
 }) {
-  // ── 回程状态 ──────────────────────────────────────────────────
+  const { t } = useTranslation();
   const [activeTab, setActiveTab] = useState<"inbound" | "outbound" | "history">("inbound");
 
   // ── 历史记录状态 ──────────────────────────────────────────────
@@ -970,12 +977,12 @@ function TracerouteDialog({ node, open, onOpenChange }: {
       );
       const data = await res.json();
       const a = (data.Answer ?? []).find((r: any) => r.type === 1);
-      if (!a) throw new Error(`无法解析 ${domain}`);
+      if (!a) throw new Error(t("nodes.cantResolve", { domain }));
       setHost(a.data);
       const label = `${PROVINCE_ZH[qProvince] ?? qProvince} ${CARRIER_ZH[qCarrier]}（${a.data}）`;
       await handleStart(a.data, label);
     } catch (err: any) {
-      setError(err.message ?? "DNS 解析失败");
+      setError(err.message ?? t("nodes.dnsResolveFailed"));
     } finally {
       setQResolving(false);
     }
@@ -1045,7 +1052,7 @@ function TracerouteDialog({ node, open, onOpenChange }: {
         },
       );
       if (!res.ok || !res.body) {
-        setError(`请求失败 (HTTP ${res.status})`);
+        setError(`${t("nodes.errorPrefix")} (HTTP ${res.status})`);
         return;
       }
 
@@ -1098,7 +1105,7 @@ function TracerouteDialog({ node, open, onOpenChange }: {
       }
     } catch (err: any) {
       if (err?.name !== "AbortError") {
-        setError(err?.message ?? "请求失败");
+        setError(err?.message ?? t("nodes.errorPrefix"));
       }
     } finally {
       setLoading(false);
@@ -1164,7 +1171,7 @@ function TracerouteDialog({ node, open, onOpenChange }: {
       if (!createRes.ok) {
         const e = await createRes.json().catch(() => ({}));
         const params = e.error?.params ? ` (${JSON.stringify(e.error.params)})` : "";
-        throw new Error((e.error?.message ?? `创建测量失败 (${createRes.status})`) + params);
+        throw new Error((e.error?.message ?? `${t("nodes.errorPrefix")} (${createRes.status})`) + params);
       }
       const { id } = await createRes.json();
 
@@ -1176,9 +1183,9 @@ function TracerouteDialog({ node, open, onOpenChange }: {
         const data = await pollRes.json();
         if (data.status !== "in-progress") {
           const result = data.results?.[0];
-          if (!result) throw new Error("未收到结果");
+          if (!result) throw new Error(t("nodes.noHistory", { defaultValue: "未收到结果" }));
           setGpProbeInfo({ city: result.probe.city, network: result.probe.network });
-          if (result.result.status === "failed") throw new Error(result.result.rawOutput || "追踪失败");
+          if (result.result.status === "failed") throw new Error(result.result.rawOutput || t("nodes.tracerouteTitle", { name: t("nodes.traceroute", { defaultValue: "追踪失败" }) }));
           const converted: TracerouteHop[] = (result.result.hops ?? []).map((h: GPHop, idx: number) => ({
             hop: idx + 1,
             ip: h.resolvedAddress ?? undefined,
@@ -1200,7 +1207,8 @@ function TracerouteDialog({ node, open, onOpenChange }: {
         }
       }
     } catch (err: any) {
-      if (err?.name !== "AbortError") setGpError(err?.message ?? "请求失败");
+      if (gpAbortRef.current?.abort) gpAbortRef.current.abort();
+      if (err?.name !== "AbortError") setGpError(err?.message ?? t("nodes.errorPrefix"));
     } finally {
       setGpLoading(false);
     }
@@ -1307,7 +1315,7 @@ function TracerouteDialog({ node, open, onOpenChange }: {
         lines.push(`${String(hop.hop).padStart(2)}  * * *`);
       } else {
         const rtt = hop.rtt_ms?.length ? avgRtt(hop.rtt_ms) + " ms" : "—";
-        const geo = hop.ip && isPrivateIP(hop.ip) ? "内网" : geoLabel(hop.ip);
+        const geo = hop.ip && isPrivateIP(hop.ip) ? t("nodes.privateIP") : geoLabel(hop.ip);
         lines.push(
           `${String(hop.hop).padStart(2)}  ${(hop.ip ?? "").padEnd(18)}  ${rtt.padEnd(12)}  ${geo}`.trimEnd(),
         );
@@ -1327,9 +1335,9 @@ function TracerouteDialog({ node, open, onOpenChange }: {
         <tr className="border-b border-[hsl(var(--border))] bg-[hsl(var(--muted))]">
           <th className="py-2 pl-3 pr-2 text-left font-medium text-[hsl(var(--muted-foreground))]">#</th>
           <th className="py-2 pr-2 text-left font-medium text-[hsl(var(--muted-foreground))]">IP</th>
-          <th className="py-2 pr-2 text-left font-medium text-[hsl(var(--muted-foreground))]">网络</th>
-          <th className="py-2 pr-2 text-left font-medium text-[hsl(var(--muted-foreground))]">地区 / ASN</th>
-          <th className="py-2 pr-3 text-right font-medium text-[hsl(var(--muted-foreground))]">平均 RTT</th>
+          <th className="py-2 pr-2 text-left font-medium text-[hsl(var(--muted-foreground))]">{t("nodes.network")}</th>
+          <th className="py-2 pr-2 text-left font-medium text-[hsl(var(--muted-foreground))]">{t("nodes.regionAsn")}</th>
+          <th className="py-2 pr-3 text-right font-medium text-[hsl(var(--muted-foreground))]">{t("nodes.avgRTT")}</th>
         </tr>
       </thead>
       <tbody>
@@ -1344,7 +1352,7 @@ function TracerouteDialog({ node, open, onOpenChange }: {
               </td>
               <td className="py-2 pr-2">
                 {hop.ip && isPrivateIP(hop.ip) ? (
-                  <span className="text-[hsl(var(--muted-foreground))] opacity-40">内网</span>
+                  <span className="text-[hsl(var(--muted-foreground))] opacity-40">{t("nodes.privateIP")}</span>
                 ) : netType ? (
                   <span className={`rounded px-1.5 py-0.5 text-[10px] font-medium ${networkBadgeColor(netType)}`}>{netType}</span>
                 ) : geo?.asn_org ? (
@@ -1361,7 +1369,7 @@ function TracerouteDialog({ node, open, onOpenChange }: {
                     {geo.asn_org && <span className="ml-1.5 opacity-70">{geo.asn_org}</span>}
                   </span>
                 ) : hop.ip ? (
-                  <span className="text-[hsl(var(--muted-foreground))] opacity-30">查询中…</span>
+                  <span className="text-[hsl(var(--muted-foreground))] opacity-30">{t("nodes.querying")}</span>
                 ) : null}
               </td>
               <td className="py-2 pr-3 text-right">
@@ -1378,7 +1386,7 @@ function TracerouteDialog({ node, open, onOpenChange }: {
         })}
         {isStreaming && (
           <tr>
-            <td colSpan={5} className="py-2 pl-3 text-[hsl(var(--muted-foreground))] opacity-50">追踪中…</td>
+            <td colSpan={5} className="py-2 pl-3 text-[hsl(var(--muted-foreground))] opacity-50">{t("nodes.tracingEllipsis")}</td>
           </tr>
         )}
       </tbody>
@@ -1400,13 +1408,13 @@ function TracerouteDialog({ node, open, onOpenChange }: {
     <Dialog open={open} onOpenChange={handleOpenChange}>
       <DialogContent className="max-w-2xl">
         <DialogHeader>
-          <DialogTitle>路由追踪 — {node.name}</DialogTitle>
+          <DialogTitle>{t("nodes.tracerouteTitle", { name: node.name })}</DialogTitle>
           <DialogDescription className="font-mono text-xs">{nodeTarget}</DialogDescription>
         </DialogHeader>
 
         {/* ── Tab 切换 ── */}
         <div className="flex rounded-md border border-[hsl(var(--border))] overflow-hidden text-xs w-fit">
-          {([["inbound", "回程（节点出发）"], ["outbound", "去程（Globalping）"], ["history", "历史记录"]] as const).map(([tab, label]) => (
+          {([["inbound", t("nodes.inbound")], ["outbound", t("nodes.outbound")], ["history", t("nodes.history")]] as const).map(([tab, label]) => (
             <button
               key={tab}
               onClick={() => setActiveTab(tab)}
@@ -1466,7 +1474,7 @@ function TracerouteDialog({ node, open, onOpenChange }: {
                 disabled={loading || qResolving}
                 className="shrink-0 text-xs"
               >
-                {qResolving ? <><Spinner />解析中…</> : "快速追踪"}
+                {qResolving ? <><Spinner />{t("nodes.resolving")}</> : t("nodes.quickTrace")}
               </Button>
             </div>
             {/* 手动输入 */}
@@ -1474,12 +1482,12 @@ function TracerouteDialog({ node, open, onOpenChange }: {
               <Input
                 value={host}
                 onChange={(e) => setHost(e.target.value)}
-                placeholder="或手动输入目标地址，如 8.8.8.8"
+                placeholder={t("nodes.manualTarget")}
                 onKeyDown={(e) => e.key === "Enter" && !loading && handleStart()}
                 className="font-mono text-sm"
               />
               <Button onClick={() => handleStart()} disabled={loading || !host.trim()} className="shrink-0">
-                {loading ? <><Spinner />追踪中…</> : "追踪"}
+                {loading ? <><Spinner />{t("nodes.tracing")}</> : t("nodes.traceButton")}
               </Button>
             </div>
           </div>
@@ -1495,19 +1503,19 @@ function TracerouteDialog({ node, open, onOpenChange }: {
               className="flex-1 rounded-md border border-[hsl(var(--border))] bg-[hsl(var(--background))] px-3 py-1.5 text-sm font-mono text-[hsl(var(--foreground))] focus:outline-none focus:ring-1 focus:ring-[hsl(var(--ring))]"
             >
               {gpCitiesLoading ? (
-                <option>加载探针列表中…</option>
+                <option>{t("nodes.loadingProbes")}</option>
               ) : gpCities.length === 0 ? (
-                <option>暂无中国探针</option>
+                <option>{t("nodes.noCNProbes")}</option>
               ) : (
                 gpCities.map(({ city, count }) => (
                   <option key={city} value={city}>
-                    {CITY_ZH[city] ?? city}（{count} 个探针）
+                    {CITY_ZH[city] ?? city}（{count} {t("nodes.probeCount", { count })}）
                   </option>
                 ))
               )}
             </select>
             <Button onClick={handleGpStart} disabled={gpLoading || gpCitiesLoading || !selectedCity} className="shrink-0">
-              {gpLoading ? <><Spinner />追踪中…</> : "开始追踪"}
+              {gpLoading ? <><Spinner />{t("nodes.tracing")}</> : t("nodes.startTrace")}
             </Button>
           </div>
         )}
@@ -1517,12 +1525,12 @@ function TracerouteDialog({ node, open, onOpenChange }: {
           <div className="flex items-center gap-3 text-xs">
             {activeTab === "outbound" && gpProbeInfo && (
               <span className="text-[hsl(var(--muted-foreground))]">
-                探针：{CITY_ZH[gpProbeInfo.city] ?? gpProbeInfo.city} · {gpProbeInfo.network}
+                {t("nodes.probe")}：{CITY_ZH[gpProbeInfo.city] ?? gpProbeInfo.city} · {gpProbeInfo.network}
               </span>
             )}
             {quality && (
               <>
-                <span className="text-[hsl(var(--muted-foreground))]">线路</span>
+                <span className="text-[hsl(var(--muted-foreground))]">{t("nodes.route")}</span>
                 <span className={`rounded-full px-2 py-0.5 font-medium ${quality.color}`}>{quality.label}</span>
               </>
             )}
@@ -1562,15 +1570,15 @@ function TracerouteDialog({ node, open, onOpenChange }: {
               </div>
             ) : histResults.length === 0 ? (
               <div className="py-10 text-center text-sm text-[hsl(var(--muted-foreground))]">
-                暂无历史记录
+                {t("nodes.noHistory")}
               </div>
             ) : (
               <ScrollArea className="max-h-96">
                 <div className="flex items-center gap-3 border-b border-[hsl(var(--border))] bg-[hsl(var(--muted)/0.5)] px-4 py-2 text-xs font-medium text-[hsl(var(--muted-foreground))]">
-                  <span className="w-10 shrink-0">方向</span>
-                  <span className="flex-1">目标</span>
-                  <span className="shrink-0">线路</span>
-                  <span className="shrink-0 w-28 text-right">时间</span>
+                  <span className="w-10 shrink-0">{t("nodes.direction")}</span>
+                  <span className="flex-1">{t("nodes.target")}</span>
+                  <span className="shrink-0">{t("nodes.routeCol")}</span>
+                  <span className="shrink-0 w-28 text-right">{t("nodes.timeCol")}</span>
                   <span className="shrink-0 w-4" />
                   <span className="shrink-0 w-4" />
                 </div>
@@ -1587,7 +1595,7 @@ function TracerouteDialog({ node, open, onOpenChange }: {
                         <span className={`shrink-0 rounded px-1.5 py-0.5 text-[10px] font-medium ${
                           r.direction === "inbound" ? "text-purple-600 bg-purple-500/10" : "text-sky-600 bg-sky-500/10"
                         }`}>
-                          {r.direction === "inbound" ? "回程" : "去程"}
+                          {r.direction === "inbound" ? t("nodes.inbound").split("（")[0] : t("nodes.outbound").split("（")[0]}
                         </span>
                         <span className="flex-1 truncate font-mono text-xs text-[hsl(var(--muted-foreground))]" title={r.target}>{r.target}</span>
                         {r.quality ? (
@@ -1601,13 +1609,13 @@ function TracerouteDialog({ node, open, onOpenChange }: {
                         <button
                           onClick={(e) => {
                             e.stopPropagation();
-                            if (!confirm("确认删除这条追踪记录？")) return;
+                            if (!confirm(t("nodes.confirmDeleteTrace"))) return;
                             api.del(`/nodes/${r.node_id}/traceroute/results/${r.id}`)
                               .then(() => setHistResults((prev) => prev.filter((x) => x.id !== r.id)))
                               .catch(() => {});
                           }}
                           className="shrink-0 rounded p-0.5 text-[hsl(var(--muted-foreground))] hover:text-[hsl(var(--destructive))] hover:bg-[hsl(var(--destructive)/0.1)] transition-colors"
-                          title="删除"
+                          title={t("nodes.deleteTrace")}
                         >
                           <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" className="h-3.5 w-3.5">
                             <polyline points="3 6 5 6 21 6" />
@@ -1637,11 +1645,11 @@ function TracerouteDialog({ node, open, onOpenChange }: {
         <DialogFooter className="flex-row items-center justify-between sm:justify-between">
           {hasCopyable ? (
             <Button variant="outline" size="sm" onClick={(e) => handleCopy(e)}>
-              {copied ? "已复制" : "复制结果"}
+              {copied ? t("nodes.copiedResult") : t("nodes.copyResult")}
             </Button>
           ) : <span />}
           <DialogClose asChild>
-            <Button variant="outline">关闭</Button>
+            <Button variant="outline">{t("common.close")}</Button>
           </DialogClose>
         </DialogFooter>
       </DialogContent>
@@ -1698,7 +1706,7 @@ const REGION_PRESETS: { code: string; name: string }[] = [
 function sentinelFormatTime(iso: string | null | undefined): string {
   if (!iso) return "--";
   try {
-    return new Date(iso).toLocaleString("zh-CN", { year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit" });
+    return new Date(iso).toLocaleString(i18n.language, { year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit" });
   } catch { return iso; }
 }
 
@@ -1721,21 +1729,22 @@ function sentinelStatusClass(status: IPSentinelRun["status"] | undefined): strin
 
 function sentinelStatusLabel(status: IPSentinelRun["status"] | undefined): string {
   switch (status) {
-    case "pending": return "等待中";
-    case "running": return "运行中";
-    case "success": return "成功";
-    case "failed":  return "失败";
+    case "pending": return i18n.t("nodes.waiting");
+    case "running": return i18n.t("nodes.running");
+    case "success": return i18n.t("nodes.success");
+    case "failed":  return i18n.t("nodes.failed");
     default:        return "--";
   }
 }
 
 function sentinelTriggeredBy(v: string): string {
-  if (v === "auto" || v === "scheduler") return "自动";
-  if (v === "manual" || v === "user")    return "手动";
+  if (v === "auto" || v === "scheduler") return i18n.t("nodes.auto");
+  if (v === "manual" || v === "user")    return i18n.t("nodes.manual");
   return v || "—";
 }
 
 function SentinelRunRow({ run }: { run: IPSentinelRun }) {
+  const { t } = useTranslation();
   const [expanded, setExpanded] = useState(false);
   return (
     <>
@@ -1749,7 +1758,7 @@ function SentinelRunRow({ run }: { run: IPSentinelRun }) {
         <tr className="border-b border-[hsl(var(--border))]">
           <td colSpan={4} className="px-3 pb-2 pt-1">
             <pre className="max-h-60 overflow-y-auto rounded bg-[hsl(var(--muted))] p-2.5 text-[10px] leading-relaxed font-mono whitespace-pre-wrap">
-              {run.output.length > 0 ? run.output.join("\n") : run.result ? JSON.stringify(run.result, null, 2) : "(无输出)"}
+              {run.output.length > 0 ? run.output.join("\n") : run.result ? JSON.stringify(run.result, null, 2) : t("nodes.noOutput")}
             </pre>
           </td>
         </tr>
@@ -1766,6 +1775,7 @@ function IPSentinelDialog({ nodeId, nodeName, open, onOpenChange }: {
   open: boolean;
   onOpenChange: (v: boolean) => void;
 }) {
+  const { t } = useTranslation();
   const handleAuthError = useAuthErrorHandler();
 
   const [config, setConfig] = useState<NodeIPSentinelConfig>({ region_code: "", region_name: "" });
@@ -1821,9 +1831,9 @@ function IPSentinelDialog({ nodeId, nodeName, open, onOpenChange }: {
     try {
       const result = await api.post<IPDetectResult>(`/nodes/${nodeId}/ip-sentinel/detect`, {});
       setDetectResult(result);
-      toast(`检测完成：${result.ip}（${result.country} · ${result.city}）`, "success");
+      toast(t("nodes.detectComplete", { ip: result.ip, country: result.country, city: result.city }), "success");
       fetchRuns();
-    } catch (err) { if (!handleAuthError(err)) toast("检测失败", "error"); }
+    } catch (err) { if (!handleAuthError(err)) toast(t("nodes.detectFailed"), "error"); }
     finally { setDetectLoading(false); }
   }
 
@@ -1831,10 +1841,10 @@ function IPSentinelDialog({ nodeId, nodeName, open, onOpenChange }: {
     setRunLoading(true);
     try {
       await api.post(`/nodes/${nodeId}/ip-sentinel/run`, {});
-      toast("任务已提交，轮询结果中…", "success");
+      toast(t("nodes.taskSubmitted"), "success");
       pollCountRef.current = 0;
       schedulePoll();
-    } catch (err) { if (!handleAuthError(err)) toast("提交失败", "error"); }
+    } catch (err) { if (!handleAuthError(err)) toast(t("nodes.submitFailed"), "error"); }
     finally { setRunLoading(false); }
   }
 
@@ -1843,8 +1853,8 @@ function IPSentinelDialog({ nodeId, nodeName, open, onOpenChange }: {
     try {
       await api.put(`/nodes/${nodeId}/ip-sentinel/config`, { region_code: draftCode, region_name: draftName });
       setConfig({ region_code: draftCode, region_name: draftName });
-      toast("地区设置已保存", "success");
-    } catch (err) { if (!handleAuthError(err)) toast("保存失败", "error"); }
+      toast(t("nodes.regionSavedOk"), "success");
+    } catch (err) { if (!handleAuthError(err)) toast(t("common.saveFailed"), "error"); }
     finally { setConfigSaving(false); }
   }
 
@@ -1873,7 +1883,7 @@ function IPSentinelDialog({ nodeId, nodeName, open, onOpenChange }: {
                   <p className="text-[11px] text-[hsl(var(--muted-foreground))]">{detectResult.country_code} · {detectResult.city}</p>
                 </>
               ) : (
-                <p className="text-[12px] text-[hsl(var(--muted-foreground))]">未检测</p>
+            <p className="text-[12px] text-[hsl(var(--muted-foreground))]">{t("nodes.notDetected")}</p>
               )}
               {latestRun && (
                 <span className={`mt-1 inline-flex items-center rounded px-1.5 py-0.5 text-[10px] font-medium ${sentinelStatusClass(latestRun.status)}`}>
@@ -1883,31 +1893,31 @@ function IPSentinelDialog({ nodeId, nodeName, open, onOpenChange }: {
             </div>
             <div className="flex gap-2">
               <Button size="sm" variant="outline" className="h-7 text-xs px-2" disabled={detectLoading || !loaded} onClick={handleDetect}>
-                {detectLoading ? <svg className="h-3 w-3 animate-spin" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><path d="M21 12a9 9 0 1 1-6.219-8.56" stroke="currentColor" strokeWidth={2} strokeLinecap="round"/></svg> : "检测 IP"}
+                {detectLoading ? <svg className="h-3 w-3 animate-spin" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><path d="M21 12a9 9 0 1 1-6.219-8.56" stroke="currentColor" strokeWidth={2} strokeLinecap="round"/></svg> : t("nodes.detectIP")}
               </Button>
               <Button size="sm" variant="outline" className="h-7 text-xs px-2" disabled={runLoading || !loaded} onClick={handleRun}>
-                {runLoading ? <svg className="h-3 w-3 animate-spin" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><path d="M21 12a9 9 0 1 1-6.219-8.56" stroke="currentColor" strokeWidth={2} strokeLinecap="round"/></svg> : "立即执行"}
+                {runLoading ? <svg className="h-3 w-3 animate-spin" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><path d="M21 12a9 9 0 1 1-6.219-8.56" stroke="currentColor" strokeWidth={2} strokeLinecap="round"/></svg> : t("nodes.executeNow")}
               </Button>
             </div>
           </div>
 
           {/* 地区配置 */}
           <div className="space-y-2">
-            <Label className="text-xs text-[hsl(var(--muted-foreground))]">地区设置</Label>
+            <Label className="text-xs text-[hsl(var(--muted-foreground))]">{t("nodes.regionSettings")}</Label>
             <Select value={isPreset ? draftCode : undefined} onValueChange={v => { const p = REGION_PRESETS.find(x => x.code === v); if (p) { setDraftCode(p.code); setDraftName(p.name); } }}>
-              <SelectTrigger className="h-8 text-xs"><SelectValue placeholder="— 选择预设 —" /></SelectTrigger>
+              <SelectTrigger className="h-8 text-xs"><SelectValue placeholder={t("nodes.selectPreset")} /></SelectTrigger>
               <SelectContent>
                 {REGION_PRESETS.map(p => <SelectItem key={p.code} value={p.code} className="text-xs">{p.code} — {p.name}</SelectItem>)}
               </SelectContent>
             </Select>
             <div className="grid grid-cols-2 gap-2">
-              <Input placeholder="代码（如 US）" value={draftCode} onChange={e => setDraftCode(e.target.value.toUpperCase())} className="h-8 text-xs" />
-              <Input placeholder="名称（如 United States）" value={draftName} onChange={e => setDraftName(e.target.value)} className="h-8 text-xs" />
+              <Input placeholder={t("nodes.codePlaceholder")} value={draftCode} onChange={e => setDraftCode(e.target.value.toUpperCase())} className="h-8 text-xs" />
+              <Input placeholder={t("nodes.namePlaceholder")} value={draftName} onChange={e => setDraftName(e.target.value)} className="h-8 text-xs" />
             </div>
             <div className="flex items-center justify-between">
-              <p className="text-[11px] text-[hsl(var(--muted-foreground))]">已保存：{config.region_code || "—"} {config.region_name}</p>
+              <p className="text-[11px] text-[hsl(var(--muted-foreground))]">{config.region_code ? t("nodes.regionSaved", { code: config.region_code, name: config.region_name }) : t("nodes.regionSavedNone")}</p>
               <Button size="sm" variant="outline" className="h-7 text-xs px-3" disabled={configSaving || !loaded} onClick={handleSaveConfig}>
-                {configSaving ? "保存中…" : "保存"}
+                {configSaving ? t("common.saving") : t("common.save")}
               </Button>
             </div>
           </div>
@@ -1915,20 +1925,20 @@ function IPSentinelDialog({ nodeId, nodeName, open, onOpenChange }: {
           {/* 执行记录 */}
           <div>
             <button className="flex w-full items-center justify-between py-1 text-xs text-[hsl(var(--muted-foreground))] hover:text-[hsl(var(--foreground))] transition-colors" onClick={() => setRunsExpanded(v => !v)}>
-              <span className="font-medium">最近执行记录</span>
+              <span className="font-medium">{t("nodes.recentRuns")}</span>
               <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" className={`h-3.5 w-3.5 transition-transform ${runsExpanded ? "rotate-180" : ""}`}><polyline points="6 9 12 15 18 9" /></svg>
             </button>
             {runsExpanded && (
               <div className="mt-1.5 rounded-md border border-[hsl(var(--border))] overflow-hidden">
                 {recentRuns.length === 0 ? (
-                  <p className="py-3 text-center text-xs text-[hsl(var(--muted-foreground))]">暂无记录</p>
+                  <p className="py-3 text-center text-xs text-[hsl(var(--muted-foreground))]">{t("nodes.noRecords")}</p>
                 ) : (
                   <table className="w-full text-sm">
                     <thead><tr className="border-b border-[hsl(var(--border))] bg-[hsl(var(--muted))]">
-                      <th className="py-1.5 pl-3 pr-2 text-left text-[10px] font-medium text-[hsl(var(--muted-foreground))]">时间</th>
-                      <th className="py-1.5 pr-2 text-left text-[10px] font-medium text-[hsl(var(--muted-foreground))]">触发</th>
-                      <th className="py-1.5 pr-2 text-left text-[10px] font-medium text-[hsl(var(--muted-foreground))]">状态</th>
-                      <th className="py-1.5 pr-3 text-right text-[10px] font-medium text-[hsl(var(--muted-foreground))]">耗时</th>
+                      <th className="py-1.5 pl-3 pr-2 text-left text-[10px] font-medium text-[hsl(var(--muted-foreground))]">{t("nodes.time")}</th>
+                      <th className="py-1.5 pr-2 text-left text-[10px] font-medium text-[hsl(var(--muted-foreground))]">{t("nodes.trigger")}</th>
+                      <th className="py-1.5 pr-2 text-left text-[10px] font-medium text-[hsl(var(--muted-foreground))]">{t("common.status")}</th>
+                      <th className="py-1.5 pr-3 text-right text-[10px] font-medium text-[hsl(var(--muted-foreground))]">{t("nodes.duration")}</th>
                     </tr></thead>
                     <tbody>{recentRuns.map(run => <SentinelRunRow key={run.id} run={run} />)}</tbody>
                   </table>
@@ -1939,7 +1949,7 @@ function IPSentinelDialog({ nodeId, nodeName, open, onOpenChange }: {
         </div>
 
         <DialogFooter>
-          <DialogClose asChild><Button variant="outline" size="sm">关闭</Button></DialogClose>
+          <DialogClose asChild><Button variant="outline" size="sm">{t("common.close")}</Button></DialogClose>
         </DialogFooter>
       </DialogContent>
     </Dialog>
@@ -1949,6 +1959,7 @@ function IPSentinelDialog({ nodeId, nodeName, open, onOpenChange }: {
 // ── SentinelScheduleBar ───────────────────────────────────────────
 
 function SentinelScheduleBar() {
+  const { t } = useTranslation();
   const handleAuthError = useAuthErrorHandler();
   const [schedule, setSchedule] = useState<SentinelSchedule | null>(null);
   const [editing, setEditing] = useState(false);
@@ -1964,14 +1975,14 @@ function SentinelScheduleBar() {
 
   async function handleSave() {
     const hours = parseInt(draft, 10);
-    if (isNaN(hours) || hours < 1) { toast("请输入有效的小时数（≥1）", "error"); return; }
+    if (isNaN(hours) || hours < 1) { toast(t("nodes.invalidInterval"), "error"); return; }
     setSaving(true);
     try {
       const res = await api.put<{ ok: boolean; interval_hours: number }>("/ip-sentinel/schedule", { interval_hours: hours });
       setSchedule(prev => prev ? { ...prev, interval_hours: res.interval_hours } : null);
       setEditing(false);
-      toast(`执行间隔已更新为 ${res.interval_hours} 小时`, "success");
-    } catch (err) { if (!handleAuthError(err)) toast("保存失败", "error"); }
+      toast(t("nodes.intervalUpdated", { hours: res.interval_hours }), "success");
+    } catch (err) { if (!handleAuthError(err)) toast(t("common.saveFailed"), "error"); }
     finally { setSaving(false); }
   }
 
@@ -1979,17 +1990,17 @@ function SentinelScheduleBar() {
     <div className="mb-4 flex flex-wrap items-center gap-x-4 gap-y-1.5 rounded-lg border border-[hsl(var(--border))] bg-[hsl(var(--card))] px-4 py-2.5 text-xs">
       <span className="flex items-center gap-1.5 text-[hsl(var(--muted-foreground))]">
         <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" className="h-3.5 w-3.5"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" /></svg>
-        Sentinel 调度
+        {t("nodes.ipSentinel")} — {t("nodes.sentinelSchedule")}
       </span>
       <div className="h-3 w-px bg-[hsl(var(--border))] hidden sm:block" />
       <div className="flex items-center gap-1.5">
-        <span className="text-[hsl(var(--muted-foreground))]">间隔</span>
+        <span className="text-[hsl(var(--muted-foreground))]">{t("nodes.sentinelInterval")}</span>
         {editing ? (
           <div className="flex items-center gap-1">
             <Input type="number" min={1} value={draft} onChange={e => setDraft(e.target.value)} onKeyDown={e => { if (e.key === "Enter") handleSave(); if (e.key === "Escape") setEditing(false); }} className="h-6 w-16 text-xs" autoFocus />
             <span className="text-[hsl(var(--muted-foreground))]">h</span>
-            <Button size="sm" className="h-6 text-xs px-2" disabled={saving} onClick={handleSave}>{saving ? "…" : "确定"}</Button>
-            <Button size="sm" variant="ghost" className="h-6 text-xs px-1" onClick={() => setEditing(false)}>取消</Button>
+            <Button size="sm" className="h-6 text-xs px-2" disabled={saving} onClick={handleSave}>{saving ? "…" : t("common.determine")}</Button>
+            <Button size="sm" variant="ghost" className="h-6 text-xs px-1" onClick={() => setEditing(false)}>{t("common.cancel")}</Button>
           </div>
         ) : (
           <button className="flex items-center gap-0.5 font-medium hover:text-[hsl(var(--primary))] transition-colors" onClick={() => { setDraft(String(schedule?.interval_hours ?? "1")); setEditing(true); }}>
@@ -1998,15 +2009,15 @@ function SentinelScheduleBar() {
           </button>
         )}
       </div>
-      <span className="text-[hsl(var(--muted-foreground))]">上次：<span className="text-[hsl(var(--foreground))]">{sentinelFormatTime(schedule?.last_run_at)}</span></span>
-      <span className="text-[hsl(var(--muted-foreground))]">下次：<span className="text-[hsl(var(--foreground))]">{sentinelFormatTime(schedule?.next_run_at)}</span></span>
+      <span className="text-[hsl(var(--muted-foreground))]">{t("nodes.sentinelLastRun")}：<span className="text-[hsl(var(--foreground))]">{sentinelFormatTime(schedule?.last_run_at)}</span></span>
+      <span className="text-[hsl(var(--muted-foreground))]">{t("nodes.sentinelNextRun")}：<span className="text-[hsl(var(--foreground))]">{sentinelFormatTime(schedule?.next_run_at)}</span></span>
       <Button size="sm" variant="outline" className="h-6 text-xs px-2 ml-auto" disabled={runningAll} onClick={async () => {
         setRunningAll(true);
-        try { await api.post("/ip-sentinel/run-all", {}); toast("已触发全部节点执行", "success"); }
-        catch (err) { if (!handleAuthError(err)) toast("触发失败", "error"); }
+        try { await api.post("/ip-sentinel/run-all", {}); toast(t("nodes.sentinelTriggered"), "success"); }
+        catch (err) { if (!handleAuthError(err)) toast(t("nodes.sentinelTriggerFailed"), "error"); }
         finally { setRunningAll(false); }
       }}>
-        {runningAll ? "触发中…" : "全部执行"}
+        {runningAll ? t("nodes.sentinelRunningAll") : t("nodes.sentinelRunAll")}
       </Button>
     </div>
   );
@@ -2025,6 +2036,7 @@ function countryFlag(code: string): string {
 }
 
 function NodeCard({ node, runtime, metrics, onEdit, onDelete, onOpenDetail, onRestart, onSpeedtest, speedtestLoading, speedtestResult, onCheck, checkLoading, checkResult, prevMetrics, onUpdate, updateLoading, onManualUpdate, latestVersion, geoInfo }: NodeCardProps) {
+  const { t } = useTranslation();
   const [tracerouteOpen, setTracerouteOpen] = useState(false);
   const [sentinelOpen, setSentinelOpen] = useState(false);
   const totalTraffic = node.upload_bytes + node.download_bytes;
@@ -2036,9 +2048,9 @@ function NodeCard({ node, runtime, metrics, onEdit, onDelete, onOpenDetail, onRe
         ? "bg-green-600 text-white hover:bg-green-600"
         : ""}
       variant={online ? undefined : "destructive"}
-      title="基于 gRPC 长连接判定"
+      title={t("nodes.basedOnGRPC")}
     >
-      {online ? "在线" : "离线"}
+      {online ? t("nodes.online") : t("nodes.offline")}
     </Badge>
   );
 
@@ -2068,36 +2080,36 @@ function NodeCard({ node, runtime, metrics, onEdit, onDelete, onOpenDetail, onRe
         </div>
         <div className="ml-2 flex shrink-0 items-center gap-2">
           {node.disabled
-            ? <Badge variant="secondary">已禁用</Badge>
+            ? <Badge variant="secondary">{t("common.disabled")}</Badge>
             : statusBadge}
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <Button variant="ghost" size="sm" className="h-8 w-8 p-0">
                 <IconMore className="h-4 w-4" />
-                <span className="sr-only">操作菜单</span>
+                <span className="sr-only">{t("nodes.operationMenu")}</span>
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
-              <DropdownMenuItem onClick={() => onEdit(node)}>
-                编辑
+               <DropdownMenuItem onClick={() => onEdit(node)}>
+                {t("common.edit")}
               </DropdownMenuItem>
               <DropdownMenuItem onClick={() => setTracerouteOpen(true)}>
-                路由追踪
+                {t("nodes.traceroute")}
               </DropdownMenuItem>
               <DropdownMenuItem onClick={() => setSentinelOpen(true)}>
-                IP Sentinel
+                {t("nodes.ipSentinel")}
               </DropdownMenuItem>
               <DropdownMenuItem onClick={() => onUpdate(node)} disabled={updateLoading}>
-                {updateLoading ? "更新中…" : "更新节点"}
+                {updateLoading ? t("nodes.updateInProgress") : t("nodes.updateNode")}
               </DropdownMenuItem>
               <DropdownMenuItem onClick={() => onManualUpdate(node)}>
-                手动更新
+                {t("nodes.manualUpdate")}
               </DropdownMenuItem>
               <DropdownMenuItem
                 className="text-[hsl(var(--destructive))]"
                 onClick={() => onDelete(node)}
               >
-                删除
+                {t("common.delete")}
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
@@ -2106,7 +2118,7 @@ function NodeCard({ node, runtime, metrics, onEdit, onDelete, onOpenDetail, onRe
 
       <CardContent className="flex-1 pt-0">
         {/* ── 累计流量（实际带宽，不含倍率）── */}
-        <div className="flex items-center gap-3 py-2 text-xs font-mono" title="实际带宽用量，不含流量倍率">
+         <div className="flex items-center gap-3 py-2 text-xs font-mono" title={t("nodes.actualBandwidth")}>
           <span className="flex items-center gap-1 text-[hsl(var(--muted-foreground))]">
             <IconUpload className="h-3 w-3" />
             {formatBytes(node.upload_bytes)}
@@ -2134,7 +2146,7 @@ function NodeCard({ node, runtime, metrics, onEdit, onDelete, onOpenDetail, onRe
             {metrics.connections > 0 && (
               <span className="ml-auto flex items-center gap-1 text-[hsl(var(--muted-foreground))]">
                 <span className="h-1.5 w-1.5 rounded-full bg-green-500" />
-                {metrics.connections} 连接
+                {metrics.connections} {t("nodes.connections")}
               </span>
             )}
           </div>
@@ -2155,7 +2167,7 @@ function NodeCard({ node, runtime, metrics, onEdit, onDelete, onOpenDetail, onRe
                 "text-[hsl(var(--muted-foreground))]";
               return (
                 <span className={`font-medium ${color}`}>
-                  {d.toLocaleDateString("zh-CN")}{daysLeft > 0 ? `（${daysLeft}天）` : "（已到期）"}
+                  {d.toLocaleDateString(i18n.language)}{daysLeft > 0 ? t("nodes.daysLeft", { days: daysLeft }) : t("nodes.expiredLabel")}
                 </span>
               );
             })()}
@@ -2187,14 +2199,14 @@ function NodeCard({ node, runtime, metrics, onEdit, onDelete, onOpenDetail, onRe
         <div className="border-t border-[hsl(var(--border))] pt-2" />
 
         <div className="flex flex-wrap gap-1">
-          <Button variant="ghost" size="sm" className="h-8 px-2 text-xs" onClick={() => onOpenDetail(node, "config")} title="配置">
-            配置
+           <Button variant="ghost" size="sm" className="h-8 px-2 text-xs" onClick={() => onOpenDetail(node, "config")} title={t("nodes.config")}>
+            {t("nodes.config")}
           </Button>
-          <Button variant="ghost" size="sm" className="h-8 px-2 text-xs" onClick={() => onOpenDetail(node, "logs")} title="日志">
-            日志
+          <Button variant="ghost" size="sm" className="h-8 px-2 text-xs" onClick={() => onOpenDetail(node, "logs")} title={t("nodes.logs")}>
+            {t("nodes.logs")}
           </Button>
-          <Button variant="ghost" size="sm" className="h-8 px-2 text-xs" onClick={() => onRestart(node)} title="重启">
-            重启
+          <Button variant="ghost" size="sm" className="h-8 px-2 text-xs" onClick={() => onRestart(node)} title={t("nodes.restart")}>
+            {t("nodes.restart")}
           </Button>
           <Button
             variant="ghost"
@@ -2202,7 +2214,7 @@ function NodeCard({ node, runtime, metrics, onEdit, onDelete, onOpenDetail, onRe
             className="h-8 px-2 text-xs"
             onClick={() => onSpeedtest(node)}
             disabled={speedtestLoading}
-            title="测速"
+            title={t("nodes.speedtest")}
           >
             {speedtestLoading ? (
               <>
@@ -2210,9 +2222,9 @@ function NodeCard({ node, runtime, metrics, onEdit, onDelete, onOpenDetail, onRe
                   <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
                   <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
                 </svg>
-                测速中…
+                {t("nodes.speedtesting")}
               </>
-            ) : "测速"}
+            ) : t("nodes.speedtest")}
           </Button>
           <Button
             variant="ghost"
@@ -2220,7 +2232,7 @@ function NodeCard({ node, runtime, metrics, onEdit, onDelete, onOpenDetail, onRe
             className="h-8 px-2 text-xs"
             onClick={() => onCheck(node)}
             disabled={checkLoading}
-            title="解锁检测"
+            title={t("nodes.checkUnlock")}
           >
             {checkLoading ? (
               <>
@@ -2228,9 +2240,9 @@ function NodeCard({ node, runtime, metrics, onEdit, onDelete, onOpenDetail, onRe
                   <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
                   <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
                 </svg>
-                检测中…
+                {t("nodes.checking")}
               </>
-            ) : "解锁检测"}
+            ) : t("nodes.checkUnlock")}
           </Button>
         </div>
 
@@ -2241,7 +2253,7 @@ function NodeCard({ node, runtime, metrics, onEdit, onDelete, onOpenDetail, onRe
               <span className="text-[hsl(var(--foreground))]">↑ {(speedtestResult.up_bps / 1_000_000).toFixed(1)} Mbps</span>
             </div>
             <p className="mt-1 text-[10px] text-[hsl(var(--muted-foreground))]">
-              测试于 {new Date(speedtestResult.tested_at).toLocaleString("zh-CN")}
+              {t("nodes.speedtestAt", { time: new Date(speedtestResult.tested_at).toLocaleString(i18n.language) })}
             </p>
           </div>
         )}
@@ -2278,6 +2290,8 @@ function NodeCard({ node, runtime, metrics, onEdit, onDelete, onOpenDetail, onRe
 // ── Main Page ────────────────────────────────────────────────────
 
 export default function NodesPage() {
+
+  const { t } = useTranslation();
 
   const [nodes, setNodes] = useState<Node[]>([]);
   const [loading, setLoading] = useState(true);
@@ -2343,7 +2357,7 @@ export default function NodesPage() {
       .then((res) => setNodes(res.nodes ?? []))
       .catch((err) => {
         if (!silent && !handleAuthError(err)) {
-          setError(err instanceof Error ? err.message : "加载失败");
+          setError(err instanceof Error ? err.message : t("common.loadFailed"));
         }
       })
       .finally(() => { if (!silent) setLoading(false); });
@@ -2517,11 +2531,11 @@ export default function NodesPage() {
     if (!node) return;
     try {
       await api.post<any>(`/nodes/${node.id}/runtime/restart`, { config: "" });
-      toast(`节点 ${node.name} 重启成功`, "success");
+      toast(t("nodes.restartSent", { defaultValue: `节点 ${node.name} 重启成功` }), "success");
       fetchNodes(true);
     } catch (err) {
       if (!handleAuthError(err)) {
-        toast(`重启失败：${err instanceof Error ? err.message : "未知错误"}`, "error");
+        toast(t("nodes.restartFailed", { defaultValue: `重启失败：${err instanceof Error ? err.message : "未知错误"}` }), "error");
       }
     }
   };
@@ -2531,10 +2545,10 @@ export default function NodesPage() {
     setUpdateLoading((prev) => { const next = new Set(prev); next.add(node.id); return next; });
     try {
       await api.post(`/nodes/${node.id}/update`, {});
-      toast(`节点 ${node.name} 更新已开始，节点将自动重启`, "success");
+      toast(t("nodes.updateNode", { defaultValue: `节点 ${node.name} 更新已开始，节点将自动重启` }), "success");
     } catch (err) {
       if (!handleAuthError(err)) {
-        toast(`更新失败：${err instanceof Error ? err.message : "未知错误"}`, "error");
+        toast(t("common.updateFailed", { defaultValue: `更新失败：${err instanceof Error ? err.message : "未知错误"}` }), "error");
       }
     } finally {
       setUpdateLoading((prev) => { const next = new Set(prev); next.delete(node.id); return next; });
@@ -2557,7 +2571,7 @@ export default function NodesPage() {
       });
     } catch (err) {
       if (!handleAuthError(err)) {
-        toast(`测速失败：${err instanceof Error ? err.message : "未知错误"}`, "error");
+        toast(t("nodes.speedtest", { defaultValue: `测速失败：${err instanceof Error ? err.message : "未知错误"}` }), "error");
       }
     } finally {
       setSpeedtestLoading((prev) => {
@@ -2576,7 +2590,7 @@ export default function NodesPage() {
       setCheckResults((prev) => { const next = new Map(prev); next.set(node.id, result); return next; });
     } catch (err) {
       if (!handleAuthError(err)) {
-        toast(`解锁检测失败：${err instanceof Error ? err.message : "未知错误"}`, "error");
+        toast(t("nodes.checkUnlock", { defaultValue: `解锁检测失败：${err instanceof Error ? err.message : "未知错误"}` }), "error");
       }
     } finally {
       setCheckLoading((prev) => { const next = new Set(prev); next.delete(node.id); return next; });
@@ -2592,11 +2606,11 @@ export default function NodesPage() {
             <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-[hsl(var(--destructive))]/10 text-[hsl(var(--destructive))]">
               <IconAlert className="h-6 w-6" />
             </div>
-            <p className="mb-1 font-semibold text-[hsl(var(--foreground))]">加载失败</p>
+            <p className="mb-1 font-semibold text-[hsl(var(--foreground))]">{t("common.loadFailed")}</p>
             <p className="mb-4 text-sm text-[hsl(var(--muted-foreground))]">{error}</p>
             <Button onClick={() => { fetchNodes(); }} variant="outline">
               <IconRefresh className="mr-2 h-4 w-4" />
-              重试
+              {t("common.retry")}
             </Button>
           </CardContent>
         </Card>
@@ -2609,14 +2623,14 @@ export default function NodesPage() {
       {/* ── Header ──────────────────────────────────────────────── */}
       <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-bold text-[hsl(var(--foreground))]">节点</h1>
+          <h1 className="text-2xl font-bold text-[hsl(var(--foreground))]">{t("nodes.title")}</h1>
           <p className="mt-1 text-sm text-[hsl(var(--muted-foreground))]">
-            管理代理节点及其连接配置。
+            {t("nodes.subtitle", { defaultValue: "管理代理节点及其连接配置。" })}
           </p>
         </div>
         <Button onClick={openCreate}>
           <IconPlus className="mr-2 h-4 w-4" />
-          添加节点
+          {t("nodes.addNode")}
         </Button>
       </div>
 
@@ -2638,13 +2652,13 @@ export default function NodesPage() {
             <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-[hsl(var(--muted))]">
               <IconServer className="h-6 w-6 text-[hsl(var(--muted-foreground))]" />
             </div>
-            <p className="mb-1 font-semibold text-[hsl(var(--foreground))]">暂无节点</p>
+            <p className="mb-1 font-semibold text-[hsl(var(--foreground))]">{t("nodes.noData")}</p>
             <p className="mb-4 text-sm text-[hsl(var(--muted-foreground))]">
-              添加第一个节点开始使用。
+              {t("nodes.noData", { defaultValue: "暂无节点" })}
             </p>
             <Button onClick={openCreate}>
               <IconPlus className="mr-2 h-4 w-4" />
-              添加节点
+              {t("nodes.addNode")}
             </Button>
           </CardContent>
         </Card>
@@ -2736,17 +2750,17 @@ export default function NodesPage() {
       <ConfirmDialog
         open={restartNode !== null}
         onOpenChange={(open) => { if (!open) setRestartNode(null); }}
-        title="确认重启"
+        title={t("nodes.restart")}
         description={
           <>
-            确定要重启节点{" "}
+            {t("nodes.confirmDeleteNode", { defaultValue: "确定要重启节点" })}{" "}
             <span className="font-medium text-[hsl(var(--foreground))]">
               {restartNode?.name}
             </span>{" "}
-            吗？
+            {t("common.irreversibleAction", { defaultValue: "吗？" })}
           </>
         }
-        confirmLabel="重启"
+        confirmLabel={t("nodes.restart")}
         variant="default"
         onConfirm={doRestart}
       />

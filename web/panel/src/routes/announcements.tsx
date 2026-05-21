@@ -1,4 +1,5 @@
 import { useEffect, useState, useCallback } from "react";
+import { useTranslation } from "react-i18next";
 import {
   Card,
   CardHeader,
@@ -21,6 +22,7 @@ interface Announcement {
 }
 
 export default function AnnouncementsPage() {
+  const { t } = useTranslation();
   const [anns, setAnns] = useState<Announcement[]>([]);
   const [loading, setLoading] = useState(true);
   const [msg, setMsg] = useState<string | null>(null);
@@ -63,9 +65,9 @@ export default function AnnouncementsPage() {
         setAnns((prev) => [a, ...prev]);
         setNewTitle("");
         setNewContent("");
-        showMsg("已创建");
+        showMsg(t("announcements.created"));
       })
-      .catch((err) => { if (handleAuthError(err)) return; showMsg("创建失败"); })
+      .catch((err) => { if (handleAuthError(err)) return;         showMsg(t("common.createFailed")); })
       .finally(() => setCreating(false));
   }
 
@@ -82,9 +84,9 @@ export default function AnnouncementsPage() {
       .then((updated) => {
         setAnns((prev) => prev.map((a) => (a.id === id ? updated : a)));
         setEditingId(null);
-        showMsg("已保存");
+        showMsg(t("announcements.saved"));
       })
-      .catch((err) => { if (handleAuthError(err)) return; showMsg("保存失败"); })
+      .catch((err) => { if (handleAuthError(err)) return; showMsg(t("common.saveFailed")); })
       .finally(() => setSaving(false));
   }
 
@@ -118,31 +120,31 @@ export default function AnnouncementsPage() {
 
   return (
     <div className="p-4 sm:p-6 lg:p-8">
-      <h1 className="mb-6 text-2xl font-bold text-[hsl(var(--foreground))]">公告管理</h1>
+      <h1 className="mb-6 text-2xl font-bold text-[hsl(var(--foreground))]">{t("announcements.title")}</h1>
 
       <div className="max-w-2xl space-y-6">
         {/* 新建公告 */}
         <Card>
           <CardHeader>
-            <CardTitle className="text-base font-medium">新建公告</CardTitle>
+            <CardTitle className="text-base font-medium">{t("announcements.newAnnouncement")}</CardTitle>
           </CardHeader>
           <Separator />
           <CardContent className="pt-4 space-y-3">
             <Input
               value={newTitle}
               onChange={(e) => setNewTitle(e.target.value)}
-              placeholder="标题（可留空）"
+              placeholder={t("announcements.titlePlaceholder")}
             />
             <textarea
               value={newContent}
               onChange={(e) => setNewContent(e.target.value)}
-              placeholder="内容（支持 Markdown）"
+              placeholder={t("announcements.contentPlaceholder")}
               rows={5}
               className="w-full resize-y rounded-lg border border-[hsl(var(--border))] bg-transparent px-3 py-2 font-mono text-sm text-[hsl(var(--foreground))] placeholder:text-[hsl(var(--muted-foreground))] focus:outline-none focus:ring-2 focus:ring-[hsl(var(--ring))]"
             />
             <div className="flex items-center gap-3">
               <Button size="sm" onClick={createAnnouncement} disabled={creating || !newContent.trim()}>
-                {creating ? "创建中…" : "创建"}
+                {creating ? t("common.creating") : t("common.create")}
               </Button>
               {msg && <span className="text-sm text-[hsl(var(--muted-foreground))]">{msg}</span>}
             </div>
@@ -152,7 +154,7 @@ export default function AnnouncementsPage() {
         {/* 公告列表 */}
         <Card>
           <CardHeader>
-            <CardTitle className="text-base font-medium">历史记录</CardTitle>
+            <CardTitle className="text-base font-medium">{t("announcements.historyTitle")}</CardTitle>
           </CardHeader>
           <Separator />
           <CardContent className="pt-4">
@@ -163,14 +165,14 @@ export default function AnnouncementsPage() {
                 ))}
               </div>
             ) : anns.length === 0 ? (
-              <p className="text-center text-sm text-[hsl(var(--muted-foreground))] py-8">暂无公告</p>
+              <p className="text-center text-sm text-[hsl(var(--muted-foreground))] py-8">{t("announcements.noAnnouncements")}</p>
             ) : (
               <div className="space-y-2">
                 {anns.map((a) => (
                   <div key={a.id} className="rounded-lg border border-[hsl(var(--border))] p-3 space-y-2">
                     {editingId === a.id ? (
                       <div className="space-y-2">
-                        <Input value={editTitle} onChange={(e) => setEditTitle(e.target.value)} placeholder="标题" />
+                         <Input value={editTitle} onChange={(e) => setEditTitle(e.target.value)} placeholder={t("announcements.editTitlePlaceholder")} />
                         <textarea
                           value={editContent}
                           onChange={(e) => setEditContent(e.target.value)}
@@ -179,9 +181,9 @@ export default function AnnouncementsPage() {
                         />
                         <div className="flex gap-2">
                           <Button size="sm" onClick={() => saveEdit(a.id)} disabled={saving}>
-                            {saving ? "保存中…" : "保存"}
+                             {saving ? t("common.saving") : t("common.save")}
                           </Button>
-                          <Button size="sm" variant="outline" onClick={() => setEditingId(null)}>取消</Button>
+                           <Button size="sm" variant="outline" onClick={() => setEditingId(null)}>{t("common.cancel")}</Button>
                         </div>
                       </div>
                     ) : (
@@ -190,20 +192,20 @@ export default function AnnouncementsPage() {
                           <div className="flex items-center gap-2 min-w-0">
                             {a.enabled && (
                               <span className="shrink-0 rounded px-1.5 py-0.5 text-xs font-medium bg-[hsl(var(--primary))]/15 text-[hsl(var(--primary))]">
-                                激活
+                                {t("announcements.activated")}
                               </span>
                             )}
                             <span className="text-sm font-medium truncate">
-                              {a.title || <span className="italic text-[hsl(var(--muted-foreground))]">无标题</span>}
+                              {a.title || <span className="italic text-[hsl(var(--muted-foreground))]">{t("announcements.noTitle")}</span>}
                             </span>
                           </div>
                           <div className="flex shrink-0 items-center gap-1">
                             {a.enabled
-                              ? <Button size="sm" variant="outline" onClick={() => disableAnn(a.id)}>禁用</Button>
-                              : <Button size="sm" onClick={() => activateAnn(a.id)}>激活</Button>
+                              ? <Button size="sm" variant="outline" onClick={() => disableAnn(a.id)}>{t("announcements.disableBtn")}</Button>
+                              : <Button size="sm" onClick={() => activateAnn(a.id)}>{t("announcements.activateBtn")}</Button>
                             }
-                            <Button size="sm" variant="outline" onClick={() => startEdit(a)}>编辑</Button>
-                            <Button size="sm" variant="destructive" onClick={() => deleteAnn(a.id)}>删除</Button>
+                            <Button size="sm" variant="outline" onClick={() => startEdit(a)}>{t("announcements.editBtn")}</Button>
+                            <Button size="sm" variant="destructive" onClick={() => deleteAnn(a.id)}>{t("announcements.deleteBtn")}</Button>
                           </div>
                         </div>
                         {a.content && (
@@ -227,9 +229,9 @@ export default function AnnouncementsPage() {
       <ConfirmDialog
         open={deleteConfirmId !== null}
         onOpenChange={(open) => { if (!open) setDeleteConfirmId(null); }}
-        title="确认删除"
-        description="确定要删除此公告吗？此操作不可撤销。"
-        confirmLabel="删除"
+        title={t("common.confirmDelete")}
+        description={t("announcements.confirmDelete")}
+        confirmLabel={t("common.delete")}
         onConfirm={doDeleteAnn}
       />
     </div>

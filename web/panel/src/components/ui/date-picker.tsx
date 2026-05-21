@@ -1,6 +1,7 @@
 import * as React from "react";
 import { format, parse, isValid } from "date-fns";
-import { zhCN } from "date-fns/locale";
+import { zhCN, enUS } from "date-fns/locale";
+import { useTranslation } from "react-i18next";
 import { Calendar } from "./calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "./popover";
 import { Button } from "./button";
@@ -35,11 +36,13 @@ function CalendarIcon({ className }: { className?: string }) {
 export function DatePicker({
   value,
   onChange,
-  placeholder = "选择日期",
+  placeholder,
   disabled,
   fromDate,
   className,
 }: DatePickerProps) {
+  const { t, i18n } = useTranslation("datePicker");
+  const locale = i18n.language.startsWith("zh") ? zhCN : enUS;
   const [open, setOpen] = React.useState(false);
 
   const selected = React.useMemo<Date | undefined>(() => {
@@ -66,7 +69,7 @@ export function DatePicker({
           )}
         >
           <CalendarIcon className="mr-2 shrink-0 opacity-60" />
-          {selected ? format(selected, "yyyy年M月d日", { locale: zhCN }) : placeholder}
+          {selected ? format(selected, t("dateFormat"), { locale }) : (placeholder || t("selectDate"))}
         </Button>
       </PopoverTrigger>
       <PopoverContent className="w-auto p-0" align="start">
@@ -76,7 +79,7 @@ export function DatePicker({
           onSelect={handleSelect}
           defaultMonth={selected}
           disabled={fromDate ? { before: fromDate } : undefined}
-          locale={zhCN}
+          locale={locale}
         />
       </PopoverContent>
     </Popover>

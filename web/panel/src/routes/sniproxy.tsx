@@ -1,4 +1,5 @@
 import { useEffect, useState, useCallback } from "react";
+import { useTranslation } from "react-i18next";
 import {
   Card,
   CardHeader,
@@ -110,11 +111,10 @@ function serializeProxyRules(rules: ProxyRule[]): string {
   return rules.map((r) => `${r.domain} ${r.backend}`).join("\n");
 }
 
-// mode 本地化映射
-const modeLabel: Record<SNIRoute["mode"], string> = {
-  terminating: "TLS 终止",
-  "http-reverse": "HTTP 反代",
-  transparent: "透传",
+const modeKeys: Record<SNIRoute["mode"], string> = {
+  terminating: "sniproxy.tlsTerminate",
+  "http-reverse": "sniproxy.httpReverse",
+  transparent: "sniproxy.transparent",
 };
 
 // ── HTTP 反代规则编辑器 ───────────────────────────────────────────
@@ -125,6 +125,7 @@ interface HTTPReverseRulesProps {
 }
 
 function HTTPReverseRules({ node, onNodeUpdated }: HTTPReverseRulesProps) {
+  const { t } = useTranslation();
   const handleAuthError = useAuthErrorHandler();
   const [rules, setRules] = useState<ProxyRule[]>(() =>
     parseProxyRules(node.extra_proxies ?? "")
@@ -162,12 +163,12 @@ function HTTPReverseRules({ node, onNodeUpdated }: HTTPReverseRulesProps) {
         extra_proxies: serializeProxyRules(rules),
       });
       await api.post(`/nodes/${node.id}/sniproxy/sync`, {});
-      toast("HTTP 反代规则已保存并同步", "success");
+      toast(t("sniproxy.httpRulesSaved"), "success");
       setDirty(false);
       onNodeUpdated(updated);
     } catch (err) {
       if (!handleAuthError(err)) {
-        toast(err instanceof Error ? err.message : "保存失败", "error");
+        toast(err instanceof Error ? err.message : t("common.saveFailed"), "error");
       }
     } finally {
       setSaving(false);
@@ -178,7 +179,7 @@ function HTTPReverseRules({ node, onNodeUpdated }: HTTPReverseRulesProps) {
     <div className="space-y-2">
       <div className="flex items-center justify-between">
         <p className="text-xs font-semibold uppercase tracking-wide text-[hsl(var(--muted-foreground))]">
-          HTTP 反代规则
+          {t("sniproxy.httpRulesTitle")}
         </p>
         {dirty && (
           <Button
@@ -187,7 +188,7 @@ function HTTPReverseRules({ node, onNodeUpdated }: HTTPReverseRulesProps) {
             onClick={save}
             disabled={saving}
           >
-            {saving ? "保存中…" : "保存并同步"}
+            {saving ? t("common.saving") : t("sniproxy.saveAndSync")}
           </Button>
         )}
       </div>
@@ -197,8 +198,8 @@ function HTTPReverseRules({ node, onNodeUpdated }: HTTPReverseRulesProps) {
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead className="text-xs">域名</TableHead>
-                <TableHead className="text-xs">后端</TableHead>
+                <TableHead className="text-xs">{t("sniproxy.domain")}</TableHead>
+                <TableHead className="text-xs">{t("sniproxy.backend")}</TableHead>
                 <TableHead className="w-10 text-xs" />
               </TableRow>
             </TableHeader>
@@ -247,7 +248,7 @@ function HTTPReverseRules({ node, onNodeUpdated }: HTTPReverseRulesProps) {
           onClick={addRule}
           disabled={!addDomain.trim() || !addBackend.trim()}
         >
-          添加
+          {t("common.add")}
         </Button>
       </div>
     </div>
@@ -257,6 +258,7 @@ function HTTPReverseRules({ node, onNodeUpdated }: HTTPReverseRulesProps) {
 // ── 主页面 ────────────────────────────────────────────────────────
 
 export default function SNIProxyPage() {
+  const { t } = useTranslation();
   const handleAuthError = useAuthErrorHandler();
   const [nodes, setNodes] = useState<Node[]>([]);
   const [rows, setRows] = useState<Map<string, NodeStatus>>(new Map());
@@ -270,7 +272,7 @@ export default function SNIProxyPage() {
       setNodes(r.nodes ?? []);
     } catch (err) {
       if (!handleAuthError(err)) {
-        toast(err instanceof Error ? err.message : "加载节点失败", "error");
+        toast(err instanceof Error ? err.message : t("sniproxy.loadNodesFailed"), "error");
       }
     } finally {
       setLoadingNodes(false);
@@ -304,11 +306,11 @@ export default function SNIProxyPage() {
   const sync = async (node: Node) => {
     try {
       await api.post(`/nodes/${node.id}/sniproxy/sync`, {});
-      toast(`${node.name} 同步已触发`, "success");
+      toast(`${node.name} ${t("sniproxy.syncTriggered")}`, "success");
       setTimeout(() => fetchStatus(node), 2000);
     } catch (err) {
       if (!handleAuthError(err)) {
-        toast(err instanceof Error ? err.message : "同步失败", "error");
+        toast(err instanceof Error ? err.message : t("sniproxy.syncFailed"), "error");
       }
     }
   };
@@ -328,16 +330,16 @@ export default function SNIProxyPage() {
         <div>
           <h1 className="text-2xl font-semibold">NodeGate</h1>
           <p className="text-sm text-[hsl(var(--muted-foreground))]">
-            节点内置 NodeGate（SNI 代理）运行状态、路由表和证书明细。
+            {t("sniproxy.desc")}
           </p>
         </div>
         <Button variant="outline" size="sm" onClick={refreshAll} disabled={refreshing}>
-          {refreshing ? "刷新中…" : "全部刷新"}
+          {refreshing ? t("common.refreshing") : t("sniproxy.refreshAll")}
         </Button>
       </div>
 
       {loadingNodes && (
-        <p className="text-sm text-[hsl(var(--muted-foreground))]">加载节点列表…</p>
+        <p className="text-sm text-[hsl(var(--muted-foreground))]">{t("sniproxy.loadNodes")}</p>
       )}
 
       {nodes.map((node) => {
@@ -351,13 +353,13 @@ export default function SNIProxyPage() {
               </div>
               <div className="flex items-center gap-2">
                 {row?.resp?.enabled ? (
-                  <Badge variant="default">运行中 {row.resp.status.listen}</Badge>
+                  <Badge variant="default">{t("sniproxy.running")} {row.resp.status.listen}</Badge>
                 ) : row?.resp ? (
-                  <Badge variant="secondary">未接管</Badge>
+                  <Badge variant="secondary">{t("sniproxy.notManaged")}</Badge>
                 ) : row?.error ? (
-                  <Badge variant="destructive">节点不可达</Badge>
+                  <Badge variant="destructive">{t("sniproxy.unreachable")}</Badge>
                 ) : (
-                  <Badge variant="outline">加载…</Badge>
+                  <Badge variant="outline">{t("sniproxy.loading")}</Badge>
                 )}
                 <Button
                   variant="outline"
@@ -365,10 +367,10 @@ export default function SNIProxyPage() {
                   onClick={() => fetchStatus(node)}
                   disabled={row?.loading}
                 >
-                  刷新
+                  {t("common.refresh")}
                 </Button>
                 <Button variant="outline" size="sm" onClick={() => sync(node)}>
-                  同步
+                  {t("sniproxy.syncBtn")}
                 </Button>
               </div>
             </CardHeader>
@@ -388,10 +390,10 @@ export default function SNIProxyPage() {
                 <>
                   <div className="flex flex-wrap items-center gap-3">
                     <span className="inline-flex items-center gap-1 rounded-full bg-[hsl(var(--muted))] px-2 py-0.5 text-xs text-[hsl(var(--muted-foreground))]">
-                      路由 {row.resp.status.route_count} 条
+                      {t("sniproxy.routes")} {row.resp.status.route_count} {t("sniproxy.count")}
                     </span>
                     <span className="inline-flex items-center gap-1 rounded-full bg-[hsl(var(--muted))] px-2 py-0.5 text-xs text-[hsl(var(--muted-foreground))]">
-                      证书 {row.resp.status.cert_domains} 张
+                      {t("sniproxy.certificates")} {row.resp.status.cert_domains} {t("sniproxy.sheets")}
                     </span>
                     {row.resp.status.storage_path && (
                       <span className="inline-flex items-center gap-1 text-xs font-mono text-[hsl(var(--muted-foreground))]">
@@ -411,15 +413,15 @@ export default function SNIProxyPage() {
                   {row.resp.status.routes && row.resp.status.routes.length > 0 && (
                     <div className="space-y-1.5">
                       <p className="text-xs font-semibold uppercase tracking-wide text-[hsl(var(--muted-foreground))]">
-                        路由表
+                        {t("sniproxy.routeTable")}
                       </p>
                       <ScrollArea className="max-h-48 rounded-md border">
                         <Table>
                           <TableHeader>
                             <TableRow>
-                              <TableHead className="text-xs">SNI</TableHead>
-                              <TableHead className="text-xs">模式</TableHead>
-                              <TableHead className="text-xs">后端</TableHead>
+                              <TableHead className="text-xs">{t("sniproxy.sni")}</TableHead>
+                              <TableHead className="text-xs">{t("sniproxy.mode")}</TableHead>
+                              <TableHead className="text-xs">{t("sniproxy.backend")}</TableHead>
                             </TableRow>
                           </TableHeader>
                           <TableBody>
@@ -437,7 +439,7 @@ export default function SNIProxyPage() {
                                     }
                                     className="text-xs"
                                   >
-                                    {modeLabel[r.mode] ?? r.mode}
+                                    {t(modeKeys[r.mode]) ?? r.mode}
                                   </Badge>
                                 </TableCell>
                                 <TableCell className="py-1.5 font-mono text-xs">{r.backend}</TableCell>
@@ -452,16 +454,16 @@ export default function SNIProxyPage() {
                   {row.resp.status.certs && row.resp.status.certs.length > 0 && (
                     <div className="space-y-1.5">
                       <p className="text-xs font-semibold uppercase tracking-wide text-[hsl(var(--muted-foreground))]">
-                        证书
+                        {t("sniproxy.certTable")}
                       </p>
                       <ScrollArea className="max-h-48 rounded-md border">
                         <Table>
                           <TableHeader>
                             <TableRow>
-                              <TableHead className="text-xs">域名</TableHead>
-                              <TableHead className="text-xs">状态</TableHead>
-                              <TableHead className="text-xs">到期</TableHead>
-                              <TableHead className="text-xs">签发者</TableHead>
+                              <TableHead className="text-xs">{t("sniproxy.domain")}</TableHead>
+                              <TableHead className="text-xs">{t("sniproxy.status")}</TableHead>
+                              <TableHead className="text-xs">{t("sniproxy.expiry")}</TableHead>
+                              <TableHead className="text-xs">{t("sniproxy.issuer")}</TableHead>
                             </TableRow>
                           </TableHeader>
                           <TableBody>
@@ -477,11 +479,11 @@ export default function SNIProxyPage() {
                                         variant="outline"
                                         className="border-green-500/40 text-xs text-green-600 dark:text-green-400"
                                       >
-                                        就绪
+                                        {t("sniproxy.ready")}
                                       </Badge>
                                     ) : (
                                       <Badge variant="destructive" className="text-xs">
-                                        未就绪
+                                        {t("sniproxy.notReady")}
                                       </Badge>
                                     )}
                                   </TableCell>

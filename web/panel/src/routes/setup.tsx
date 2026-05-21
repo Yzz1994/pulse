@@ -1,4 +1,5 @@
 import { useState, type FormEvent } from "react";
+import { useTranslation } from "react-i18next";
 import { getTheme, toggleTheme, type Theme } from "@/lib/theme";
 import { api } from "../lib/api";
 import {
@@ -14,6 +15,7 @@ import {
 } from "@/components/ui";
 
 export default function SetupPage() {
+  const { t } = useTranslation();
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
@@ -26,11 +28,11 @@ export default function SetupPage() {
     setError("");
 
     if (password !== confirmPassword) {
-      setError("两次密码不一致");
+      setError(t("setup.passwordMismatch"));
       return;
     }
     if (password.length < 6) {
-      setError("密码至少 6 位");
+      setError(t("setup.passwordTooShort"));
       return;
     }
 
@@ -39,7 +41,7 @@ export default function SetupPage() {
       await api.post("/auth/setup", { username, password });
       window.location.replace("/panel/login");
     } catch (err) {
-      setError(err instanceof Error ? err.message : "初始化失败");
+      setError(err instanceof Error ? err.message : t("setup.initFailed"));
     } finally {
       setLoading(false);
     }
@@ -50,7 +52,7 @@ export default function SetupPage() {
       <button
         onClick={() => setTheme(toggleTheme())}
         className="fixed right-4 top-4 z-50 rounded-md p-2 bg-[hsl(var(--card))] border border-[hsl(var(--border))] text-[hsl(var(--muted-foreground))] hover:text-[hsl(var(--foreground))] shadow-sm transition-colors"
-        title={theme === "dark" ? "切换浅色模式" : "切换深色模式"}
+        title={theme === "dark" ? t("common.switchLight") : t("common.switchDark")}
       >
         {theme === "dark" ? (
           <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -82,15 +84,15 @@ export default function SetupPage() {
             />
           </svg>
           <h1 className="text-2xl font-bold text-[hsl(var(--foreground))]">Pulse</h1>
-          <p className="text-sm text-[hsl(var(--muted-foreground))]">管理面板</p>
+          <p className="text-sm text-[hsl(var(--muted-foreground))]">{t("setup.panelTitle")}</p>
         </div>
 
         {/* Card */}
         <Card>
           <form onSubmit={handleSubmit}>
             <CardHeader>
-              <CardTitle>初始化系统</CardTitle>
-              <CardDescription>创建第一个管理员账号</CardDescription>
+              <CardTitle>{t("setup.title")}</CardTitle>
+              <CardDescription>{t("setup.subtitle")}</CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
               {error && (
@@ -100,7 +102,7 @@ export default function SetupPage() {
               )}
 
               <div className="space-y-2">
-                <Label htmlFor="username">用户名</Label>
+                <Label htmlFor="username">{t("setup.username")}</Label>
                 <Input
                   id="username"
                   type="text"
@@ -113,7 +115,7 @@ export default function SetupPage() {
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="password">密码</Label>
+                <Label htmlFor="password">{t("setup.password")}</Label>
                 <Input
                   id="password"
                   type="password"
@@ -126,7 +128,7 @@ export default function SetupPage() {
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="confirm-password">确认密码</Label>
+                <Label htmlFor="confirm-password">{t("setup.confirmPassword")}</Label>
                 <Input
                   id="confirm-password"
                   type="password"
@@ -140,7 +142,7 @@ export default function SetupPage() {
             </CardContent>
             <CardFooter>
               <Button type="submit" className="w-full" disabled={loading}>
-                {loading ? "初始化中…" : "创建管理员"}
+                {loading ? t("setup.initializing") : t("setup.createAdmin")}
               </Button>
             </CardFooter>
           </form>

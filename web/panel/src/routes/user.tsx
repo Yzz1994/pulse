@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from "react";
+import { useTranslation } from "react-i18next";
 import { marked } from "marked";
 import { getTheme, toggleTheme, type Theme } from "@/lib/theme";
 import MDEditor, { commands } from "@uiw/react-md-editor";
@@ -111,30 +112,37 @@ const BLUE = "#3b82f6";
 const CYAN = "#06b6d4";
 const TICK_COLOR = "#a1a1aa";
 
-const STATUS_CONFIG: Record<PortalStatus, { label: string; color: string }> = {
-  active:   { label: "正常",   color: "bg-emerald-500/15 text-emerald-600 border-emerald-500/25" },
-  limited:  { label: "流量耗尽", color: "bg-red-500/15 text-red-600 border-red-500/25" },
-  expired:  { label: "已过期", color: "bg-red-500/15 text-red-600 border-red-500/25" },
-  disabled: { label: "已禁用", color: "bg-zinc-500/15 text-zinc-500 border-zinc-500/25" },
-  on_hold:  { label: "暂停",   color: "bg-orange-500/15 text-orange-600 border-orange-500/25" },
+const STATUS_COLORS: Record<PortalStatus, string> = {
+  active:   "bg-emerald-500/15 text-emerald-600 border-emerald-500/25",
+  limited:  "bg-red-500/15 text-red-600 border-red-500/25",
+  expired:  "bg-red-500/15 text-red-600 border-red-500/25",
+  disabled: "bg-zinc-500/15 text-zinc-500 border-zinc-500/25",
+  on_hold:  "bg-orange-500/15 text-orange-600 border-orange-500/25",
+};
+
+const STATUS_KEYS: Record<PortalStatus, string> = {
+  active:   "userPage.active",
+  limited:  "userPage.limited",
+  expired:  "userPage.expired",
+  disabled: "userPage.disabled",
+  on_hold:  "userPage.onHold",
 };
 
 /* ── Helpers ──────────────────────────────────────────────────── */
 
-function statusBadge(status: string) {
-  const cfg = STATUS_CONFIG[status as PortalStatus] ?? {
-    label: status,
-    color: "bg-zinc-500/15 text-zinc-500 border-zinc-500/25",
-  };
+function statusBadge(status: string, t: (key: string) => string) {
+  const s = status as PortalStatus;
+  const color = STATUS_COLORS[s] ?? "bg-zinc-500/15 text-zinc-500 border-zinc-500/25";
+  const label = STATUS_KEYS[s] ? t(STATUS_KEYS[s]) : status;
   return (
-    <Badge variant="outline" className={`${cfg.color} font-medium`}>
-      {cfg.label}
+    <Badge variant="outline" className={`${color} font-medium`}>
+      {label}
     </Badge>
   );
 }
 
-function formatExpiry(expireAt: string | null): string {
-  if (!expireAt) return "永不过期";
+function formatExpiry(expireAt: string | null, t: (key: string) => string): string {
+  if (!expireAt) return t("userPage.neverExpire");
   const d = new Date(expireAt);
   return d.toLocaleDateString("zh-CN", {
     year: "numeric",
@@ -219,12 +227,13 @@ function NodeSelectionTab({ token }: { token: string }) {
   const [pending, setPending] = useState<Map<string, boolean>>(new Map());
   const [filterProto, setFilterProto] = useState<string>("all");
   const [filterRegion, setFilterRegion] = useState<string>("all");
+  const { t } = useTranslation();
 
   useEffect(() => {
     fetch(`/v1/portal/${token}/hosts`)
       .then((r) => r.json())
       .then((d) => setHosts(d.hosts ?? []))
-      .catch(() => toast.error("加载节点列表失败"))
+      .catch(() => toast.error(t("userPage.loadNodesFailed")))
       .finally(() => setLoading(false));
   }, [token]);
 
@@ -297,9 +306,9 @@ function NodeSelectionTab({ token }: { token: string }) {
         pending.has(h.host_id) ? { ...h, excluded: pending.get(h.host_id)! } : h
       ));
       setPending(new Map());
-      toast.success("已保存");
+      toast.success(t("userPage.saved"));
     } catch {
-      toast.error("保存失败，请重试");
+      toast.error(t("userPage.saveFailed"));
     } finally {
       setSaving(false);
     }
@@ -319,7 +328,7 @@ function NodeSelectionTab({ token }: { token: string }) {
   if (!hosts.length) {
     return (
       <div className="py-12 text-center text-sm text-[hsl(var(--muted-foreground))]">
-        暂无可用节点
+        {t("userPage.noNodes")}
       </div>
     );
   }
@@ -342,7 +351,7 @@ function NodeSelectionTab({ token }: { token: string }) {
                   : "bg-[hsl(var(--muted))] text-[hsl(var(--muted-foreground))] hover:bg-[hsl(var(--accent))]"
               }`}
             >
-              {p === "all" ? "全部协议" : p}
+              {p === "all" ? t("userPage.allProtocols") : p}
             </button>
           ))}
         </div>
@@ -361,7 +370,7 @@ function NodeSelectionTab({ token }: { token: string }) {
                   : "bg-[hsl(var(--muted))] text-[hsl(var(--muted-foreground))] hover:bg-[hsl(var(--accent))]"
               }`}
             >
-              {region === "all" ? "全部地区" : `${country} ${region}`}
+              {region === "all" ? t("userPage.allRegions") : `${country} ${region}`}
             </button>
           ))}
         </div>
@@ -370,13 +379,13 @@ function NodeSelectionTab({ token }: { token: string }) {
       {/* 批量操作 + 保存按钮 */}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-3 text-xs text-[hsl(var(--muted-foreground))]">
-          <span>{hosts.filter((h) => effectiveExcluded(h)).length} / {hosts.length} 已排除</span>
+          <span>{hosts.filter((h) => effectiveExcluded(h)).length} / {hosts.length} {t("userPage.excluded")}</span>
           <button
             className="hover:text-[hsl(var(--foreground))] disabled:opacity-40"
             disabled={allFilteredDisabled}
             onClick={() => setAllFiltered(true)}
           >
-            全部排除
+            {t("userPage.excludeAll")}
           </button>
           <span>·</span>
           <button
@@ -384,7 +393,7 @@ function NodeSelectionTab({ token }: { token: string }) {
             disabled={allFilteredEnabled}
             onClick={() => setAllFiltered(false)}
           >
-            清除排除
+            {t("userPage.clearExclusion")}
           </button>
         </div>
         <Button size="sm" disabled={!isDirty || saving} onClick={handleSave}>
@@ -394,9 +403,9 @@ function NodeSelectionTab({ token }: { token: string }) {
                 <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/>
                 <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/>
               </svg>
-              保存中…
+              {t("common.saving")}
             </>
-          ) : isDirty ? `保存（${pending.size}）` : "已保存"}
+          ) : isDirty ? t("userPage.saveCount", { count: pending.size }) : t("userPage.saved")}
         </Button>
       </div>
 
@@ -463,6 +472,7 @@ function NodeSelectionTab({ token }: { token: string }) {
 
 export default function UserPage() {
   const { token } = useParams({ strict: false }) as { token: string };
+  const { t } = useTranslation();
 
   const [info, setInfo] = useState<PortalInfo | null>(null);
   const [dailyUsage, setDailyUsage] = useState<DailyUsage[]>([]);
@@ -490,7 +500,7 @@ export default function UserPage() {
 
         if (!infoRes.ok) {
           if (infoRes.status === 401 || infoRes.status === 404) {
-            throw new Error("链接无效或已过期");
+            throw new Error(t("userPage.linkInvalid"));
           }
           throw new Error(`HTTP ${infoRes.status}`);
         }
@@ -505,7 +515,7 @@ export default function UserPage() {
           setNodeUsage(nodeData.usage ?? []);
         }
       } catch (err) {
-        if (!cancelled) setError(err instanceof Error ? err.message : "加载失败");
+        if (!cancelled) setError(err instanceof Error ? err.message : t("userPage.loadFailed"));
       } finally {
         if (!cancelled) setLoading(false);
       }
@@ -523,7 +533,7 @@ export default function UserPage() {
       setCopied(label);
       setTimeout(() => setCopied(null), 2000);
     } catch {
-      window.alert("复制失败，请手动选中内容复制");
+      window.alert(t("userPage.copyFailed"));
     }
   }, []);
 
@@ -562,10 +572,10 @@ export default function UserPage() {
     try {
       const res = await fetch(`/api/me/reset-token?token=${token}`, { method: "POST" });
       const data = await res.json();
-      if (!res.ok) throw new Error(data.error || "重置失败");
+      if (!res.ok) throw new Error(data.error || t("userPage.resetFailed"));
       window.location.replace(`/user/${data.token}`);
     } catch (err) {
-      toast(err instanceof Error ? err.message : "重置失败", "error");
+      toast(err instanceof Error ? err.message : t("userPage.resetFailed"), "error");
       setResetting(false);
     }
   }
@@ -588,10 +598,10 @@ export default function UserPage() {
         <div className="mx-auto max-w-md py-20 text-center">
           <div className="mb-4 text-5xl">😔</div>
           <h2 className="mb-2 text-lg font-semibold">
-            {error || "未找到信息"}
+            {error || t("userPage.infoNotFound")}
           </h2>
           <p className="text-sm text-[hsl(var(--muted-foreground))]">
-            请检查链接是否正确
+            {t("userPage.checkLink")}
           </p>
         </div>
       </PageShell>
@@ -603,10 +613,13 @@ export default function UserPage() {
 
   /* ── Chart data ──────────────────────────────────────────────── */
 
+  const uploadLabel = t("common.upload");
+  const downloadLabel = t("common.download");
+
   const chartData = dailyUsage.map((d) => ({
-    date: d.date.slice(5), // "MM-DD"
-    上传: d.upload_bytes,
-    下载: d.download_bytes,
+    date: d.date.slice(5),
+    [uploadLabel]: d.upload_bytes,
+    [downloadLabel]: d.download_bytes,
   }));
 
   /* ── Render ──────────────────────────────────────────────────── */
@@ -621,18 +634,18 @@ export default function UserPage() {
 
         <Tabs defaultValue="overview" className="w-full">
           <TabsList className="w-full grid" style={{ gridTemplateColumns: "repeat(5, 1fr)" }}>
-            <TabsTrigger value="overview">概览</TabsTrigger>
-            <TabsTrigger value="traffic">流量</TabsTrigger>
-            <TabsTrigger value="nodes">排除节点</TabsTrigger>
+            <TabsTrigger value="overview">{t("userPage.overview")}</TabsTrigger>
+            <TabsTrigger value="traffic">{t("userPage.traffic")}</TabsTrigger>
+            <TabsTrigger value="nodes">{t("userPage.excludedNodes")}</TabsTrigger>
             <TabsTrigger value="tickets" className="relative">
-              工单
+              {t("userPage.tickets")}
               {repliedTicketCount > 0 && (
                 <span className="absolute -top-1 -right-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-[hsl(var(--destructive))] px-1 text-[10px] font-bold text-[hsl(var(--destructive-foreground))] leading-none">
                   {repliedTicketCount}
                 </span>
               )}
             </TabsTrigger>
-            <TabsTrigger value="settings">设置</TabsTrigger>
+            <TabsTrigger value="settings">{t("userPage.settings")}</TabsTrigger>
           </TabsList>
 
           {/* ── 概览 ──────────────────────────────────────────────── */}
@@ -640,12 +653,12 @@ export default function UserPage() {
             {/* User Info */}
             <Card>
               <CardHeader>
-                <CardTitle className="text-lg">账户信息</CardTitle>
+                <CardTitle className="text-lg">{t("userPage.accountInfo")}</CardTitle>
               </CardHeader>
               <CardContent className="space-y-4">
                 <div className="flex flex-wrap items-center gap-3">
                   <span className="text-lg font-semibold">{info.username}</span>
-                  {statusBadge(info.status)}
+                  {statusBadge(info.status, t)}
                   {info.plan_name && (
                     <Badge variant="secondary">{info.plan_name}</Badge>
                   )}
@@ -653,7 +666,7 @@ export default function UserPage() {
 
                 <div className="space-y-2">
                   <div className="flex items-baseline justify-between text-sm">
-                    <span className="text-[hsl(var(--muted-foreground))]">已用流量</span>
+                    <span className="text-[hsl(var(--muted-foreground))]">{t("userPage.usedTraffic")}</span>
                     <span className={`font-medium ${
                       info.status === "limited" || pct >= 100
                         ? "text-red-500"
@@ -680,26 +693,26 @@ export default function UserPage() {
                     </div>
                   )}
                   <div className="flex flex-wrap gap-4 text-xs text-[hsl(var(--muted-foreground))]">
-                    <span>↑ 上传 {formatBytes(info.upload_bytes)}</span>
-                    <span>↓ 下载 {formatBytes(info.download_bytes)}</span>
+                    <span>↑ {t("userPage.upload")} {formatBytes(info.upload_bytes)}</span>
+                    <span>↓ {t("userPage.download")} {formatBytes(info.download_bytes)}</span>
                   </div>
                 </div>
 
                 <div className="flex items-center gap-2 text-sm">
                   <ClockIcon className="h-4 w-4 text-[hsl(var(--muted-foreground))]" />
-                  <span className="text-[hsl(var(--muted-foreground))]">到期时间：</span>
+                  <span className="text-[hsl(var(--muted-foreground))]">{t("userPage.expireAt")}</span>
                   <span className={`font-medium ${(() => {
                     if (!info.expire_at) return "";
                     const ms = new Date(info.expire_at).getTime() - Date.now();
                     if (ms <= 0) return "text-red-500";
                     if (ms <= 7 * 24 * 60 * 60 * 1000) return "text-orange-500";
                     return "";
-                  })()}`}>{formatExpiry(info.expire_at)}</span>
+                  })()}`}>{formatExpiry(info.expire_at, t)}</span>
                 </div>
                 {formatResetAt(info.next_traffic_reset_at) && (
                   <div className="flex items-center gap-2 text-sm">
                     <ClockIcon className="h-4 w-4 text-[hsl(var(--muted-foreground))]" />
-                    <span className="text-[hsl(var(--muted-foreground))]">流量重置：</span>
+                    <span className="text-[hsl(var(--muted-foreground))]">{t("userPage.resetAt")}</span>
                     <span className="font-medium">{formatResetAt(info.next_traffic_reset_at)}</span>
                   </div>
                 )}
@@ -709,7 +722,7 @@ export default function UserPage() {
             {/* Subscription URL */}
             <Card>
               <CardHeader>
-                <CardTitle className="text-lg">订阅链接</CardTitle>
+                <CardTitle className="text-lg">{t("userPage.subLink")}</CardTitle>
               </CardHeader>
               <CardContent>
                 <div className="flex gap-2">
@@ -721,7 +734,7 @@ export default function UserPage() {
                     className="shrink-0"
                     onClick={copySubUrl}
                   >
-                    {copied === "sub" ? "已复制 ✓" : "复制"}
+                    {copied === "sub" ? t("userPage.copied") : t("userPage.copy")}
                   </Button>
                 </div>
                 <div className="mt-3 flex gap-2">
@@ -730,25 +743,25 @@ export default function UserPage() {
                     size="sm"
                     onClick={copyClashUrl}
                   >
-                    {copied === "clash" ? "已复制 ✓" : "Clash"}
+                    {copied === "clash" ? t("userPage.copied") : "Clash"}
                   </Button>
                   <Button
                     variant={copied === "surge" ? "default" : "outline"}
                     size="sm"
                     onClick={copySurgeUrl}
                   >
-                    {copied === "surge" ? "已复制 ✓" : "Surge"}
+                    {copied === "surge" ? t("userPage.copied") : "Surge"}
                   </Button>
                   <Button
                     variant={copied === "singbox" ? "default" : "outline"}
                     size="sm"
                     onClick={copySingboxUrl}
                   >
-                    {copied === "singbox" ? "已复制 ✓" : "SingBox"}
+                    {copied === "singbox" ? t("userPage.copied") : "SingBox"}
                   </Button>
                 </div>
                 <p className="mt-2 text-xs text-[hsl(var(--muted-foreground))]">
-                  将此链接添加到您的客户端应用中
+                  {t("userPage.importHint")}
                 </p>
               </CardContent>
             </Card>
@@ -760,7 +773,7 @@ export default function UserPage() {
             {chartData.length > 0 ? (
               <Card>
                 <CardHeader>
-                  <CardTitle className="text-lg">近期流量趋势</CardTitle>
+                  <CardTitle className="text-lg">{t("userPage.trafficTrend")}</CardTitle>
                 </CardHeader>
                 <CardContent>
                   <div className="h-64 w-full">
@@ -781,31 +794,31 @@ export default function UserPage() {
                         />
                         <RechartsTooltip content={<ChartTooltip />} cursor={{ fill: "hsl(var(--muted) / 0.3)" }} />
                         <Legend wrapperStyle={{ fontSize: 12, color: TICK_COLOR }} />
-                        <Bar dataKey="上传" fill={CYAN} radius={[3, 3, 0, 0]} maxBarSize={32} />
-                        <Bar dataKey="下载" fill={BLUE} radius={[3, 3, 0, 0]} maxBarSize={32} />
+                        <Bar dataKey={uploadLabel} fill={CYAN} radius={[3, 3, 0, 0]} maxBarSize={32} />
+                        <Bar dataKey={downloadLabel} fill={BLUE} radius={[3, 3, 0, 0]} maxBarSize={32} />
                       </BarChart>
                     </ResponsiveContainer>
                   </div>
                 </CardContent>
               </Card>
             ) : (
-              <p className="py-12 text-center text-sm text-[hsl(var(--muted-foreground))]">暂无流量数据</p>
+              <p className="py-12 text-center text-sm text-[hsl(var(--muted-foreground))]">{t("userPage.noTrafficData")}</p>
             )}
 
             {nodeUsage.length > 0 && (
               <Card>
                 <CardHeader>
-                  <CardTitle className="text-lg">节点流量分布</CardTitle>
+                  <CardTitle className="text-lg">{t("userPage.nodeDistribution")}</CardTitle>
                 </CardHeader>
                 <CardContent>
                   <div className="hidden sm:block">
                     <Table>
                       <TableHeader>
                         <TableRow>
-                          <TableHead>节点</TableHead>
-                          <TableHead className="text-right">上传</TableHead>
-                          <TableHead className="text-right">下载</TableHead>
-                          <TableHead className="text-right">合计</TableHead>
+                          <TableHead>{t("userPage.node")}</TableHead>
+                          <TableHead className="text-right">{t("common.upload")}</TableHead>
+                          <TableHead className="text-right">{t("common.download")}</TableHead>
+                          <TableHead className="text-right">{t("userPage.total")}</TableHead>
                         </TableRow>
                       </TableHeader>
                       <TableBody>
@@ -861,10 +874,10 @@ export default function UserPage() {
             <Card className="border-[hsl(var(--destructive))]/20">
               <CardContent className="pt-6 space-y-3">
                 <div className="text-xs font-medium text-[hsl(var(--muted-foreground))] uppercase tracking-wider">
-                  重置订阅链接
+                  {t("userPage.resetSubLink")}
                 </div>
                 <p className="text-xs text-[hsl(var(--muted-foreground))]">
-                  重置后订阅链接和所有代理凭据（UUID、密码）将同时更换，当前链接与客户端配置立即失效。
+                  {t("userPage.resetSubDesc")}
                 </p>
                 <Button
                   variant="outline"
@@ -873,7 +886,7 @@ export default function UserPage() {
                   disabled={resetting}
                   onClick={handleResetToken}
                 >
-                  {resetting ? "重置中…" : "重置订阅 Token"}
+                  {resetting ? t("userPage.resetting") : t("userPage.resetSubToken")}
                 </Button>
               </CardContent>
             </Card>
@@ -884,9 +897,9 @@ export default function UserPage() {
       <ConfirmDialog
         open={resetTokenConfirmOpen}
         onOpenChange={setResetTokenConfirmOpen}
-        title="确认重置订阅 Token"
-        description="重置后订阅链接和所有代理凭据（UUID、密码）将同时更换，所有客户端需重新导入订阅。"
-        confirmLabel="确认重置"
+        title={t("userPage.confirmResetSub")}
+        description={t("userPage.confirmResetDesc")}
+        confirmLabel={t("userPage.confirmReset")}
         variant="destructive"
         onConfirm={doResetToken}
       />
@@ -898,6 +911,7 @@ export default function UserPage() {
 
 function PageShell({ children }: { children: React.ReactNode }) {
   const [theme, setTheme] = useState<Theme>(getTheme);
+  const { t } = useTranslation();
   // /user/:token — 从当前 URL 路径提取 token
   const portalToken = window.location.pathname.split("/user/")[1]?.split("/")[0] ?? "";
   return (
@@ -909,25 +923,25 @@ function PageShell({ children }: { children: React.ReactNode }) {
           <span className="text-xl font-bold tracking-tight">Pulse</span>
           <span className="text-sm text-[hsl(var(--muted-foreground))]">—</span>
           <span className="text-sm font-medium text-[hsl(var(--muted-foreground))]">
-            用户面板
+            {t("userPage.panelTitle")}
           </span>
           <div className="ml-auto flex items-center gap-2">
             <a
               href="/stat"
               className="text-sm text-[hsl(var(--muted-foreground))] hover:text-[hsl(var(--foreground))] transition-colors"
             >
-              服务状态
+              {t("userPage.serviceStatus")}
             </a>
             <a
               href={portalToken ? `/shop?sub_token=${encodeURIComponent(portalToken)}` : "/shop"}
               className="text-sm text-[hsl(var(--muted-foreground))] hover:text-[hsl(var(--foreground))] transition-colors"
             >
-              商店
+              {t("userPage.shop")}
             </a>
             <button
               onClick={() => setTheme(toggleTheme())}
               className="rounded-md p-2 text-[hsl(var(--muted-foreground))] hover:bg-[hsl(var(--accent))] hover:text-[hsl(var(--accent-foreground))] transition-colors"
-              title={theme === "dark" ? "切换浅色模式" : "切换深色模式"}
+              title={theme === "dark" ? t("common.switchLight") : t("common.switchDark")}
             >
               {theme === "dark" ? (
                 <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -1020,6 +1034,7 @@ type Ann = { id: string; title: string; content: string; enabled: boolean; creat
 
 function AnnouncementsSection({ announcements }: { announcements: Ann[] }) {
   const [open, setOpen] = useState(false);
+  const { t } = useTranslation();
   const active = announcements.find((a) => a.enabled);
   const history = announcements.filter((a) => !a.enabled);
 
@@ -1039,7 +1054,7 @@ function AnnouncementsSection({ announcements }: { announcements: Ann[] }) {
           <svg xmlns="http://www.w3.org/2000/svg" className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
             <path strokeLinecap="round" strokeLinejoin="round" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
           </svg>
-          历史公告（{history.length}）
+          {t("userPage.historyCount", { count: history.length })}
         </button>
       )}
 
@@ -1047,7 +1062,7 @@ function AnnouncementsSection({ announcements }: { announcements: Ann[] }) {
       <Dialog open={open} onOpenChange={setOpen}>
         <DialogContent className="max-w-lg max-h-[80vh] overflow-y-auto gap-3">
           <DialogHeader className="pb-0">
-            <DialogTitle>历史公告</DialogTitle>
+            <DialogTitle>{t("userPage.historyTitle")}</DialogTitle>
           </DialogHeader>
           <div className="space-y-2">
             {history.map((ann) => (
@@ -1062,7 +1077,7 @@ function AnnouncementsSection({ announcements }: { announcements: Ann[] }) {
 
 /* ── Tickets section ──────────────────────────────────────────── */
 
-const TICKET_STATUS_LABEL: Record<string, string> = { open: "待处理", replied: "已回复", closed: "已关闭" };
+const TICKET_STATUS_KEYS: Record<string, string> = { open: "userPage.pending", replied: "userPage.replied", closed: "userPage.closed" };
 const TICKET_STATUS_COLOR: Record<string, string> = {
   open: "bg-blue-500/15 text-blue-600 border-blue-500/25",
   replied: "bg-emerald-500/15 text-emerald-600 border-emerald-500/25",
@@ -1071,6 +1086,7 @@ const TICKET_STATUS_COLOR: Record<string, string> = {
 
 function TicketsSection({ token, onRepliedCount }: { token: string; onRepliedCount?: (n: number) => void }) {
   const [theme, setTheme] = useState<Theme>(getTheme);
+  const { t } = useTranslation();
   const [tickets, setTickets] = useState<PortalTicket[]>([]);
   const [loading, setLoading] = useState(true);
   const [createOpen, setCreateOpen] = useState(false);
@@ -1125,7 +1141,7 @@ function TicketsSection({ token, onRepliedCount }: { token: string; onRepliedCou
         body: JSON.stringify({ title: newTitle, content: newContent }),
       });
       if (!res.ok) throw new Error("failed");
-      const t: PortalTicket = await res.json();
+      const tick: PortalTicket = await res.json();
 
       // 上传待传图片，成功后自动发一条图片回复
       if (pendingFiles.length > 0) {
@@ -1133,7 +1149,7 @@ function TicketsSection({ token, onRepliedCount }: { token: string; onRepliedCou
         for (const file of pendingFiles) {
           const form = new FormData();
           form.append("file", file);
-          const imgRes = await fetch(`/v1/portal/${token}/tickets/${t.id}/images`, {
+          const imgRes = await fetch(`/v1/portal/${token}/tickets/${tick.id}/images`, {
             method: "POST",
             body: form,
           });
@@ -1143,7 +1159,7 @@ function TicketsSection({ token, onRepliedCount }: { token: string; onRepliedCou
           }
         }
         if (links.length > 0) {
-          await fetch(`/v1/portal/${token}/tickets/${t.id}/reply`, {
+          await fetch(`/v1/portal/${token}/tickets/${tick.id}/reply`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ content: links.join("\n") }),
@@ -1151,14 +1167,14 @@ function TicketsSection({ token, onRepliedCount }: { token: string; onRepliedCou
         }
       }
 
-      setTickets((prev) => [t, ...prev]);
+      setTickets((prev) => [tick, ...prev]);
       setNewTitle("");
       setNewContent("");
       setPendingFiles([]);
       setCreateOpen(false);
-      toast("工单已提交", "success");
+      toast(t("userPage.ticketSubmitted"), "success");
     } catch {
-      toast("提交失败", "error");
+      toast(t("userPage.submitFailed"), "error");
     } finally {
       setCreating(false);
     }
@@ -1177,12 +1193,12 @@ function TicketsSection({ token, onRepliedCount }: { token: string; onRepliedCou
       const msg: PortalMessage = await res.json();
       setMessages((prev) => [...prev, msg]);
       setReplyContent("");
-      setDetailTicket((t) => t ? { ...t, status: "open" } : t);
+      setDetailTicket((tk) => tk ? { ...tk, status: "open" } : tk);
       setTickets((prev) =>
-        prev.map((t) => t.id === detailTicket.id ? { ...t, status: "open", updated_at: new Date().toISOString() } : t)
+        prev.map((tk) => tk.id === detailTicket.id ? { ...tk, status: "open", updated_at: new Date().toISOString() } : tk)
       );
     } catch {
-      toast("回复失败", "error");
+      toast(t("userPage.replyFailed"), "error");
     } finally {
       setReplying(false);
     }
@@ -1205,7 +1221,7 @@ function TicketsSection({ token, onRepliedCount }: { token: string; onRepliedCou
         prev + (prev ? "\n" : "") + `![${img.filename}](/v1/uploads/tickets/${img.stored_name})`
       );
     } catch {
-      toast("上传失败", "error");
+      toast(t("userPage.uploadFailed"), "error");
     } finally {
       setUploading(false);
     }
@@ -1216,8 +1232,8 @@ function TicketsSection({ token, onRepliedCount }: { token: string; onRepliedCou
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center justify-between text-lg">
-            <span>我的工单</span>
-            <Button size="sm" onClick={() => setCreateOpen(true)}>提交工单</Button>
+            <span>{t("userPage.myTickets")}</span>
+            <Button size="sm" onClick={() => setCreateOpen(true)}>{t("userPage.submitTicket")}</Button>
           </CardTitle>
         </CardHeader>
         <CardContent>
@@ -1226,24 +1242,24 @@ function TicketsSection({ token, onRepliedCount }: { token: string; onRepliedCou
               {[1, 2].map((i) => <div key={i} className="h-10 animate-pulse rounded-lg bg-[hsl(var(--muted))]" />)}
             </div>
           ) : tickets.length === 0 ? (
-            <p className="text-center text-sm text-[hsl(var(--muted-foreground))] py-4">暂无工单</p>
+            <p className="text-center text-sm text-[hsl(var(--muted-foreground))] py-4">{t("userPage.noTickets")}</p>
           ) : (
             <div className="space-y-2">
-              {tickets.map((t) => (
+              {tickets.map((tk) => (
                 <button
-                  key={t.id}
-                  onClick={() => openDetail(t)}
+                  key={tk.id}
+                  onClick={() => openDetail(tk)}
                   className="w-full rounded-lg border border-[hsl(var(--border))] p-3 text-left hover:bg-[hsl(var(--accent))] transition-colors"
                 >
                   <div className="flex items-center justify-between gap-2">
                     <div className="flex items-center gap-2 min-w-0">
-                      <Badge variant="outline" className={TICKET_STATUS_COLOR[t.status]}>
-                        {TICKET_STATUS_LABEL[t.status]}
+                      <Badge variant="outline" className={TICKET_STATUS_COLOR[tk.status]}>
+                        {t(TICKET_STATUS_KEYS[tk.status] ?? tk.status)}
                       </Badge>
-                      <span className="text-sm font-medium truncate">{t.title}</span>
+                      <span className="text-sm font-medium truncate">{tk.title}</span>
                     </div>
                     <span className="text-xs text-[hsl(var(--muted-foreground))] shrink-0">
-                      {new Date(t.updated_at).toLocaleString("zh-CN")}
+                      {new Date(tk.updated_at).toLocaleString("zh-CN")}
                     </span>
                   </div>
                 </button>
@@ -1257,13 +1273,13 @@ function TicketsSection({ token, onRepliedCount }: { token: string; onRepliedCou
       <Dialog open={createOpen} onOpenChange={setCreateOpen}>
         <DialogContent className="max-w-lg">
           <DialogHeader>
-            <DialogTitle>提交工单</DialogTitle>
+            <DialogTitle>{t("userPage.submitTicket")}</DialogTitle>
           </DialogHeader>
           <div className="space-y-3" data-color-mode={theme === "dark" ? "dark" : "light"}>
             <Input
               value={newTitle}
               onChange={(e) => setNewTitle(e.target.value)}
-              placeholder="标题"
+              placeholder={t("userPage.title")}
             />
             <MDEditor
               value={newContent}
@@ -1281,7 +1297,7 @@ function TicketsSection({ token, onRepliedCount }: { token: string; onRepliedCou
                 {
                   name: "upload-image",
                   keyCommand: "upload-image",
-                  buttonProps: { "aria-label": "上传图片", title: "上传图片" },
+                          buttonProps: { "aria-label": t("userPage.uploadImage"), title: t("userPage.uploadImage") },
                   icon: (
                     <svg viewBox="0 0 16 16" width="12" height="12" fill="currentColor">
                       <path d="M6.002 5.5a1.5 1.5 0 1 1-3 0 1.5 1.5 0 0 1 3 0Z" />
@@ -1327,9 +1343,9 @@ function TicketsSection({ token, onRepliedCount }: { token: string; onRepliedCou
             )}
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => { setCreateOpen(false); setPendingFiles([]); }}>取消</Button>
+            <Button variant="outline" onClick={() => { setCreateOpen(false); setPendingFiles([]); }}>{t("common.cancel")}</Button>
             <Button onClick={createTicket} disabled={creating || !newTitle.trim() || !newContent.trim()}>
-              {creating ? "提交中…" : "提交"}
+              {creating ? t("userPage.submitting") : t("userPage.submit")}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -1343,9 +1359,9 @@ function TicketsSection({ token, onRepliedCount }: { token: string; onRepliedCou
               <DialogHeader>
                 <DialogTitle className="flex items-center gap-2">
                   <span className="truncate">{detailTicket.title}</span>
-                  <Badge variant="outline" className={TICKET_STATUS_COLOR[detailTicket.status]}>
-                    {TICKET_STATUS_LABEL[detailTicket.status]}
-                  </Badge>
+                    <Badge variant="outline" className={TICKET_STATUS_COLOR[detailTicket.status]}>
+                      {t(TICKET_STATUS_KEYS[detailTicket.status] ?? detailTicket.status)}
+                    </Badge>
                 </DialogTitle>
               </DialogHeader>
               <Separator />
@@ -1361,7 +1377,7 @@ function TicketsSection({ token, onRepliedCount }: { token: string; onRepliedCou
                         : "bg-[hsl(var(--muted))]"
                     }`}>
                       <div className="flex items-center gap-2 mb-1">
-                        <span className="text-xs font-medium">{m.is_admin ? "管理员" : "我"}</span>
+                        <span className="text-xs font-medium">{m.is_admin ? t("userPage.admin") : t("userPage.me")}</span>
                         <span className="text-xs opacity-60">{new Date(m.created_at).toLocaleString("zh-CN")}</span>
                       </div>
                       <div
@@ -1396,7 +1412,7 @@ function TicketsSection({ token, onRepliedCount }: { token: string; onRepliedCou
                         {
                           name: "upload-image",
                           keyCommand: "upload-image",
-                          buttonProps: { "aria-label": "上传图片", title: "上传图片" },
+                  buttonProps: { "aria-label": t("userPage.uploadImage"), title: t("userPage.uploadImage") },
                           icon: (
                             <svg viewBox="0 0 16 16" width="12" height="12" fill="currentColor">
                               <path d="M6.002 5.5a1.5 1.5 0 1 1-3 0 1.5 1.5 0 0 1 3 0Z" />
@@ -1421,7 +1437,7 @@ function TicketsSection({ token, onRepliedCount }: { token: string; onRepliedCou
                     />
                     <div className="flex gap-2">
                       <Button size="sm" onClick={sendReply} disabled={replying || !replyContent.trim()}>
-                        {replying ? "发送中…" : "发送"}
+                        {replying ? t("userPage.sending") : t("userPage.send")}
                       </Button>
                     </div>
                   </div>
@@ -1440,6 +1456,7 @@ function AnnouncementCard({ ann, defaultOpen = false }: {
   defaultOpen?: boolean;
 }) {
   const [open, setOpen] = useState(defaultOpen);
+  const { t } = useTranslation();
   const html = useMemo(() => {
     const renderer = new marked.Renderer();
     renderer.link = ({ href, title, text }) =>
@@ -1454,7 +1471,7 @@ function AnnouncementCard({ ann, defaultOpen = false }: {
       >
         <CardTitle className="flex items-center gap-2 text-sm font-medium">
           <MegaphoneIcon className={`h-4 w-4 shrink-0 ${ann.enabled ? "text-amber-500" : "text-[hsl(var(--muted-foreground))]"}`} />
-          <span className="flex-1">{ann.title || "公告"}</span>
+          <span className="flex-1">{ann.title || t("userPage.announcements")}</span>
           <span className="text-xs font-normal text-[hsl(var(--muted-foreground))]">
             {new Date(ann.created_at).toLocaleDateString("zh-CN")}
           </span>

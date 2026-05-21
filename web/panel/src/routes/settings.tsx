@@ -1,5 +1,6 @@
 import { useEffect, useState, useCallback } from "react";
 import { useNavigate } from "@tanstack/react-router";
+import { useTranslation } from "react-i18next";
 import {
   Card,
   CardHeader,
@@ -26,6 +27,7 @@ import { clearToken, getToken } from "@/lib/auth";
 
 export default function SettingsPage() {
   const navigate = useNavigate();
+  const { t } = useTranslation();
 
   // DB stats (独立接口，避免阻塞主页加载)
   interface DBStats {
@@ -164,11 +166,11 @@ export default function SettingsPage() {
       .put<{ ok: boolean }>("/settings/cf-token", { token: cfToken })
       .then(() => {
         setCfHasToken(cfToken !== "");
-        toast("Cloudflare Token 已保存", "success");
+        toast(t("settings.cfTokenSaved"), "success");
       })
       .catch((err) => {
         if (handleAuthError(err)) return;
-        toast(err instanceof Error ? err.message : "保存失败", "error");
+        toast(err instanceof Error ? err.message : t("common.saveFailed"), "error");
       })
       .finally(() => setCfSaving(false));
   }
@@ -188,10 +190,10 @@ export default function SettingsPage() {
       .put<{ ok: boolean }>("/settings/maxmind", { key: maxmindKey })
       .then(() => {
         setMaxmindHasKey(maxmindKey !== "");
-        toast("MaxMind License Key 已保存，开始下载数据库…", "success");
+        toast(t("settings.maxmindKeySaved"), "success");
         downloadMaxmindDB();
       })
-      .catch((err) => { if (handleAuthError(err)) return; toast(err instanceof Error ? err.message : "保存失败", "error"); })
+      .catch((err) => { if (handleAuthError(err)) return; toast(err instanceof Error ? err.message : t("common.saveFailed"), "error"); })
       .finally(() => setMaxmindSaving(false));
   }
 
@@ -200,7 +202,7 @@ export default function SettingsPage() {
     api
       .post<{ ok: boolean }>("/system/geoip/download", {})
       .then(() => {
-        toast("数据库下载已开始，请稍候…", "success");
+        toast(t("settings.dbDownloadStarted"), "success");
         // 轮询 db_ready
         const poll = setInterval(() => {
           api.get<{ has_key: boolean; db_ready: boolean }>("/settings/maxmind")
@@ -208,7 +210,7 @@ export default function SettingsPage() {
               if (d.db_ready) {
                 setMaxmindDBReady(true);
                 setMaxmindDownloading(false);
-                toast("GeoIP 数据库已就绪", "success");
+                toast(t("settings.geoipReady"), "success");
                 clearInterval(poll);
               }
             })
@@ -216,7 +218,7 @@ export default function SettingsPage() {
         }, 3000);
         setTimeout(() => { clearInterval(poll); setMaxmindDownloading(false); }, 120000);
       })
-      .catch((err) => { if (handleAuthError(err)) return; toast(err instanceof Error ? err.message : "下载失败", "error"); setMaxmindDownloading(false); });
+      .catch((err) => { if (handleAuthError(err)) return; toast(err instanceof Error ? err.message : t("settings.downloadFailed"), "error"); setMaxmindDownloading(false); });
   }
 
   // ── Stripe settings ───────────────────────────────────────────
@@ -246,8 +248,8 @@ export default function SettingsPage() {
         live_secret_key: stripeKeys.live.secret_key,
         live_webhook_secret: stripeKeys.live.webhook_secret,
       })
-      .then(() => setStripeMsg("已保存，立即生效"))
-      .catch((err) => { if (handleAuthError(err)) return; setStripeMsg("保存失败"); })
+      .then(() => setStripeMsg(t("settings.savedAndActive")))
+      .catch((err) => { if (handleAuthError(err)) return; setStripeMsg(t("common.saveFailed")); })
       .finally(() => { setStripeSaving(false); setTimeout(() => setStripeMsg(null), 3000); });
   }
 
@@ -267,8 +269,8 @@ export default function SettingsPage() {
     setShopMsg(null);
     api
       .put<{ saved: boolean }>("/settings/shop", { base_url: shopBaseURL })
-      .then(() => setShopMsg("已保存"))
-      .catch((err) => { if (handleAuthError(err)) return; setShopMsg("保存失败"); })
+      .then(() => setShopMsg(t("common.saved")))
+      .catch((err) => { if (handleAuthError(err)) return; setShopMsg(t("common.saveFailed")); })
       .finally(() => { setShopSaving(false); setTimeout(() => setShopMsg(null), 2500); });
   }
 
@@ -292,10 +294,10 @@ export default function SettingsPage() {
     setBarkMsg(null);
     api
       .put<{ saved: boolean }>("/settings/alert", { bark_url: barkURL })
-      .then(() => setBarkMsg("保存成功"))
+      .then(() => setBarkMsg(t("common.saved")))
       .catch((err) => {
         if (handleAuthError(err)) return;
-        setBarkMsg(err instanceof Error ? err.message : "保存失败");
+        setBarkMsg(err instanceof Error ? err.message : t("common.saveFailed"));
       })
       .finally(() => {
         setBarkSaving(false);
@@ -312,12 +314,12 @@ export default function SettingsPage() {
         if (data.error) {
           setBarkMsg(data.error);
         } else {
-          setBarkMsg("推送成功");
+          setBarkMsg(t("settings.pushSuccess"));
         }
       })
       .catch((err) => {
         if (handleAuthError(err)) return;
-        setBarkMsg(err instanceof Error ? err.message : "推送失败");
+        setBarkMsg(err instanceof Error ? err.message : t("settings.pushFailed"));
       })
       .finally(() => {
         setBarkTesting(false);
@@ -356,8 +358,8 @@ export default function SettingsPage() {
     if (backupSecretKey) body.secret_key = backupSecretKey;
     api
       .put<{ saved: boolean }>("/settings/backup", body)
-      .then(() => { setBackupMsg("已保存"); setBackupSecretKey(""); })
-      .catch((err) => { if (handleAuthError(err)) return; setBackupMsg("保存失败"); })
+      .then(() => { setBackupMsg(t("common.saved")); setBackupSecretKey(""); })
+      .catch((err) => { if (handleAuthError(err)) return; setBackupMsg(t("common.saveFailed")); })
       .finally(() => { setBackupSaving(false); setTimeout(() => setBackupMsg(null), 2500); });
   }
 
@@ -366,8 +368,8 @@ export default function SettingsPage() {
     setBackupMsg(null);
     api
       .post<{ ok: boolean; last_at: string }>("/settings/backup/run", {})
-      .then((d) => { setBackupLastAt(d.last_at ?? ""); setBackupMsg("备份成功"); })
-      .catch((err) => { if (handleAuthError(err)) return; setBackupMsg("备份失败"); })
+      .then((d) => { setBackupLastAt(d.last_at ?? ""); setBackupMsg(t("settings.backupSuccess")); })
+      .catch((err) => { if (handleAuthError(err)) return; setBackupMsg(t("settings.backupFailed")); })
       .finally(() => { setBackupRunning(false); setTimeout(() => setBackupMsg(null), 3000); });
   }
 
@@ -379,7 +381,7 @@ export default function SettingsPage() {
     api
       .get<{ backups: { key: string; last_modified: string; size: number }[] }>("/settings/backup/list")
       .then((d) => { setRestoreList(d.backups ?? []); })
-      .catch((err) => { if (handleAuthError(err)) return; setRestoreListError("加载备份列表失败"); })
+      .catch((err) => { if (handleAuthError(err)) return; setRestoreListError(t("settings.loadBackupListFailed")); })
       .finally(() => { setRestoreListLoading(false); });
   }
 
@@ -388,8 +390,8 @@ export default function SettingsPage() {
     setRestoreMsg(null);
     api
       .post<{ ok: boolean }>("/settings/backup/restore", { key })
-      .then(() => { setRestoreMsg("还原文件已准备，重启服务器后生效"); })
-      .catch((err) => { if (handleAuthError(err)) return; setRestoreMsg("还原失败，请重试"); })
+      .then(() => { setRestoreMsg(t("settings.restoreReady")); })
+      .catch((err) => { if (handleAuthError(err)) return; setRestoreMsg(t("settings.restoreFailed")); })
       .finally(() => { setRestoringKey(null); });
   }
 
@@ -398,15 +400,15 @@ export default function SettingsPage() {
   async function saveCredentials() {
     setCredMsg(null);
     if (!credOldPassword || !credNewPassword) {
-      setCredMsg("旧密码和新密码不能为空");
+      setCredMsg(t("settings.oldNewPasswordRequired"));
       return;
     }
     if (credNewPassword !== credConfirmPassword) {
-      setCredMsg("两次新密码不一致");
+      setCredMsg(t("settings.passwordMismatch"));
       return;
     }
     if (credNewPassword.length < 6) {
-      setCredMsg("新密码至少 6 位");
+      setCredMsg(t("settings.passwordMinLength"));
       return;
     }
     setCredSaving(true);
@@ -417,15 +419,15 @@ export default function SettingsPage() {
       };
       if (credUsername.trim()) body.username = credUsername.trim();
       await api.put("/auth/credentials", body);
-      toast("密码已更新，下次登录请使用新密码", "success");
+      toast(t("settings.passwordUpdated"), "success");
       setCredOldPassword("");
       setCredNewPassword("");
       setCredConfirmPassword("");
       setCredUsername("");
-      setCredMsg("保存成功");
+      setCredMsg(t("common.saved"));
     } catch (err) {
       if (handleAuthError(err as Error)) return;
-      setCredMsg(err instanceof Error ? err.message : "保存失败");
+      setCredMsg(err instanceof Error ? err.message : t("common.saveFailed"));
     } finally {
       setCredSaving(false);
     }
@@ -436,21 +438,21 @@ export default function SettingsPage() {
   return (
     <div className="p-4 sm:p-6 lg:p-8">
       <h1 className="mb-6 text-2xl font-bold text-[hsl(var(--foreground))]">
-        系统设置
+        {t("settings.title")}
       </h1>
 
       <Tabs defaultValue="general" className="w-full">
         <TabsList className="mb-6">
-          <TabsTrigger value="general">常规</TabsTrigger>
-          <TabsTrigger value="integrations">集成</TabsTrigger>
-          <TabsTrigger value="database">数据库</TabsTrigger>
+          <TabsTrigger value="general">{t("settings.general")}</TabsTrigger>
+          <TabsTrigger value="integrations">{t("settings.integrations")}</TabsTrigger>
+          <TabsTrigger value="database">{t("settings.database")}</TabsTrigger>
         </TabsList>
 
         {/* ── 常规 Tab ──────────────────────────────────────────── */}
         <TabsContent value="general" className="grid gap-6 mt-0">
           <Card>
             <CardHeader>
-              <CardTitle className="text-base font-medium">告警推送</CardTitle>
+              <CardTitle className="text-base font-medium">{t("settings.alertPush")}</CardTitle>
             </CardHeader>
             <Separator />
             <CardContent className="pt-4">
@@ -463,7 +465,7 @@ export default function SettingsPage() {
                 <div className="space-y-4">
                   <div className="space-y-2">
                     <Label htmlFor="bark-url" className="text-sm">
-                      Bark URL
+                      {t("settings.barkURL")}
                     </Label>
                     <Input
                       id="bark-url"
@@ -479,7 +481,7 @@ export default function SettingsPage() {
                       onClick={saveBarkAlert}
                       disabled={barkSaving}
                     >
-                      {barkSaving ? "保存中…" : "保存设置"}
+                      {barkSaving ? t("common.saving") : t("settings.saveSettings")}
                     </Button>
                     <Button
                       variant="outline"
@@ -487,7 +489,7 @@ export default function SettingsPage() {
                       onClick={testBarkAlert}
                       disabled={barkTesting}
                     >
-                      {barkTesting ? "推送中…" : "测试推送"}
+                      {barkTesting ? t("settings.pushing") : t("settings.testPush")}
                     </Button>
                     {barkMsg && (
                       <span className="text-sm text-[hsl(var(--muted-foreground))]">
@@ -497,7 +499,7 @@ export default function SettingsPage() {
                   </div>
 
                   <p className="text-xs text-[hsl(var(--muted-foreground))]">
-                    配置 Bark URL 后，当节点离线或出现异常时将自动发送推送通知到你的设备。
+                    {t("settings.barkDesc")}
                   </p>
                 </div>
               )}
@@ -507,26 +509,26 @@ export default function SettingsPage() {
           {/* 账户安全 */}
           <Card>
             <CardHeader>
-              <CardTitle className="text-base font-medium">账户安全</CardTitle>
+              <CardTitle className="text-base font-medium">{t("settings.accountSecurity")}</CardTitle>
             </CardHeader>
             <Separator />
             <CardContent className="pt-4 space-y-4">
               <p className="text-sm text-[hsl(var(--muted-foreground))]">
-                修改管理员登录用户名或密码。旧密码为必填项；用户名留空时仅修改密码。
+                {t("settings.accountSecurityDesc")}
               </p>
               <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                 <div className="space-y-1.5">
-                  <Label className="text-sm">新用户名（可选）</Label>
+                  <Label className="text-sm">{t("settings.newUsername")}</Label>
                   <Input
                     type="text"
                     autoComplete="username"
-                    placeholder="留空则不修改"
+                    placeholder={t("settings.leaveEmptyNoChange")}
                     value={credUsername}
                     onChange={(e) => setCredUsername(e.target.value)}
                   />
                 </div>
                 <div className="space-y-1.5">
-                  <Label className="text-sm">旧密码</Label>
+                  <Label className="text-sm">{t("settings.oldPassword")}</Label>
                   <Input
                     type="password"
                     autoComplete="current-password"
@@ -536,7 +538,7 @@ export default function SettingsPage() {
                   />
                 </div>
                 <div className="space-y-1.5">
-                  <Label className="text-sm">新密码</Label>
+                  <Label className="text-sm">{t("settings.newPassword")}</Label>
                   <Input
                     type="password"
                     autoComplete="new-password"
@@ -546,7 +548,7 @@ export default function SettingsPage() {
                   />
                 </div>
                 <div className="space-y-1.5">
-                  <Label className="text-sm">确认新密码</Label>
+                  <Label className="text-sm">{t("settings.confirmPassword")}</Label>
                   <Input
                     type="password"
                     autoComplete="new-password"
@@ -558,7 +560,7 @@ export default function SettingsPage() {
               </div>
               <div className="flex items-center gap-3">
                 <Button size="sm" onClick={saveCredentials} disabled={credSaving}>
-                  {credSaving ? "保存中…" : "保存"}
+                  {credSaving ? t("common.saving") : t("common.save")}
                 </Button>
                 {credMsg && (
                   <span className="text-sm text-[hsl(var(--muted-foreground))]">{credMsg}</span>
@@ -573,14 +575,14 @@ export default function SettingsPage() {
         <TabsContent value="integrations" className="grid gap-6 mt-0">
           <Card>
             <CardHeader>
-              <CardTitle className="text-base font-medium">MaxMind GeoIP</CardTitle>
+              <CardTitle className="text-base font-medium">{t("settings.maxmindTitle")}</CardTitle>
             </CardHeader>
             <CardContent className="space-y-3">
               <p className="text-sm text-[hsl(var(--muted-foreground))]">
-                用于分析节点 IP 的地理位置和 ASN 信息（GeoLite2）。
-                {maxmindDBReady && <span className="ml-1 text-green-600">（数据库已就绪）</span>}
-                {maxmindHasKey && !maxmindDBReady && maxmindDownloading && <span className="ml-1 text-amber-500">（数据库下载中…）</span>}
-                {maxmindHasKey && !maxmindDBReady && !maxmindDownloading && <span className="ml-1 text-amber-500">（数据库未就绪，可点「更新数据库」重试）</span>}
+                {t("settings.maxmindDesc")}
+                {maxmindDBReady && <span className="ml-1 text-green-600">{t("settings.dbReady")}</span>}
+                {maxmindHasKey && !maxmindDBReady && maxmindDownloading && <span className="ml-1 text-amber-500">{t("settings.dbDownloading")}</span>}
+                {maxmindHasKey && !maxmindDBReady && !maxmindDownloading && <span className="ml-1 text-amber-500">{t("settings.dbNotReady")}</span>}
               </p>
               <div className="flex gap-2">
                 <div className="relative flex-1">
@@ -610,7 +612,7 @@ export default function SettingsPage() {
                   </button>
                 </div>
                 <Button size="sm" onClick={saveMaxmindKey} disabled={maxmindSaving}>
-                  {maxmindSaving ? "保存中…" : "保存"}
+                  {maxmindSaving ? t("common.saving") : t("common.save")}
                 </Button>
               </div>
               {maxmindHasKey && (
@@ -620,7 +622,7 @@ export default function SettingsPage() {
                   onClick={downloadMaxmindDB}
                   disabled={maxmindDownloading}
                 >
-                  {maxmindDownloading ? "下载中…" : maxmindDBReady ? "更新数据库" : "下载数据库"}
+                  {maxmindDownloading ? t("settings.downloading") : maxmindDBReady ? t("settings.updateDB") : t("settings.downloadDB")}
                 </Button>
               )}
             </CardContent>
@@ -628,13 +630,12 @@ export default function SettingsPage() {
 
           <Card>
             <CardHeader>
-              <CardTitle className="text-base font-medium">Cloudflare API Token</CardTitle>
+              <CardTitle className="text-base font-medium">{t("settings.cfTitle")}</CardTitle>
             </CardHeader>
             <CardContent className="space-y-3">
               <p className="text-sm text-[hsl(var(--muted-foreground))]">
-                用于 NodeGate DNS-01 证书申请（NAT / 无公网 80/443 的机器）。
-                需要 Cloudflare API Token 具备 <code className="font-mono text-xs">Zone:DNS:Edit</code> 权限。
-                {cfHasToken && <span className="ml-1 text-green-600">（已配置）</span>}
+                {t("settings.cfDesc")}
+                {cfHasToken && <span className="ml-1 text-green-600">{t("settings.cfConfigured")}</span>}
               </p>
               <div className="flex gap-2">
                 <div className="relative flex-1">
@@ -664,18 +665,18 @@ export default function SettingsPage() {
                   </button>
                 </div>
                 <Button size="sm" onClick={saveCFToken} disabled={cfSaving}>
-                  {cfSaving ? "保存中…" : "保存"}
+                  {cfSaving ? t("common.saving") : t("common.save")}
                 </Button>
               </div>
               <p className="text-xs text-[hsl(var(--muted-foreground))]">
-                保存后，点击 NodeGate 页的「同步路由」即可重新下发节点配置。
+                {t("settings.cfSaveHint")}
               </p>
             </CardContent>
           </Card>
 
           <Card>
             <CardHeader>
-              <CardTitle className="text-base font-medium">Stripe 密钥</CardTitle>
+              <CardTitle className="text-base font-medium">{t("settings.stripeTitle")}</CardTitle>
             </CardHeader>
             <Separator />
             <CardContent className="pt-4 space-y-4">
@@ -687,14 +688,14 @@ export default function SettingsPage() {
               ) : (
                 <>
                   <p className="text-sm text-[hsl(var(--muted-foreground))]">
-                    密钥保存在数据库中，保存后立即生效，无需重启。
+                    {t("settings.stripeDesc")}
                   </p>
 
                   {/* 两套密钥，直接展开 */}
                   {(["live", "test"] as const).map((env) => (
                     <div key={env} className="space-y-3">
                       <p className="text-sm font-medium text-[hsl(var(--foreground))]">
-                        {env === "live" ? "生产密钥" : "沙盒密钥"}
+                        {env === "live" ? t("settings.stripeLiveKeys") : t("settings.stripeTestKeys")}
                       </p>
                       {(["secret_key", "webhook_secret"] as const).map((field) => {
                         const label = field === "secret_key" ? "Secret Key" : "Webhook Secret";
@@ -749,7 +750,7 @@ export default function SettingsPage() {
 
                   <div className="flex items-center gap-3">
                     <Button size="sm" onClick={saveStripeSettings} disabled={stripeSaving}>
-                      {stripeSaving ? "保存中…" : "保存"}
+                      {stripeSaving ? t("common.saving") : t("common.save")}
                     </Button>
                     {stripeMsg && (
                       <span className="text-sm text-[hsl(var(--muted-foreground))]">{stripeMsg}</span>
@@ -762,7 +763,7 @@ export default function SettingsPage() {
 
           <Card>
             <CardHeader>
-              <CardTitle className="text-base font-medium">Shop 设置</CardTitle>
+              <CardTitle className="text-base font-medium">{t("settings.shopTitle")}</CardTitle>
             </CardHeader>
             <Separator />
             <CardContent className="pt-4">
@@ -771,10 +772,10 @@ export default function SettingsPage() {
               ) : (
                 <div className="space-y-4">
                   <p className="text-sm text-[hsl(var(--muted-foreground))]">
-                    Stripe 付款后的回调跳转地址。填写站点的公开域名，例如 <code className="rounded bg-[hsl(var(--muted))] px-1 font-mono text-xs">https://example.com</code>。
+                    {t("settings.shopDesc")}
                   </p>
                   <div className="space-y-2">
-                    <Label className="text-sm">站点地址（Base URL）</Label>
+                    <Label className="text-sm">{t("settings.shopBaseURL")}</Label>
                     <Input
                       value={shopBaseURL}
                       onChange={(e) => setShopBaseURL(e.target.value)}
@@ -784,7 +785,7 @@ export default function SettingsPage() {
                   </div>
                   <div className="flex items-center gap-3">
                     <Button size="sm" onClick={saveShopSettings} disabled={shopSaving}>
-                      {shopSaving ? "保存中…" : "保存"}
+                      {shopSaving ? t("common.saving") : t("common.save")}
                     </Button>
                     {shopMsg && (
                       <span className="text-sm text-[hsl(var(--muted-foreground))]">{shopMsg}</span>
@@ -800,7 +801,7 @@ export default function SettingsPage() {
         <TabsContent value="database" className="grid gap-6 mt-0">
           <Card>
             <CardHeader className="flex flex-row items-center justify-between">
-              <CardTitle className="text-base font-medium">数据库状态</CardTitle>
+              <CardTitle className="text-base font-medium">{t("settings.dbStatus")}</CardTitle>
               <Button
                 variant="ghost"
                 size="sm"
@@ -808,7 +809,7 @@ export default function SettingsPage() {
                 disabled={dbStatsLoading}
                 className="text-xs text-[hsl(var(--muted-foreground))]"
               >
-                {dbStatsLoading ? "加载中…" : "刷新"}
+                {dbStatsLoading ? t("common.loading") : t("common.refresh")}
               </Button>
             </CardHeader>
             <Separator />
@@ -822,15 +823,15 @@ export default function SettingsPage() {
                 <>
                   <div className="grid grid-cols-2 gap-x-8 gap-y-1.5 text-sm sm:grid-cols-3">
                     <div className="flex justify-between gap-2">
-                      <span className="text-[hsl(var(--muted-foreground))]">数据库大小</span>
+                      <span className="text-[hsl(var(--muted-foreground))]">{t("settings.dbSize")}</span>
                       <span className="font-mono">{dbStats.file_size_bytes >= 1024 * 1024 ? `${(dbStats.file_size_bytes / 1024 / 1024).toFixed(1)} MB` : `${(dbStats.file_size_bytes / 1024).toFixed(1)} KB`}</span>
                     </div>
                     <div className="flex justify-between gap-2">
-                      <span className="text-[hsl(var(--muted-foreground))]">Ping 延迟</span>
+                      <span className="text-[hsl(var(--muted-foreground))]">{t("settings.pingLatency")}</span>
                       <span className="font-mono">{dbStats.ping_latency_ms.toFixed(2)} ms</span>
                     </div>
                     <div className="flex justify-between gap-2">
-                      <span className="text-[hsl(var(--muted-foreground))]">表数量</span>
+                      <span className="text-[hsl(var(--muted-foreground))]">{t("settings.tableCount")}</span>
                       <span className="font-mono">{Object.keys(dbStats.tables).length}</span>
                     </div>
                   </div>
@@ -850,7 +851,7 @@ export default function SettingsPage() {
                   )}
                 </>
               ) : (
-                <p className="text-sm text-[hsl(var(--muted-foreground))]">加载失败</p>
+                <p className="text-sm text-[hsl(var(--muted-foreground))]">{t("settings.loadFailed")}</p>
               )}
               <div className="flex items-center gap-3 pt-1">
                 <Button
@@ -861,19 +862,19 @@ export default function SettingsPage() {
                     setDbCleaning(true);
                     api.post<{ total: number }>("/system/db/cleanup", {})
                       .then((r) => {
-                        toast(r.total > 0 ? `已清理 ${r.total} 条孤立记录` : "数据一致，无需清理", "success");
+                        toast(r.total > 0 ? t("settings.cleanedCount", { count: r.total }) : t("settings.dataConsistent"), "success");
                         fetchDbStats();
                       })
                       .catch((err) => {
                         if (handleAuthError(err)) return;
-                        toast(err instanceof Error ? err.message : "清理失败", "error");
+                        toast(err instanceof Error ? err.message : t("settings.cleanupFailed"), "error");
                       })
                       .finally(() => setDbCleaning(false));
                   }}
                 >
-                  {dbCleaning ? "清理中…" : "清理冗余数据"}
+                  {dbCleaning ? t("common.saving") : t("settings.cleanupRedundant")}
                 </Button>
-                <p className="text-xs text-[hsl(var(--muted-foreground))]">删除数据库中已无父记录的冗余数据</p>
+                <p className="text-xs text-[hsl(var(--muted-foreground))]">{t("settings.cleanupRedundantDesc")}</p>
               </div>
             </CardContent>
           </Card>
@@ -881,8 +882,8 @@ export default function SettingsPage() {
           <Card>
             <CardHeader className="flex flex-row items-center justify-between">
               <div>
-                <CardTitle className="text-base font-medium">节点配置下发</CardTitle>
-                <p className="text-sm text-[hsl(var(--muted-foreground))] mt-1">强制将当前配置重新推送到所有节点</p>
+                <CardTitle className="text-base font-medium">{t("settings.nodeApplyTitle")}</CardTitle>
+                <p className="text-sm text-[hsl(var(--muted-foreground))] mt-1">{t("settings.nodeApplyDesc")}</p>
               </div>
               <Button
                 variant="outline"
@@ -892,23 +893,23 @@ export default function SettingsPage() {
                   setNodesApplying(true);
                   api.post<{ nodes: number }>("/system/nodes/apply", {})
                     .then((r) => {
-                      toast(`已向 ${r.nodes} 个节点下发配置`, "success");
+                      toast(t("settings.nodesApplied", { count: r.nodes }), "success");
                     })
                     .catch((err) => {
                       if (handleAuthError(err)) return;
-                      toast(err instanceof Error ? err.message : "下发失败", "error");
+                      toast(err instanceof Error ? err.message : t("settings.applyFailed"), "error");
                     })
                     .finally(() => setNodesApplying(false));
                 }}
               >
-                {nodesApplying ? "下发中…" : "重新下发配置"}
+                {nodesApplying ? t("settings.applying") : t("settings.reapplyConfig")}
               </Button>
             </CardHeader>
           </Card>
 
           <Card>
             <CardHeader>
-              <CardTitle className="text-base font-medium">日志保留策略</CardTitle>
+              <CardTitle className="text-base font-medium">{t("settings.logRetention")}</CardTitle>
             </CardHeader>
             <Separator />
             <CardContent className="pt-4 space-y-4">
@@ -920,11 +921,11 @@ export default function SettingsPage() {
               ) : (
                 <>
                   <p className="text-sm text-[hsl(var(--muted-foreground))]">
-                    超出保留期的历史日志每天自动清理一次，也可手动立即执行。
+                    {t("settings.logRetentionDesc")}
                   </p>
                   <div className="grid grid-cols-2 gap-4">
                     <div className="space-y-1.5">
-                      <Label className="text-sm">节点可用性日志保留（天）</Label>
+                      <Label className="text-sm">{t("settings.uptimeLogRetention")}</Label>
                       <Input
                         type="number"
                         min={1}
@@ -932,10 +933,10 @@ export default function SettingsPage() {
                         onChange={(e) => setLogUptimeDays(Number(e.target.value) || 30)}
                         className="font-mono"
                       />
-                      <p className="text-xs text-[hsl(var(--muted-foreground))]">默认 30 天</p>
+                      <p className="text-xs text-[hsl(var(--muted-foreground))]">{t("settings.defaultDays", { days: 30 })}</p>
                     </div>
                     <div className="space-y-1.5">
-                      <Label className="text-sm">节点日流量日志保留（天）</Label>
+                      <Label className="text-sm">{t("settings.dailyLogRetention")}</Label>
                       <Input
                         type="number"
                         min={1}
@@ -943,7 +944,7 @@ export default function SettingsPage() {
                         onChange={(e) => setLogDailyDays(Number(e.target.value) || 180)}
                         className="font-mono"
                       />
-                      <p className="text-xs text-[hsl(var(--muted-foreground))]">默认 180 天</p>
+                      <p className="text-xs text-[hsl(var(--muted-foreground))]">{t("settings.defaultDays", { days: 180 })}</p>
                     </div>
                   </div>
                   <div className="flex items-center gap-3">
@@ -953,12 +954,12 @@ export default function SettingsPage() {
                       onClick={() => {
                         setLogRetentionSaving(true);
                         api.put("/settings/logs", { uptime_retain_days: logUptimeDays, daily_retain_days: logDailyDays })
-                          .then(() => toast("保留策略已保存", "success"))
-                          .catch((err) => { if (handleAuthError(err)) return; toast("保存失败", "error"); })
+                          .then(() => toast(t("settings.retentionPolicySaved"), "success"))
+                          .catch((err) => { if (handleAuthError(err)) return; toast(t("common.saveFailed"), "error"); })
                           .finally(() => setLogRetentionSaving(false));
                       }}
                     >
-                      {logRetentionSaving ? "保存中…" : "保存"}
+                      {logRetentionSaving ? t("common.saving") : t("common.save")}
                     </Button>
                     <Button
                       size="sm"
@@ -967,12 +968,12 @@ export default function SettingsPage() {
                       onClick={() => {
                         setLogCleaning(true);
                         api.post<{ uptime_retain_days: number; daily_retain_days: number }>("/system/logs/cleanup", {})
-                          .then((r) => toast(`已清理完成（uptime >${r.uptime_retain_days}天，日流量 >${r.daily_retain_days}天）`, "success"))
-                          .catch((err) => { if (handleAuthError(err)) return; toast("清理失败", "error"); })
+                          .then((r) => toast(t("settings.logCleaned", { uptime: r.uptime_retain_days, daily: r.daily_retain_days }), "success"))
+                          .catch((err) => { if (handleAuthError(err)) return; toast(t("settings.cleanupFailed"), "error"); })
                           .finally(() => setLogCleaning(false));
                       }}
                     >
-                      {logCleaning ? "清理中…" : "立即清理"}
+                      {logCleaning ? t("common.saving") : t("settings.cleanupNow")}
                     </Button>
                   </div>
                 </>
@@ -982,7 +983,7 @@ export default function SettingsPage() {
 
           <Card>
             <CardHeader>
-              <CardTitle className="text-base font-medium">数据库备份</CardTitle>
+              <CardTitle className="text-base font-medium">{t("settings.backupTitle")}</CardTitle>
             </CardHeader>
             <Separator />
             <CardContent className="pt-4">
@@ -994,7 +995,7 @@ export default function SettingsPage() {
               ) : (
                 <div className="space-y-4">
                   <p className="text-sm text-[hsl(var(--muted-foreground))]">
-                    定时将数据库备份到 Cloudflare R2（S3 兼容）。
+                    {t("settings.backupDesc")}
                   </p>
                   <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                     <div className="space-y-2">
@@ -1002,7 +1003,7 @@ export default function SettingsPage() {
                       <Input value={backupAccountID} onChange={(e) => setBackupAccountID(e.target.value)} placeholder="Cloudflare Account ID" className="font-mono text-sm" />
                     </div>
                     <div className="space-y-2">
-                      <Label className="text-sm">Bucket 名称</Label>
+                      <Label className="text-sm">{t("settings.bucketName")}</Label>
                       <Input value={backupBucketName} onChange={(e) => setBackupBucketName(e.target.value)} placeholder="my-pulse-backup" className="font-mono text-sm" />
                     </div>
                     <div className="space-y-2">
@@ -1015,7 +1016,7 @@ export default function SettingsPage() {
                         type="password"
                         value={backupSecretKey}
                         onChange={(e) => setBackupSecretKey(e.target.value)}
-                        placeholder={backupAccountID ? "已设置，留空保持不变" : "R2 Secret Key"}
+                        placeholder={backupAccountID ? t("settings.setKeepEmpty") : "R2 Secret Key"}
                         className="font-mono text-sm"
                         autoComplete="new-password"
                       />
@@ -1023,23 +1024,23 @@ export default function SettingsPage() {
                   </div>
                   <div className="flex flex-wrap gap-4">
                     <div className="space-y-2 w-44">
-                      <Label className="text-sm">备份间隔（小时）</Label>
+                      <Label className="text-sm">{t("settings.backupInterval")}</Label>
                       <Input
                         type="number"
                         value={backupIntervalHours}
                         onChange={(e) => setBackupIntervalHours(e.target.value)}
-                        placeholder="0 = 禁用"
+                        placeholder={t("settings.disabledZero")}
                         min={0}
                         max={720}
                       />
                     </div>
                     <div className="space-y-2 w-44">
-                      <Label className="text-sm">保留份数</Label>
+                      <Label className="text-sm">{t("settings.keepCount")}</Label>
                       <Input
                         type="number"
                         value={backupKeepCount}
                         onChange={(e) => setBackupKeepCount(e.target.value)}
-                        placeholder="0 = 不限制"
+                        placeholder={t("settings.noLimitZero")}
                         min={0}
                         max={365}
                       />
@@ -1047,18 +1048,18 @@ export default function SettingsPage() {
                   </div>
                   {backupLastAt && (
                     <p className="text-xs text-[hsl(var(--muted-foreground))]">
-                      上次备份：{new Date(backupLastAt).toLocaleString("zh-CN")}
+                      {t("settings.lastBackup", { time: new Date(backupLastAt).toLocaleString() })}
                     </p>
                   )}
                   <div className="flex items-center gap-3">
                     <Button size="sm" onClick={saveBackupSettings} disabled={backupSaving}>
-                      {backupSaving ? "保存中…" : "保存"}
+                      {backupSaving ? t("common.saving") : t("common.save")}
                     </Button>
                     <Button size="sm" variant="outline" onClick={runBackup} disabled={backupRunning}>
-                      {backupRunning ? "备份中…" : "立即备份"}
+                      {backupRunning ? t("settings.backuping") : t("settings.backupNow")}
                     </Button>
                     <Button size="sm" variant="outline" onClick={openRestoreDialog} disabled={!backupAccountID}>
-                      从备份还原
+                       {t("settings.restoreFromBackup")}
                     </Button>
                     {backupMsg && <span className="text-sm text-[hsl(var(--muted-foreground))]">{backupMsg}</span>}
                   </div>
@@ -1072,13 +1073,13 @@ export default function SettingsPage() {
             <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60" onClick={() => setRestoreOpen(false)}>
               <div className="w-full max-w-lg rounded-lg border border-[hsl(var(--border))] bg-[hsl(var(--card))] p-6 shadow-xl" onClick={(e) => e.stopPropagation()}>
                 <div className="mb-4 flex items-center justify-between">
-                  <h2 className="text-base font-semibold">选择备份还原</h2>
+                  <h2 className="text-base font-semibold">{t("settings.restoreTitle")}</h2>
                   <button onClick={() => setRestoreOpen(false)} className="text-[hsl(var(--muted-foreground))] hover:text-[hsl(var(--foreground))]">✕</button>
                 </div>
                 {restoreMsg ? (
                   <div className="space-y-4">
                     <p className="text-sm text-[hsl(var(--muted-foreground))]">{restoreMsg}</p>
-                    <Button size="sm" onClick={() => setRestoreOpen(false)}>关闭</Button>
+                    <Button size="sm" onClick={() => setRestoreOpen(false)}>{t("common.close")}</Button>
                   </div>
                 ) : restoreListLoading ? (
                   <div className="space-y-2">
@@ -1087,7 +1088,7 @@ export default function SettingsPage() {
                 ) : restoreListError ? (
                   <p className="text-sm text-[hsl(var(--destructive))]">{restoreListError}</p>
                 ) : restoreList.length === 0 ? (
-                  <p className="text-sm text-[hsl(var(--muted-foreground))]">R2 中暂无备份文件</p>
+                  <p className="text-sm text-[hsl(var(--muted-foreground))]">{t("settings.noBackupFiles")}</p>
                 ) : (
                   <ScrollArea className="max-h-80">
                     <div className="space-y-1">
@@ -1105,7 +1106,7 @@ export default function SettingsPage() {
                           onClick={() => doRestore(b.key)}
                           disabled={restoringKey !== null}
                         >
-                          {restoringKey === b.key ? "还原中…" : "还原"}
+                          {restoringKey === b.key ? t("settings.restoring") : t("settings.restore")}
                         </Button>
                       </div>
                     ))}

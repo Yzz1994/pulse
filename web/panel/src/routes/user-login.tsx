@@ -1,9 +1,11 @@
 import { useState } from "react";
 import { useNavigate } from "@tanstack/react-router";
+import { useTranslation } from "react-i18next";
 import { Card, CardHeader, CardTitle, CardContent, Button, Input } from "@/components/ui";
 
 export default function UserLoginPage() {
   const navigate = useNavigate();
+  const { t } = useTranslation();
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
@@ -23,19 +25,19 @@ export default function UserLoginPage() {
       if (!res.ok) {
         setError(
           res.status === 401
-            ? "用户名或密码错误"
+            ? t("userLogin.wrongCredentials")
             : (data.error as string) || `HTTP ${res.status}`,
         );
         return;
       }
       const token = (data as { sub_token?: string }).sub_token;
       if (!token) {
-        setError("登录失败：服务端未返回 token");
+        setError(t("userLogin.noToken"));
         return;
       }
       navigate({ to: "/user/$token", params: { token }, replace: true });
     } catch {
-      setError("网络错误，请重试");
+      setError(t("userLogin.networkError"));
     } finally {
       setLoading(false);
     }
@@ -45,11 +47,11 @@ export default function UserLoginPage() {
     <div className="min-h-screen flex items-center justify-center bg-[hsl(var(--background))] p-4">
       <Card className="w-full max-w-sm">
         <CardHeader>
-          <CardTitle className="text-center">用户登录</CardTitle>
+          <CardTitle className="text-center">{t("userLogin.title")}</CardTitle>
         </CardHeader>
         <CardContent className="space-y-3">
           <Input
-            placeholder="用户名"
+            placeholder={t("userLogin.username")}
             value={username}
             onChange={(e) => setUsername(e.target.value)}
             onKeyDown={(e) => e.key === "Enter" && submit()}
@@ -57,7 +59,7 @@ export default function UserLoginPage() {
           />
           <Input
             type="password"
-            placeholder="密码"
+            placeholder={t("userLogin.password")}
             value={password}
             onChange={(e) => setPassword(e.target.value)}
             onKeyDown={(e) => e.key === "Enter" && submit()}
@@ -70,7 +72,7 @@ export default function UserLoginPage() {
             onClick={submit}
             disabled={loading || !username || !password}
           >
-            {loading ? "登录中…" : "登录"}
+            {loading ? t("userLogin.loggingIn") : t("userLogin.login")}
           </Button>
         </CardContent>
       </Card>

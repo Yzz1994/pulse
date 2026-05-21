@@ -1,4 +1,5 @@
 import { getToken, clearToken } from "./auth";
+import i18n from "@/i18n";
 
 const BASE = "/v1";
 
@@ -24,7 +25,7 @@ async function request<T>(path: string, opts?: RequestInit): Promise<T> {
   const isLoginEndpoint = path === "/auth/login";
   if (!isLoginEndpoint && (res.redirected || res.status === 401)) {
     clearToken();
-    throw new AuthError("未登录，请先登录");
+    throw new AuthError(i18n.t("common.notLoggedIn"));
   }
 
   const ct = res.headers.get("content-type") ?? "";
@@ -41,7 +42,7 @@ async function request<T>(path: string, opts?: RequestInit): Promise<T> {
   }
 
   if (!ct.includes("application/json")) {
-    throw new Error("服务端返回非 JSON 响应");
+    throw new Error(i18n.t("common.nonJsonResponse"));
   }
 
   return res.json() as Promise<T>;

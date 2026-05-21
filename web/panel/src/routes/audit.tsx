@@ -1,4 +1,5 @@
 import { useEffect, useState, useCallback } from "react";
+import { useTranslation } from "react-i18next";
 import {
   Card,
   CardHeader,
@@ -74,23 +75,22 @@ interface NodesResponse {
 // ── 时间范围快捷选项 ──────────────────────────────────────────────
 
 const TIME_RANGE_OPTIONS = [
-  { label: "最近 1 小时", hours: 1 },
-  { label: "最近 6 小时", hours: 6 },
-  { label: "最近 12 小时", hours: 12 },
-  { label: "最近 24 小时", hours: 24 },
+  { label: "audit.last1h", hours: 1 },
+  { label: "audit.last6h", hours: 6 },
+  { label: "audit.last12h", hours: 12 },
+  { label: "audit.last24h", hours: 24 },
 ] as const;
 
-// 规则类型映射
 const RULE_TYPE_LABELS: Record<RuleType, string> = {
-  domain_keyword: "域名关键词",
-  port: "端口",
-  ip: "IP",
+  domain_keyword: "audit.domainKeyword",
+  port: "audit.portLabel",
+  ip: "audit.ipLabel",
 };
 
 const RULE_TYPE_PLACEHOLDERS: Record<RuleType, string> = {
-  domain_keyword: "如 torrent",
-  port: "如 22",
-  ip: "如 1.2.3.4",
+  domain_keyword: "audit.likeTorrent",
+  port: "audit.likePort",
+  ip: "audit.likeIP",
 };
 
 // ── 类型：用户分析 ────────────────────────────────────────────────
@@ -138,26 +138,21 @@ function buildQuery(params: Record<string, string>): string {
 // ── 历史日志子组件 ────────────────────────────────────────────────
 
 function AuditLogsTab() {
+  const { t } = useTranslation();
   const handleAuthError = useAuthErrorHandler();
 
-  // 筛选状态
   const [selectedHours, setSelectedHours] = useState<number>(1);
   const [username, setUsername] = useState("");
   const [nodeId, setNodeId] = useState("");
 
-  // 数据状态
   const [entries, setEntries] = useState<AuditEntry[]>([]);
   const [loading, setLoading] = useState(false);
 
-  // DB 总条数
   const [totalCount, setTotalCount] = useState<number | null>(null);
 
-  // 用户下拉列表状态：null 表示加载失败，降级为 Input
   const [userList, setUserList] = useState<string[] | null>(null);
-  // 节点下拉列表状态：null 表示加载失败，降级为 Input
   const [nodeList, setNodeList] = useState<Array<{ id: string; name: string }> | null>(null);
 
-  // 挂载时加载用户列表、节点列表和 DB 总条数
   useEffect(() => {
     api.get<{ users: string[] }>("/audit/users")
       .then((data) => setUserList(data.users ?? []))
@@ -186,20 +181,18 @@ function AuditLogsTab() {
 
       const query = buildQuery(params);
       const data = await api.get<AuditLogsResponse>(`/audit/logs${query}`);
-      // 按时间降序排列
       const sorted = [...(data.entries ?? [])].sort(
         (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
       );
       setEntries(sorted);
     } catch (err) {
       if (handleAuthError(err)) return;
-      toast((err as Error).message || "加载失败", "error");
+      toast((err as Error).message || t("common.loadFailed"), "error");
     } finally {
       setLoading(false);
     }
-  }, [selectedHours, username, nodeId, handleAuthError]);
+  }, [selectedHours, username, nodeId, handleAuthError, t]);
 
-  // 首次加载
   useEffect(() => {
     fetchLogs();
   }, [fetchLogs]);
@@ -217,34 +210,32 @@ function AuditLogsTab() {
         e.route_tag || "-",
       ].join("\t")
     );
-    const text = ["时间\t用户\t源IP\t源端口\t协议\t目标地址\t路由出口", ...lines].join("\n");
+    const text = [t("audit.copyHeader"), ...lines].join("\n");
     try {
       await copyText(text);
-      toast(`${entries.length} 条记录已复制到剪贴板`, "success");
+      toast(t("audit.copiedRecords", { count: entries.length }), "success");
     } catch {
-      toast("复制失败，请手动选中内容复制", "error");
+      toast(t("audit.copyFailed"), "error");
     }
-  }, [entries]);
+  }, [entries, t]);
 
   return (
     <div className="space-y-4">
-      {/* 筛选栏 */}
       <Card>
         <CardHeader>
           <CardTitle>
-            流量审计日志
+            {t("audit.title")}
             {totalCount !== null && (
               <span className="ml-2 text-sm font-normal text-muted-foreground">
-                数据库共 {totalCount} 条
+                {t("audit.totalInDB", { count: totalCount })}
               </span>
             )}
           </CardTitle>
         </CardHeader>
         <CardContent>
           <div className="flex flex-wrap gap-4 items-end">
-            {/* 时间范围快捷选项 */}
             <div className="space-y-1">
-              <Label>时间范围</Label>
+              <Label>{t("audit.timeRange")}</Label>
               <div className="flex gap-2">
                 {TIME_RANGE_OPTIONS.map((opt) => (
                   <Button
@@ -253,22 +244,21 @@ function AuditLogsTab() {
                     size="sm"
                     onClick={() => setSelectedHours(opt.hours)}
                   >
-                    {opt.label}
+                    {t(opt.label)}
                   </Button>
                 ))}
               </div>
             </div>
 
-            {/* 用户名：有列表时用下拉，否则降级为 Input */}
             <div className="space-y-1">
-              <Label htmlFor="audit-username">用户名</Label>
+              <Label htmlFor="audit-username">{t("audit.username")}</Label>
               {userList !== null ? (
                 <Select value={username} onValueChange={setUsername}>
                   <SelectTrigger id="audit-username" className="w-40">
-                    <SelectValue placeholder="全部" />
+                    <SelectValue placeholder={t("common.all")} />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="__all__">全部</SelectItem>
+                    <SelectItem value="__all__">{t("common.all")}</SelectItem>
                     {userList.map((u) => (
                       <SelectItem key={u} value={u}>
                         {u}
@@ -279,7 +269,7 @@ function AuditLogsTab() {
               ) : (
                 <Input
                   id="audit-username"
-                  placeholder="可选"
+                  placeholder={t("audit.optional")}
                   value={username}
                   onChange={(e) => setUsername(e.target.value)}
                   className="w-40"
@@ -288,16 +278,15 @@ function AuditLogsTab() {
               )}
             </div>
 
-            {/* 节点：有列表时用下拉，否则降级为 Input */}
             <div className="space-y-1">
-              <Label htmlFor="audit-node-id">节点</Label>
+              <Label htmlFor="audit-node-id">{t("audit.node")}</Label>
               {nodeList !== null ? (
                 <Select value={nodeId} onValueChange={setNodeId}>
                   <SelectTrigger id="audit-node-id" className="w-40">
-                    <SelectValue placeholder="全部" />
+                    <SelectValue placeholder={t("common.all")} />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="__all__">全部</SelectItem>
+                    <SelectItem value="__all__">{t("common.all")}</SelectItem>
                     {nodeList.map((n) => (
                       <SelectItem key={n.id} value={n.id}>
                         {n.name}
@@ -308,7 +297,7 @@ function AuditLogsTab() {
               ) : (
                 <Input
                   id="audit-node-id"
-                  placeholder="可选"
+                  placeholder={t("audit.optional")}
                   value={nodeId}
                   onChange={(e) => setNodeId(e.target.value)}
                   className="w-40"
@@ -317,47 +306,45 @@ function AuditLogsTab() {
               )}
             </div>
 
-            {/* 查询按钮 */}
             <Button onClick={fetchLogs} disabled={loading}>
-              {loading ? "查询中..." : "查询"}
+              {loading ? t("audit.querying") : t("audit.query")}
             </Button>
           </div>
         </CardContent>
       </Card>
 
-      {/* 结果表格 */}
       <Card>
         <CardHeader className="flex flex-row items-center justify-between">
           <CardTitle>
-            查询结果
+            {t("audit.queryResult")}
             {!loading && (
               <span className="ml-2 text-sm font-normal text-muted-foreground">
-                共 {entries.length} 条
+                {t("audit.totalResults", { count: entries.length })}
               </span>
             )}
           </CardTitle>
           {entries.length > 0 && (
             <Button variant="outline" size="sm" onClick={copyAsText}>
-              复制为文本
+              {t("audit.copyAsText")}
             </Button>
           )}
         </CardHeader>
         <CardContent className="p-0">
           {entries.length === 0 && !loading ? (
             <div className="flex items-center justify-center py-16 text-muted-foreground text-sm">
-              暂无数据
+              {t("common.noData")}
             </div>
           ) : (
             <Table containerClassName="max-h-[600px]">
               <TableHeader className="sticky top-0 z-10 bg-[hsl(var(--card))]">
                 <TableRow>
-                  <TableHead>时间</TableHead>
-                  <TableHead>用户</TableHead>
-                  <TableHead>源 IP</TableHead>
-                  <TableHead>源端口</TableHead>
-                  <TableHead>协议</TableHead>
-                  <TableHead>目标地址</TableHead>
-                  <TableHead>路由出口</TableHead>
+                  <TableHead>{t("audit.time")}</TableHead>
+                  <TableHead>{t("audit.user")}</TableHead>
+                  <TableHead>{t("audit.sourceIP")}</TableHead>
+                  <TableHead>{t("audit.sourcePort")}</TableHead>
+                  <TableHead>{t("common.protocol")}</TableHead>
+                  <TableHead>{t("audit.targetAddress")}</TableHead>
+                  <TableHead>{t("audit.routeOut")}</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -386,19 +373,16 @@ function AuditLogsTab() {
 // ── 告警规则子组件 ────────────────────────────────────────────────
 
 function AlertRulesTab() {
+  const { t } = useTranslation();
 
-  // 规则列表状态
   const [rules, setRules] = useState<Rule[]>([]);
   const [loading, setLoading] = useState(false);
 
-  // 新增表单状态
   const [newType, setNewType] = useState<RuleType>("domain_keyword");
   const [newValue, setNewValue] = useState("");
   const [adding, setAdding] = useState(false);
 
-  // 正在切换启用状态的规则 ID 集合
   const [togglingIds, setTogglingIds] = useState<Set<string>>(new Set());
-  // 正在删除的规则 ID 集合
   const [deletingIds, setDeletingIds] = useState<Set<string>>(new Set());
 
   const handleAuthError = useAuthErrorHandler();
@@ -410,21 +394,20 @@ function AlertRulesTab() {
       setRules(data.rules ?? []);
     } catch (err) {
       if (handleAuthError(err)) return;
-      toast((err as Error).message || "加载规则失败", "error");
+      toast((err as Error).message || t("audit.loadRulesFailed"), "error");
     } finally {
       setLoading(false);
     }
-  }, [handleAuthError]);
+  }, [handleAuthError, t]);
 
   useEffect(() => {
     fetchRules();
   }, [fetchRules]);
 
-  // 新增规则
   const handleAdd = useCallback(async () => {
     const trimmed = newValue.trim();
     if (!trimmed) {
-      toast("请填写规则值", "error");
+      toast(t("audit.ruleValueRequired"), "error");
       return;
     }
     setAdding(true);
@@ -435,16 +418,15 @@ function AlertRulesTab() {
       });
       setRules((prev) => [created, ...prev]);
       setNewValue("");
-      toast("规则已添加", "success");
+      toast(t("audit.ruleAdded"), "success");
     } catch (err) {
       if (handleAuthError(err)) return;
-      toast((err as Error).message || "添加失败", "error");
+      toast((err as Error).message || t("audit.addRuleFailed"), "error");
     } finally {
       setAdding(false);
     }
-  }, [newType, newValue, handleAuthError]);
+  }, [newType, newValue, handleAuthError, t]);
 
-  // 切换启用/禁用
   const handleToggle = useCallback(
     async (rule: Rule) => {
       setTogglingIds((prev) => new Set(prev).add(rule.id));
@@ -455,7 +437,7 @@ function AlertRulesTab() {
         );
       } catch (err) {
         if (handleAuthError(err)) return;
-        toast((err as Error).message || "操作失败", "error");
+        toast((err as Error).message || t("common.operationFailed"), "error");
       } finally {
         setTogglingIds((prev) => {
           const next = new Set(prev);
@@ -464,20 +446,19 @@ function AlertRulesTab() {
         });
       }
     },
-    [handleAuthError]
+    [handleAuthError, t]
   );
 
-  // 删除规则
   const handleDelete = useCallback(
     async (id: string) => {
       setDeletingIds((prev) => new Set(prev).add(id));
       try {
         await api.del(`/audit/rules/${id}`);
         setRules((prev) => prev.filter((r) => r.id !== id));
-        toast("规则已删除", "success");
+        toast(t("audit.ruleDeleted"), "success");
       } catch (err) {
         if (handleAuthError(err)) return;
-        toast((err as Error).message || "删除失败", "error");
+        toast((err as Error).message || t("common.deleteFailed"), "error");
       } finally {
         setDeletingIds((prev) => {
           const next = new Set(prev);
@@ -486,21 +467,19 @@ function AlertRulesTab() {
         });
       }
     },
-    [handleAuthError]
+    [handleAuthError, t]
   );
 
   return (
     <div className="space-y-4">
-      {/* 新增规则表单 */}
       <Card>
         <CardHeader>
-          <CardTitle>新增规则</CardTitle>
+          <CardTitle>{t("audit.newRule")}</CardTitle>
         </CardHeader>
         <CardContent>
           <div className="flex flex-wrap gap-4 items-end">
-            {/* 类型选择 */}
             <div className="space-y-1">
-              <Label htmlFor="rule-type">类型</Label>
+              <Label htmlFor="rule-type">{t("common.type")}</Label>
               <Select
                 value={newType}
                 onValueChange={(v) => setNewType(v as RuleType)}
@@ -509,19 +488,18 @@ function AlertRulesTab() {
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="domain_keyword">域名关键词</SelectItem>
-                  <SelectItem value="port">端口</SelectItem>
-                  <SelectItem value="ip">IP</SelectItem>
+                  <SelectItem value="domain_keyword">{t("audit.domainKeyword")}</SelectItem>
+                  <SelectItem value="port">{t("audit.portLabel")}</SelectItem>
+                  <SelectItem value="ip">{t("audit.ipLabel")}</SelectItem>
                 </SelectContent>
               </Select>
             </div>
 
-            {/* 值输入框 */}
             <div className="space-y-1">
-              <Label htmlFor="rule-value">值</Label>
+              <Label htmlFor="rule-value">{t("audit.value")}</Label>
               <Input
                 id="rule-value"
-                placeholder={RULE_TYPE_PLACEHOLDERS[newType]}
+                placeholder={t(RULE_TYPE_PLACEHOLDERS[newType])}
                 value={newValue}
                 onChange={(e) => setNewValue(e.target.value)}
                 className="w-52"
@@ -529,22 +507,20 @@ function AlertRulesTab() {
               />
             </div>
 
-            {/* 添加按钮 */}
             <Button onClick={handleAdd} disabled={adding}>
-              {adding ? "添加中..." : "添加"}
+              {adding ? t("audit.adding") : t("common.add")}
             </Button>
           </div>
         </CardContent>
       </Card>
 
-      {/* 规则列表 */}
       <Card>
         <CardHeader>
           <CardTitle>
-            规则列表
+            {t("audit.ruleList")}
             {!loading && (
               <span className="ml-2 text-sm font-normal text-muted-foreground">
-                共 {rules.length} 条
+                {t("audit.totalRules", { count: rules.length })}
               </span>
             )}
           </CardTitle>
@@ -552,24 +528,24 @@ function AlertRulesTab() {
         <CardContent className="p-0">
           {rules.length === 0 && !loading ? (
             <div className="flex items-center justify-center py-16 text-muted-foreground text-sm">
-              暂无规则
+              {t("audit.noRules")}
             </div>
           ) : (
             <Table containerClassName="max-h-[600px]">
               <TableHeader className="sticky top-0 z-10 bg-[hsl(var(--card))]">
                 <TableRow>
-                  <TableHead>类型</TableHead>
-                  <TableHead>值</TableHead>
-                  <TableHead>创建时间</TableHead>
-                  <TableHead>状态</TableHead>
-                  <TableHead className="text-right">操作</TableHead>
+                  <TableHead>{t("common.type")}</TableHead>
+                  <TableHead>{t("audit.value")}</TableHead>
+                  <TableHead>{t("audit.createTime")}</TableHead>
+                  <TableHead>{t("common.status")}</TableHead>
+                  <TableHead className="text-right">{t("common.action")}</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {rules.map((rule) => (
                   <TableRow key={rule.id}>
                     <TableCell className="text-sm">
-                      {RULE_TYPE_LABELS[rule.type] ?? rule.type}
+                      {t(RULE_TYPE_LABELS[rule.type] ?? rule.type)}
                     </TableCell>
                     <TableCell className="font-mono text-sm">{rule.value}</TableCell>
                     <TableCell className="whitespace-nowrap text-sm text-muted-foreground">
@@ -580,7 +556,7 @@ function AlertRulesTab() {
                         checked={rule.enabled}
                         disabled={togglingIds.has(rule.id)}
                         onCheckedChange={() => handleToggle(rule)}
-                        aria-label={rule.enabled ? "禁用规则" : "启用规则"}
+                        aria-label={rule.enabled ? t("audit.disableRule") : t("audit.enableRule")}
                       />
                     </TableCell>
                     <TableCell className="text-right">
@@ -590,7 +566,7 @@ function AlertRulesTab() {
                         disabled={deletingIds.has(rule.id)}
                         onClick={() => handleDelete(rule.id)}
                       >
-                        {deletingIds.has(rule.id) ? "删除中..." : "删除"}
+                        {deletingIds.has(rule.id) ? t("common.deleting") : t("common.delete")}
                       </Button>
                     </TableCell>
                   </TableRow>
@@ -607,6 +583,7 @@ function AlertRulesTab() {
 // ── 用户分析子组件 ────────────────────────────────────────────────
 
 function AnalysisTab() {
+  const { t } = useTranslation();
   const handleAuthError = useAuthErrorHandler();
   const [selectedHours, setSelectedHours] = useState<number>(24);
   const [users, setUsers] = useState<UserAnalysis[]>([]);
@@ -623,22 +600,22 @@ function AnalysisTab() {
       setUsers(data.users ?? []);
     } catch (err) {
       if (handleAuthError(err)) return;
-      toast((err as Error).message || "加载失败", "error");
+      toast((err as Error).message || t("common.loadFailed"), "error");
     } finally {
       setLoading(false);
     }
-  }, [selectedHours, handleAuthError]);
+  }, [selectedHours, handleAuthError, t]);
 
   useEffect(() => { fetchAnalysis(); }, [fetchAnalysis]);
 
   return (
     <div className="space-y-4">
       <Card>
-        <CardHeader><CardTitle>用户行为分析</CardTitle></CardHeader>
+        <CardHeader><CardTitle>{t("audit.userAnalysis")}</CardTitle></CardHeader>
         <CardContent>
           <div className="flex flex-wrap gap-4 items-end">
             <div className="space-y-1">
-              <Label>时间范围</Label>
+              <Label>{t("audit.timeRange")}</Label>
               <div className="flex gap-2">
                 {TIME_RANGE_OPTIONS.map((opt) => (
                   <Button
@@ -647,13 +624,13 @@ function AnalysisTab() {
                     size="sm"
                     onClick={() => setSelectedHours(opt.hours)}
                   >
-                    {opt.label}
+                    {t(opt.label)}
                   </Button>
                 ))}
               </div>
             </div>
             <Button onClick={fetchAnalysis} disabled={loading}>
-              {loading ? "分析中..." : "分析"}
+              {loading ? t("audit.analyzing") : t("audit.analyze")}
             </Button>
           </div>
         </CardContent>
@@ -662,31 +639,31 @@ function AnalysisTab() {
       <Card>
         <CardHeader>
           <CardTitle>
-            用户汇总
+            {t("audit.userSummary")}
             {!loading && (
               <span className="ml-2 text-sm font-normal text-muted-foreground">
-                共 {users.length} 个用户
+                {t("audit.totalUsers", { count: users.length })}
               </span>
             )}
           </CardTitle>
         </CardHeader>
         <CardContent className="p-0">
           <p className="px-4 pt-3 pb-1 text-xs text-muted-foreground">
-            独立 IP 数 &gt; 3 可能存在账号共享，建议核查
+            {t("audit.ipHint")}
           </p>
           {users.length === 0 && !loading ? (
             <div className="flex items-center justify-center py-16 text-muted-foreground text-sm">
-              暂无数据
+              {t("common.noData")}
             </div>
           ) : (
             <Table containerClassName="max-h-[600px]">
                 <TableHeader className="sticky top-0 z-10 bg-[hsl(var(--card))]">
                   <TableRow>
-                    <TableHead>用户</TableHead>
-                    <TableHead>独立 IP 数</TableHead>
-                    <TableHead>连接数</TableHead>
-                    <TableHead>时间段流量</TableHead>
-                    <TableHead>最近活跃</TableHead>
+                    <TableHead>{t("audit.userCol")}</TableHead>
+                    <TableHead>{t("audit.uniqueIPs")}</TableHead>
+                    <TableHead>{t("audit.connections")}</TableHead>
+                    <TableHead>{t("audit.periodTraffic")}</TableHead>
+                    <TableHead>{t("audit.lastActive")}</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -717,13 +694,14 @@ function AnalysisTab() {
 // ── 页面组件 ─────────────────────────────────────────────────────
 
 export default function AuditPage() {
+  const { t } = useTranslation();
   return (
     <div className="p-6 space-y-4">
       <Tabs defaultValue="logs">
         <TabsList>
-          <TabsTrigger value="logs">历史日志</TabsTrigger>
-          <TabsTrigger value="rules">告警规则</TabsTrigger>
-          <TabsTrigger value="analysis">用户分析</TabsTrigger>
+          <TabsTrigger value="logs">{t("audit.historyLogs")}</TabsTrigger>
+          <TabsTrigger value="rules">{t("audit.alertRules")}</TabsTrigger>
+          <TabsTrigger value="analysis">{t("audit.userAnalysisTab")}</TabsTrigger>
         </TabsList>
 
         <TabsContent value="logs">

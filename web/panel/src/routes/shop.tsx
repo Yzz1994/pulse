@@ -1,4 +1,5 @@
 import { useState, useEffect, type FormEvent } from "react";
+import { useTranslation } from "react-i18next";
 import { getTheme, toggleTheme, type Theme } from "@/lib/theme";
 import { getToken } from "@/lib/auth";
 import {
@@ -43,16 +44,16 @@ function formatPrice(cents: number, currency: string): string {
   return `${amount} ${currency.toUpperCase()}`;
 }
 
-function formatTraffic(bytes: number): string {
-  if (bytes <= 0) return "无限";
+function formatTraffic(bytes: number, t: (key: string) => string): string {
+  if (bytes <= 0) return t("shop.unlimited");
   const gb = bytes / (1024 * 1024 * 1024);
   if (gb >= 1024) return `${(gb / 1024).toFixed(1)} TB`;
   return `${Math.round(gb)} GB`;
 }
 
-function formatDuration(days: number): string {
-  if (days <= 0) return "永久";
-  return `${days} 天`;
+function formatDuration(days: number, t: (key: string) => string): string {
+  if (days <= 0) return t("shop.permanent");
+  return `${days}${t("shop.daysUnit")}`;
 }
 
 /* ── Pulse Logo (reused from login) ───────────────────────────── */
@@ -80,6 +81,7 @@ function PulseLogo({ className = "h-8 w-8" }: { className?: string }) {
 /* ── Page ──────────────────────────────────────────────────────── */
 
 export default function ShopPage({ basePath = "/shop" }: { basePath?: string }) {
+  const { t } = useTranslation();
   const isTest = basePath === "/shop-test";
   const [plans, setPlans] = useState<Plan[]>([]);
   const [loading, setLoading] = useState(true);
@@ -113,12 +115,12 @@ export default function ShopPage({ basePath = "/shop" }: { basePath?: string }) 
         }
         const res = await fetch(`${basePath}/plans`, { headers });
         if (!res.ok || !res.headers.get("content-type")?.includes("application/json")) {
-          throw new Error("商店服务未启用");
+          throw new Error(t("shop.serviceDisabled"));
         }
         const data = await res.json();
         if (!cancelled) setPlans(data.plans ?? []);
       } catch (err) {
-        if (!cancelled) setError(err instanceof Error ? err.message : "加载失败");
+        if (!cancelled) setError(err instanceof Error ? err.message : t("common.loadFailed"));
       } finally {
         if (!cancelled) setLoading(false);
       }
@@ -163,10 +165,10 @@ export default function ShopPage({ basePath = "/shop" }: { basePath?: string }) 
       if (data.url) {
         window.location.href = data.url;
       } else {
-        throw new Error("未返回支付链接");
+        throw new Error(t("shop.noPaymentLink"));
       }
     } catch (err) {
-      setCheckoutError(err instanceof Error ? err.message : "结账失败");
+      setCheckoutError(err instanceof Error ? err.message : t("shop.checkoutFailed"));
     } finally {
       setCheckoutLoading(false);
     }
@@ -190,13 +192,13 @@ export default function ShopPage({ basePath = "/shop" }: { basePath?: string }) 
           <span className="text-xl font-bold tracking-tight">Pulse</span>
           <span className="text-sm text-[hsl(var(--muted-foreground))]">—</span>
           <span className="text-sm font-medium text-[hsl(var(--muted-foreground))]">
-            选购套餐
+            {t("shop.title")}
           </span>
           <div className="ml-auto flex items-center gap-2">
             <button
               onClick={() => setTheme(toggleTheme())}
               className="rounded-md p-2 text-[hsl(var(--muted-foreground))] hover:bg-[hsl(var(--accent))] hover:text-[hsl(var(--accent-foreground))] transition-colors"
-              title={theme === "dark" ? "切换浅色模式" : "切换深色模式"}
+              title={theme === "dark" ? t("common.switchLight") : t("common.switchDark")}
             >
               {theme === "dark" ? (
                 <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -215,7 +217,7 @@ export default function ShopPage({ basePath = "/shop" }: { basePath?: string }) 
       {/* 沙盒 banner */}
       {isTest && (
         <div className="bg-amber-500/10 border-b border-amber-500/30 py-2 text-center text-sm font-medium text-amber-600">
-          测试模式 — 不会真实扣款
+          {t("shop.testMode")}
         </div>
       )}
 
@@ -224,10 +226,10 @@ export default function ShopPage({ basePath = "/shop" }: { basePath?: string }) 
         {/* Page heading */}
         <div className="mb-8 text-center">
           <h1 className="text-3xl font-bold tracking-tight sm:text-4xl">
-            选购套餐
+            {t("shop.title")}
           </h1>
           <p className="mt-2 text-[hsl(var(--muted-foreground))]">
-            选择最适合您的方案，畅享稳定快速的网络服务
+            {t("shop.subtitle")}
           </p>
         </div>
 
@@ -248,7 +250,7 @@ export default function ShopPage({ basePath = "/shop" }: { basePath?: string }) 
         {/* Empty state */}
         {!loading && !error && plans.length === 0 && (
           <p className="py-20 text-center text-[hsl(var(--muted-foreground))]">
-            暂无可用套餐
+            {t("shop.noPlans")}
           </p>
         )}
 
@@ -288,11 +290,11 @@ export default function ShopPage({ basePath = "/shop" }: { basePath?: string }) 
                   <div className="space-y-1.5 text-sm text-[hsl(var(--muted-foreground))]">
                     <div className="flex items-center gap-2">
                       <DataIcon className="h-4 w-4 shrink-0" />
-                      <span>流量：{formatTraffic(plan.traffic_limit)}</span>
+                      <span>{t("shop.traffic", { traffic: formatTraffic(plan.traffic_limit, t) })}</span>
                     </div>
                     <div className="flex items-center gap-2">
                       <ClockIcon className="h-4 w-4 shrink-0" />
-                      <span>时长：{formatDuration(plan.duration_days)}</span>
+                      <span>{t("shop.duration", { duration: formatDuration(plan.duration_days, t) })}</span>
                     </div>
                     {/* 库存 */}
                     {plan.stock_limit !== -1 && (() => {
@@ -307,7 +309,7 @@ export default function ShopPage({ basePath = "/shop" }: { basePath?: string }) 
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" />
                           </svg>
                           <span>
-                            {remaining <= 0 ? "库存售罄" : `剩余 ${remaining} 份`}
+                            {remaining <= 0 ? t("shop.soldOut") : t("shop.remaining", { count: remaining })}
                           </span>
                         </div>
                       );
@@ -324,7 +326,7 @@ export default function ShopPage({ basePath = "/shop" }: { basePath?: string }) 
                         onClick={() => openCheckout(plan)}
                         disabled={soldOut}
                       >
-                        {soldOut ? "已售罄" : "购买"}
+                        {soldOut ? t("shop.soldOutBtn") : t("shop.buy")}
                       </Button>
                     );
                   })()}
@@ -345,7 +347,7 @@ export default function ShopPage({ basePath = "/shop" }: { basePath?: string }) 
         <DialogContent className="sm:max-w-md">
           <form onSubmit={handleCheckout}>
             <DialogHeader>
-              <DialogTitle>确认购买</DialogTitle>
+              <DialogTitle>{t("shop.confirmPurchase")}</DialogTitle>
               <DialogDescription>
                 {selectedPlan
                   ? `${selectedPlan.name} — ${formatPrice(selectedPlan.price_cents, selectedPlan.currency)}`
@@ -369,16 +371,16 @@ export default function ShopPage({ basePath = "/shop" }: { basePath?: string }) 
                 onClick={() => setDialogOpen(false)}
                 disabled={checkoutLoading}
               >
-                取消
+                {t("common.cancel")}
               </Button>
               <Button type="submit" disabled={checkoutLoading}>
                 {checkoutLoading ? (
                   <span className="flex items-center gap-2">
                     <span className="inline-block h-4 w-4 animate-spin rounded-full border-2 border-current border-t-transparent" />
-                    处理中…
+                    {t("shop.processing")}
                   </span>
                 ) : (
-                  "前往支付"
+                  t("shop.goToPay")
                 )}
               </Button>
             </DialogFooter>

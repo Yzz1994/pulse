@@ -1,4 +1,6 @@
 import { useEffect, useState, useCallback, useRef } from "react";
+import { useTranslation } from "react-i18next";
+import type { TFunction } from "i18next";
 import {
   Card,
   Table,
@@ -61,24 +63,21 @@ import type {
   PlansResponse,
 } from "@/lib/types";
 
-// ── Constants ────────────────────────────────────────────────────
-
-
 const STATUS_OPTIONS: { value: string; label: string }[] = [
-  { value: "all", label: "全部状态" },
-  { value: "active", label: "活跃" },
-  { value: "disabled", label: "已禁用" },
-  { value: "limited", label: "流量耗尽" },
-  { value: "expired", label: "已过期" },
-  { value: "on_hold", label: "暂停" },
+  { value: "all", label: "users.allStatus" },
+  { value: "active", label: "users.active" },
+  { value: "disabled", label: "users.disabled" },
+  { value: "limited", label: "users.limited" },
+  { value: "expired", label: "users.expired" },
+  { value: "on_hold", label: "users.onHold" },
 ];
 
 const STATUS_LABEL: Record<UserStatus, string> = {
-  active: "活跃",
-  disabled: "已禁用",
-  limited: "流量耗尽",
-  expired: "已过期",
-  on_hold: "暂停",
+  active: "users.active",
+  disabled: "users.disabled",
+  limited: "users.limited",
+  expired: "users.expired",
+  on_hold: "users.onHold",
 };
 
 const STATUS_DOT: Record<UserStatus, string> = {
@@ -90,22 +89,20 @@ const STATUS_DOT: Record<UserStatus, string> = {
 };
 
 const RESET_STRATEGY_OPTIONS: { value: ResetStrategy; label: string }[] = [
-  { value: "no_reset", label: "不重置" },
-  { value: "day", label: "每天" },
-  { value: "week", label: "每周" },
-  { value: "month", label: "每月" },
-  { value: "year", label: "每年" },
+  { value: "no_reset", label: "users.noReset" },
+  { value: "day", label: "users.daily" },
+  { value: "week", label: "users.weekly" },
+  { value: "month", label: "users.monthly" },
+  { value: "year", label: "users.yearly" },
 ];
 
 const RESET_STRATEGY_LABEL: Record<ResetStrategy, string> = {
-  no_reset: "不重置",
-  day: "每天",
-  week: "每周",
-  month: "每月",
-  year: "每年",
+  no_reset: "users.noReset",
+  day: "users.daily",
+  week: "users.weekly",
+  month: "users.monthly",
+  year: "users.yearly",
 };
-
-// ── Helpers ──────────────────────────────────────────────────────
 
 function gbToBytes(gb: number): number {
   return Math.round(gb * 1024 * 1024 * 1024);
@@ -115,13 +112,11 @@ function bytesToGb(bytes: number): number {
   return bytes / (1024 * 1024 * 1024);
 }
 
-/** Extract YYYY-MM-DD from ISO string for date input */
 function isoToDateInput(iso?: string): string {
   if (!iso) return "";
   return iso.slice(0, 10);
 }
 
-/** Convert YYYY-MM-DD to ISO string (start of day UTC) */
 function dateInputToIso(date: string): string {
   return new Date(date + "T00:00:00Z").toISOString();
 }
@@ -136,19 +131,18 @@ function formatExpireDate(iso?: string): string {
   });
 }
 
-function formatOnlineAt(iso: string): string {
+function formatOnlineAt(iso: string, t: TFunction): string {
   const diff = Date.now() - new Date(iso).getTime();
   const minutes = Math.floor(diff / 60000);
-  if (minutes < 1) return "刚刚";
-  if (minutes < 60) return `${minutes} 分钟前`;
+  if (minutes < 1) return t("users.justNow");
+  if (minutes < 60) return t("users.minutesAgo", { count: minutes });
   const hours = Math.floor(minutes / 60);
-  if (hours < 24) return `${hours} 小时前`;
+  if (hours < 24) return t("users.hoursAgo", { count: hours });
   const days = Math.floor(hours / 24);
-  if (days < 30) return `${days} 天前`;
+  if (days < 30) return t("users.daysAgo", { count: days });
   return new Date(iso).toLocaleDateString("zh-CN", { month: "2-digit", day: "2-digit" });
 }
 
-/** 根据重置策略和参考时间计算下次重置时间，no_reset 返回 null */
 function calcNextResetDate(strategy: ResetStrategy, createdAt: string, lastResetAt?: string): Date | null {
   if (strategy === "no_reset") return null;
   const ref = new Date(lastResetAt ?? createdAt);
@@ -175,7 +169,6 @@ function generateHexToken(): string {
   return Array.from(bytes, (b) => b.toString(16).padStart(2, "0")).join("");
 }
 
-// 去掉易混淆字符：0/O/1/I/l
 function generatePassword(): string {
   const chars = "ABCDEFGHJKMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789!@#$%^&*";
   const bytes = new Uint8Array(16);
@@ -195,10 +188,8 @@ interface UserInboundsResponse {
   total: number;
 }
 
-// ── Main Component ───────────────────────────────────────────────
-
 export default function UsersPage() {
-  // ── List state ───────────────────────────────────────────────
+  const { t } = useTranslation();
   const [users, setUsers] = useState<User[]>([]);
   const [total, setTotal] = useState(0);
   const [search, setSearch] = useState("");
@@ -207,7 +198,6 @@ export default function UsersPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
 
-  // ── Dialog state ─────────────────────────────────────────────
   const [createOpen, setCreateOpen] = useState(false);
   const [editOpen, setEditOpen] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
@@ -217,7 +207,6 @@ export default function UsersPage() {
   const [submitting, setSubmitting] = useState(false);
   const [formError, setFormError] = useState("");
 
-  // ── Create form state ────────────────────────────────────────
   const [createUsername, setCreateUsername] = useState("");
   const [createPassword, setCreatePassword] = useState("");
   const [createPlanId, setCreatePlanId] = useState("");
@@ -227,11 +216,9 @@ export default function UsersPage() {
   const [createNote, setCreateNote] = useState("");
   const [createInboundIds, setCreateInboundIds] = useState<string[]>([]);
 
-  // ── Plans & user groups (for create dialog plan selector) ────
   const [allPlans, setAllPlans] = useState<Plan[]>([]);
   const [allUserGroups, setAllUserGroups] = useState<UserGroup[]>([]);
 
-  // ── Edit form state ──────────────────────────────────────────
   const [editStatus, setEditStatus] = useState<UserStatus>("active");
   const [editTrafficGb, setEditTrafficGb] = useState("");
   const [editExpireAt, setEditExpireAt] = useState("");
@@ -241,43 +228,32 @@ export default function UsersPage() {
   const [editOnHoldExpireAt, setEditOnHoldExpireAt] = useState("");
   const [editLastResetAt, setEditLastResetAt] = useState("");
   const [editInboundIds, setEditInboundIds] = useState<string[]>([]);
-  // 凭证显示/重置状态
   const [showCredentials, setShowCredentials] = useState(false);
   const [resettingCredentials, setResettingCredentials] = useState(false);
-  // 门户密码（空字符串 = 不变，非空 = 覆盖；clearPassword = true 时清除）
   const [editPassword, setEditPassword] = useState("");
   const [clearPassword, setClearPassword] = useState(false);
 
-  // ── Copy sub link state ────────────────────────────────────
   const [copiedUserId, setCopiedUserId] = useState<string | null>(null);
 
-  // ── Sub logs dialog state ───────────────────────────────────
   const [subLogsOpen, setSubLogsOpen] = useState(false);
   const [subLogsUserId, setSubLogsUserId] = useState<string | null>(null);
 
-  // ── Node usage dialog state ────────────────────────────────
   const [nodeUsageOpen, setNodeUsageOpen] = useState(false);
   const [nodeUsageUserId, setNodeUsageUserId] = useState<string | null>(null);
 
-  // ── Sub links dialog state ─────────────────────────────────
   const [subLinksOpen, setSubLinksOpen] = useState(false);
   const [subLinksUser, setSubLinksUser] = useState<User | null>(null);
 
-  // ── 用户组 dialog state ────────────────────────────────────
   const [userGroupsDialogOpen, setUserGroupsDialogOpen] = useState(false);
   const [userGroupsDialogUser, setUserGroupsDialogUser] = useState<User | null>(null);
 
-  // ── Inbound state (shared by create/edit dialogs) ───────────
   const [allInbounds, setAllInbounds] = useState<Inbound[]>([]);
   const [allNodes, setAllNodes] = useState<Node[]>([]);
   const [allHosts, setAllHosts] = useState<Host[]>([]);
   const [allOutbounds, setAllOutbounds] = useState<Outbound[]>([]);
   const [inboundsLoading, setInboundsLoading] = useState(false);
 
-  // ── Debounce search ──────────────────────────────────────────
   const debounceTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
-  // 用 ref 而非 state 做提交锁：state 更新是异步的，双击时第二次 click
-  // 可能在 React 刷新 disabled 属性之前就触发，导致重复提交。
   const createLock = useRef(false);
 
   const handleSearchChange = useCallback((value: string) => {
@@ -294,10 +270,8 @@ export default function UsersPage() {
     };
   }, []);
 
-  // ── Auth error handler ───────────────────────────────────────
   const handleAuthError = useAuthErrorHandler();
 
-  // ── Fetch users ──────────────────────────────────────────────
   const fetchUsers = useCallback(async () => {
     setLoading(true);
     setError("");
@@ -312,18 +286,17 @@ export default function UsersPage() {
       setTotal(data.total ?? 0);
     } catch (err) {
       if (!handleAuthError(err)) {
-        setError(err instanceof Error ? err.message : "加载用户列表失败");
+        setError(err instanceof Error ? err.message : t("users.loadFailed"));
       }
     } finally {
       setLoading(false);
     }
-  }, [debouncedSearch, statusFilter, handleAuthError]);
+  }, [debouncedSearch, statusFilter, handleAuthError, t]);
 
   useEffect(() => {
     fetchUsers();
   }, [fetchUsers]);
 
-  // ── Fetch all inbounds (for dialog checkboxes) ──────────────
   const fetchAllInbounds = useCallback(async () => {
     setInboundsLoading(true);
     try {
@@ -348,7 +321,6 @@ export default function UsersPage() {
     }
   }, [handleAuthError]);
 
-  // ── Fetch user inbounds ─────────────────────────────────────
   const fetchUserInbounds = useCallback(
     async (userId: string): Promise<string[]> => {
       try {
@@ -364,12 +336,10 @@ export default function UsersPage() {
     [handleAuthError],
   );
 
-  // ── Status filter change ─────────────────────────────────────
   const handleStatusFilterChange = (value: string) => {
     setStatusFilter(value);
   };
 
-  // ── Create user ──────────────────────────────────────────────
   const resetCreateForm = () => {
     const in30Days = new Date();
     in30Days.setDate(in30Days.getDate() + 30);
@@ -426,7 +396,7 @@ export default function UsersPage() {
     const username = createUsername.trim();
     if (!username) {
       createLock.current = false;
-      setFormError("用户名不能为空");
+      setFormError(t("users.usernameRequired"));
       return;
     }
 
@@ -459,7 +429,7 @@ export default function UsersPage() {
       fetchUsers();
     } catch (err) {
       if (!handleAuthError(err)) {
-        setFormError(err instanceof Error ? err.message : "创建用户失败");
+        setFormError(err instanceof Error ? err.message : t("users.createFailed"));
       }
     } finally {
       createLock.current = false;
@@ -467,7 +437,6 @@ export default function UsersPage() {
     }
   };
 
-  // ── Edit user ────────────────────────────────────────────────
   const openEditDialog = (user: User) => {
     setEditingUser(user);
     setEditStatus(user.status);
@@ -488,7 +457,6 @@ export default function UsersPage() {
     setClearPassword(false);
     setFormError("");
     setEditOpen(true);
-    // Fetch inbounds in parallel
     fetchAllInbounds();
     fetchUserInbounds(user.id).then(setEditInboundIds);
   };
@@ -545,14 +513,13 @@ export default function UsersPage() {
       fetchUsers();
     } catch (err) {
       if (!handleAuthError(err)) {
-        setFormError(err instanceof Error ? err.message : "更新用户失败");
+        setFormError(err instanceof Error ? err.message : t("users.updateFailed"));
       }
     } finally {
       setSubmitting(false);
     }
   };
 
-  // ── Delete user ──────────────────────────────────────────────
   const openDeleteDialog = (user: User) => {
     setDeletingUser(user);
     setFormError("");
@@ -571,20 +538,19 @@ export default function UsersPage() {
       fetchUsers();
     } catch (err) {
       if (!handleAuthError(err)) {
-        setFormError(err instanceof Error ? err.message : "删除用户失败");
+        setFormError(err instanceof Error ? err.message : t("users.deleteFailed"));
       }
     } finally {
       setSubmitting(false);
     }
   };
 
-  // ── Traffic display ──────────────────────────────────────────
   const renderTraffic = (user: User) => {
     const used = formatBytes(user.used_bytes);
     const limit =
       user.traffic_limit_bytes > 0
         ? formatBytes(user.traffic_limit_bytes)
-        : "无限制";
+        : t("common.unlimited");
     const rawTotal = user.raw_upload_bytes + user.raw_download_bytes;
     const ratio = user.traffic_limit_bytes > 0 ? user.used_bytes / user.traffic_limit_bytes : 0;
     const trafficColor =
@@ -597,13 +563,12 @@ export default function UsersPage() {
       <div className="flex flex-col gap-0.5">
         <span className={trafficColor}>{used} / {limit}</span>
         <span className="text-xs text-[hsl(var(--muted-foreground))] opacity-70">
-          实际 {formatBytes(rawTotal)}
+          {t("users.actual")} {formatBytes(rawTotal)}
         </span>
       </div>
     );
   };
 
-  // ── Copy subscription link ────────────────────────────────────
   const copySubLink = useCallback((user: User) => {
     if (!user.sub_token) return;
     const url = `${window.location.origin}/sub/${user.sub_token}`;
@@ -613,7 +578,6 @@ export default function UsersPage() {
     }).catch(() => {});
   }, []);
 
-  // ── Reset traffic ─────────────────────────────────────────────
   const resetTraffic = useCallback((user: User) => {
     setResetTrafficUser(user);
   }, []);
@@ -627,45 +591,39 @@ export default function UsersPage() {
       fetchUsers();
     } catch (err) {
       if (!handleAuthError(err)) {
-        setError(err instanceof Error ? err.message : "重置流量失败");
+        setError(err instanceof Error ? err.message : t("users.resetTrafficFailed"));
       }
     }
-  }, [resetTrafficUser, fetchUsers, handleAuthError]);
+  }, [resetTrafficUser, fetchUsers, handleAuthError, t]);
 
-  // ── Open sub links dialog ─────────────────────────────────────
   const openSubLinks = useCallback((user: User) => {
     setSubLinksUser(user);
     setSubLinksOpen(true);
   }, []);
 
-  // ── Open sub logs dialog ──────────────────────────────────────
   const openSubLogs = useCallback((userId: string) => {
     setSubLogsUserId(userId);
     setSubLogsOpen(true);
   }, []);
 
-  // ── Open node usage dialog ─────────────────────────────────────
   const openNodeUsage = useCallback((userId: string) => {
     setNodeUsageUserId(userId);
     setNodeUsageOpen(true);
   }, []);
 
-  // ── Render ───────────────────────────────────────────────────
   return (
     <div className="flex h-full flex-col p-4 sm:p-6 lg:p-8">
-      {/* Header */}
       <div className="mb-6 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <h1 className="text-2xl font-bold text-[hsl(var(--foreground))]">
-          用户管理
+          {t("users.title")}
         </h1>
-        <Button onClick={openCreateDialog}>+ 添加用户</Button>
+        <Button onClick={openCreateDialog}>{t("users.addUser")}</Button>
       </div>
 
-      {/* Filters */}
       <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center">
         <div className="relative w-full sm:max-w-xs">
           <Input
-            placeholder="搜索用户名..."
+            placeholder={t("users.searchUser")}
             value={search}
             onChange={(e) => handleSearchChange(e.target.value)}
             className="w-full"
@@ -674,23 +632,22 @@ export default function UsersPage() {
         <div className="w-full sm:w-44">
           <Select value={statusFilter} onValueChange={handleStatusFilterChange}>
             <SelectTrigger className="w-full">
-              <SelectValue placeholder="全部状态" />
+              <SelectValue placeholder={t("users.allStatus")} />
             </SelectTrigger>
             <SelectContent>
               {STATUS_OPTIONS.map((opt) => (
                 <SelectItem key={opt.value} value={opt.value}>
-                  {opt.label}
+                  {t(opt.label)}
                 </SelectItem>
               ))}
             </SelectContent>
           </Select>
         </div>
         <span className="text-sm text-[hsl(var(--muted-foreground))]">
-          共 {total} 个用户
+          {t("users.totalCount", { count: total })}
         </span>
       </div>
 
-      {/* Error */}
       {error && (
         <div className="mb-4 rounded-lg border border-[hsl(var(--destructive))] bg-[hsl(var(--destructive))]/10 px-4 py-3 text-sm text-[hsl(var(--destructive))]">
           {error}
@@ -700,22 +657,21 @@ export default function UsersPage() {
             className="ml-2"
             onClick={fetchUsers}
           >
-            重试
+            {t("common.retry")}
           </Button>
         </div>
       )}
 
-      {/* Table */}
       <Card className="flex min-h-0 flex-1 flex-col overflow-hidden">
         <Table containerClassName="flex-1 overflow-auto">
           <TableHeader className="sticky top-0 z-10 bg-[hsl(var(--card))]">
             <TableRow>
-              <TableHead className="px-4">用户名</TableHead>
-              <TableHead className="px-4">状态</TableHead>
-              <TableHead className="px-4">流量</TableHead>
-              <TableHead className="hidden px-4 sm:table-cell">重置</TableHead>
-              <TableHead className="hidden px-4 md:table-cell">到期</TableHead>
-              <TableHead className="px-4 text-right">操作</TableHead>
+              <TableHead className="px-4">{t("users.username")}</TableHead>
+              <TableHead className="px-4">{t("users.status")}</TableHead>
+              <TableHead className="px-4">{t("users.traffic")}</TableHead>
+              <TableHead className="hidden px-4 sm:table-cell">{t("users.reset")}</TableHead>
+              <TableHead className="hidden px-4 md:table-cell">{t("users.expire")}</TableHead>
+              <TableHead className="px-4 text-right">{t("users.action")}</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -746,7 +702,7 @@ export default function UsersPage() {
                         d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"
                       />
                     </svg>
-                    加载中...
+                    {t("common.loading")}
                   </div>
                 </TableCell>
               </TableRow>
@@ -757,8 +713,8 @@ export default function UsersPage() {
                   className="h-32 text-center text-[hsl(var(--muted-foreground))]"
                 >
                   {debouncedSearch || statusFilter !== "all"
-                    ? "没有匹配的用户"
-                    : "暂无用户，点击「添加用户」创建第一个用户"}
+                    ? t("users.noMatch")
+                    : t("users.noUsers")}
                 </TableCell>
               </TableRow>
             ) : (
@@ -778,9 +734,9 @@ export default function UsersPage() {
                     <div className="flex items-center gap-1.5">
                       <span className={`h-2 w-2 shrink-0 rounded-full ${STATUS_DOT[user.status] ?? "bg-[hsl(var(--muted-foreground))]"}`} />
                       <div className="flex flex-col">
-                        <span className="text-sm text-[hsl(var(--foreground))]">{STATUS_LABEL[user.status] ?? user.status}</span>
+                        <span className="text-sm text-[hsl(var(--foreground))]">{t(STATUS_LABEL[user.status]) ?? user.status}</span>
                         {user.online_at && (
-                          <span className="text-xs text-[hsl(var(--muted-foreground))]">{formatOnlineAt(user.online_at)}</span>
+                          <span className="text-xs text-[hsl(var(--muted-foreground))]">{formatOnlineAt(user.online_at, t)}</span>
                         )}
                       </div>
                     </div>
@@ -789,7 +745,7 @@ export default function UsersPage() {
                     {renderTraffic(user)}
                   </TableCell>
                   <TableCell className="hidden px-4 text-sm text-[hsl(var(--muted-foreground))] sm:table-cell">
-                    {RESET_STRATEGY_LABEL[user.data_limit_reset_strategy] ??
+                    {t(RESET_STRATEGY_LABEL[user.data_limit_reset_strategy]) ??
                       user.data_limit_reset_strategy}
                   </TableCell>
                   <TableCell className="hidden px-4 text-sm text-[hsl(var(--muted-foreground))] md:table-cell">
@@ -807,7 +763,7 @@ export default function UsersPage() {
                       {(() => {
                         const next = calcNextResetDate(user.data_limit_reset_strategy, user.created_at, user.last_traffic_reset_at);
                         return next ? (
-                          <span className="text-xs opacity-60">重置 {formatExpireDate(next.toISOString())}</span>
+                          <span className="text-xs opacity-60">{t("users.reset")} {formatExpireDate(next.toISOString())}</span>
                         ) : null;
                       })()}
                     </div>
@@ -817,7 +773,7 @@ export default function UsersPage() {
                       <DropdownMenu>
                         <DropdownMenuTrigger asChild>
                           <Button variant="ghost" size="sm" className="h-8 w-8 p-0">
-                            <span className="sr-only">更多操作</span>
+                            <span className="sr-only">{t("users.moreActions")}</span>
                             <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" className="h-4 w-4"><circle cx="12" cy="5" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="12" cy="19" r="1"/></svg>
                           </Button>
                         </DropdownMenuTrigger>
@@ -826,26 +782,26 @@ export default function UsersPage() {
                             onClick={() => copySubLink(user)}
                             disabled={!user.sub_token}
                           >
-                            {copiedUserId === user.id ? "已复制" : "复制订阅链接"}
+                            {copiedUserId === user.id ? t("users.copiedSub") : t("users.copySubLink")}
                           </DropdownMenuItem>
                           <DropdownMenuItem
                             onClick={() => openSubLinks(user)}
                             disabled={!user.sub_token}
                           >
-                            查看订阅内容
+                            {t("users.viewSubContent")}
                           </DropdownMenuItem>
                           <DropdownMenuItem onClick={() => { setUserGroupsDialogUser(user); setUserGroupsDialogOpen(true); }}>
-                            加入/移出用户组
+                            {t("users.manageGroups")}
                           </DropdownMenuItem>
                           <DropdownMenuItem onClick={() => resetTraffic(user)}>
-                            重置流量
+                            {t("users.resetTraffic")}
                           </DropdownMenuItem>
                           <DropdownMenuSeparator />
                           <DropdownMenuItem onClick={() => openSubLogs(user.id)}>
-                            订阅日志
+                            {t("users.subLogs")}
                           </DropdownMenuItem>
                           <DropdownMenuItem onClick={() => openNodeUsage(user.id)}>
-                            节点流量
+                            {t("users.nodeTraffic")}
                           </DropdownMenuItem>
                         </DropdownMenuContent>
                       </DropdownMenu>
@@ -855,7 +811,7 @@ export default function UsersPage() {
                         className="h-8 px-3"
                         onClick={() => openEditDialog(user)}
                       >
-                        编辑
+                        {t("common.edit")}
                       </Button>
                       <Button
                         variant="destructive"
@@ -863,7 +819,7 @@ export default function UsersPage() {
                         className="h-8 px-3"
                         onClick={() => openDeleteDialog(user)}
                       >
-                        删除
+                        {t("common.delete")}
                       </Button>
                     </div>
                   </TableCell>
@@ -875,23 +831,21 @@ export default function UsersPage() {
 
       </Card>
 
-      {/* ── Create User Dialog ──────────────────────────────────── */}
       <Dialog open={createOpen} onOpenChange={setCreateOpen}>
         <DialogContent className="sm:max-w-2xl">
           <DialogHeader>
-            <DialogTitle>添加用户</DialogTitle>
-            <DialogDescription>创建一个新的用户账户。</DialogDescription>
+            <DialogTitle>{t("users.addUser")}</DialogTitle>
+            <DialogDescription>{t("users.createDescription")}</DialogDescription>
           </DialogHeader>
 
           <ScrollArea className="max-h-[60vh]">
             <div className="grid gap-4 py-2 px-1">
-            {/* Plan selector */}
             {allPlans.length > 0 && (
               <div className="grid gap-2">
-                <Label>分配套餐</Label>
+                <Label>{t("users.assignPlan")}</Label>
                 <Select value={createPlanId} onValueChange={applyPlan}>
                   <SelectTrigger className="w-full">
-                    <SelectValue placeholder="选择套餐自动填入配置…" />
+                    <SelectValue placeholder={t("users.selectPlan")} />
                   </SelectTrigger>
                   <SelectContent>
                     {allPlans.map((p) => (
@@ -904,28 +858,26 @@ export default function UsersPage() {
               </div>
             )}
 
-            {/* Username */}
             <div className="grid gap-2">
               <Label htmlFor="create-username">
-                用户名 <span className="text-[hsl(var(--destructive))]">*</span>
+                {t("users.username")} <span className="text-[hsl(var(--destructive))]">*</span>
               </Label>
               <Input
                 id="create-username"
-                placeholder="输入用户名"
+                placeholder={t("users.enterUsername")}
                 value={createUsername}
                 onChange={(e) => setCreateUsername(e.target.value)}
                 autoFocus
               />
             </div>
 
-            {/* Password */}
             <div className="grid gap-2">
-              <Label htmlFor="create-password">门户密码</Label>
+              <Label htmlFor="create-password">{t("users.portalPassword")}</Label>
               <div className="flex gap-2">
                 <Input
                   id="create-password"
                   type="text"
-                  placeholder="留空则不设置密码"
+                  placeholder={t("users.leaveEmptyNoPassword")}
                   value={createPassword}
                   onChange={(e) => setCreatePassword(e.target.value)}
                   autoComplete="new-password"
@@ -937,41 +889,38 @@ export default function UsersPage() {
                   size="sm"
                   className="shrink-0"
                   onClick={() => setCreatePassword(generatePassword())}
-                  title="随机生成密码"
+                  title={t("users.randomPassword")}
                 >
-                  随机
+                  {t("users.random")}
                 </Button>
               </div>
             </div>
 
-            {/* Traffic limit */}
             <div className="grid gap-2">
-              <Label htmlFor="create-traffic">流量限额（GB）</Label>
+              <Label htmlFor="create-traffic">{t("users.trafficLimitGb")}</Label>
               <Input
                 id="create-traffic"
                 type="number"
                 min="0"
                 step="0.1"
-                placeholder="留空或 0 表示无限制"
+                placeholder={t("users.leaveEmptyUnlimited")}
                 value={createTrafficGb}
                 onChange={(e) => setCreateTrafficGb(e.target.value)}
               />
             </div>
 
-            {/* Expire date */}
             <div className="grid gap-2">
-              <Label>到期时间</Label>
+              <Label>{t("users.expireTime")}</Label>
               <DatePicker
                 value={createExpireAt}
                 onChange={setCreateExpireAt}
-                placeholder="不限期"
+                placeholder={t("users.noExpiry")}
                 fromDate={new Date()}
               />
             </div>
 
-            {/* Reset strategy */}
             <div className="grid gap-2">
-              <Label>流量重置策略</Label>
+              <Label>{t("users.resetStrategy")}</Label>
               <Select
                 value={createResetStrategy}
                 onValueChange={(v) => setCreateResetStrategy(v as ResetStrategy)}
@@ -982,19 +931,18 @@ export default function UsersPage() {
                 <SelectContent>
                   {RESET_STRATEGY_OPTIONS.map((opt) => (
                     <SelectItem key={opt.value} value={opt.value}>
-                      {opt.label}
+                      {t(opt.label)}
                     </SelectItem>
                   ))}
                 </SelectContent>
               </Select>
             </div>
 
-            {/* Note */}
             <div className="grid gap-2">
-              <Label htmlFor="create-note">备注</Label>
+              <Label htmlFor="create-note">{t("users.note")}</Label>
               <textarea
                 id="create-note"
-                placeholder="可选备注信息"
+                placeholder={t("users.notePlaceholder")}
                 value={createNote}
                 onChange={(e) => setCreateNote(e.target.value)}
                 rows={3}
@@ -1002,7 +950,6 @@ export default function UsersPage() {
               />
             </div>
 
-            {/* Error */}
             {formError && (
               <p className="text-sm text-[hsl(var(--destructive))]">{formError}</p>
             )}
@@ -1012,17 +959,16 @@ export default function UsersPage() {
           <DialogFooter>
             <DialogClose asChild>
               <Button variant="outline" disabled={submitting}>
-                取消
+                {t("common.cancel")}
               </Button>
             </DialogClose>
             <Button onClick={handleCreate} disabled={submitting}>
-              {submitting ? "创建中..." : "创建"}
+              {submitting ? t("users.creating") : t("users.create")}
             </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
 
-      {/* ── Edit User Dialog ────────────────────────────────────── */}
       <Dialog
         open={editOpen}
         onOpenChange={(open) => {
@@ -1032,21 +978,16 @@ export default function UsersPage() {
       >
         <DialogContent className="sm:max-w-2xl">
           <DialogHeader>
-            <DialogTitle>编辑用户</DialogTitle>
+            <DialogTitle>{t("users.editUser")}</DialogTitle>
             <DialogDescription>
-              修改用户{" "}
-              <span className="font-medium text-[hsl(var(--foreground))]">
-                {editingUser?.username}
-              </span>{" "}
-              的配置。
+              {t("users.editDescription", { username: editingUser?.username })}
             </DialogDescription>
           </DialogHeader>
 
           <ScrollArea className="max-h-[60vh]">
             <div className="grid gap-4 py-2 px-1">
-            {/* Status */}
             <div className="grid gap-2">
-              <Label>状态</Label>
+              <Label>{t("users.status")}</Label>
               <Select
                 value={editStatus}
                 onValueChange={(v) => setEditStatus(v as UserStatus)}
@@ -1057,40 +998,37 @@ export default function UsersPage() {
                 <SelectContent>
                   {STATUS_OPTIONS.filter((o) => o.value !== "all").map((opt) => (
                     <SelectItem key={opt.value} value={opt.value}>
-                      {opt.label}
+                      {t(opt.label)}
                     </SelectItem>
                   ))}
                 </SelectContent>
               </Select>
             </div>
 
-            {/* Traffic limit */}
             <div className="grid gap-2">
-              <Label htmlFor="edit-traffic">流量限额（GB）</Label>
+              <Label htmlFor="edit-traffic">{t("users.trafficLimitGb")}</Label>
               <Input
                 id="edit-traffic"
                 type="number"
                 min="0"
                 step="0.1"
-                placeholder="留空或 0 表示无限制"
+                placeholder={t("users.leaveEmptyUnlimited")}
                 value={editTrafficGb}
                 onChange={(e) => setEditTrafficGb(e.target.value)}
               />
             </div>
 
-            {/* Expire date */}
             <div className="grid gap-2">
-              <Label>到期时间</Label>
+              <Label>{t("users.expireTime")}</Label>
               <DatePicker
                 value={editExpireAt}
                 onChange={setEditExpireAt}
-                placeholder="不限期"
+                placeholder={t("users.noExpiry")}
               />
             </div>
 
-            {/* Reset strategy */}
             <div className="grid gap-2">
-              <Label>流量重置策略</Label>
+              <Label>{t("users.resetStrategy")}</Label>
               <Select
                 value={editResetStrategy}
                 onValueChange={(v) => setEditResetStrategy(v as ResetStrategy)}
@@ -1101,40 +1039,38 @@ export default function UsersPage() {
                 <SelectContent>
                   {RESET_STRATEGY_OPTIONS.map((opt) => (
                     <SelectItem key={opt.value} value={opt.value}>
-                      {opt.label}
+                      {t(opt.label)}
                     </SelectItem>
                   ))}
                 </SelectContent>
               </Select>
             </div>
 
-            {/* Last reset at */}
             {editResetStrategy !== "no_reset" && (
               <div className="grid gap-2">
-                <Label>上次重置时间</Label>
+                <Label>{t("users.lastResetTime")}</Label>
                 <DatePicker
                   value={editLastResetAt}
                   onChange={setEditLastResetAt}
-                  placeholder="选择日期"
+                  placeholder={t("common.selectDate")}
                 />
                 {(() => {
                   const ref = editLastResetAt || (editingUser?.created_at ?? "");
                   const next = ref ? calcNextResetDate(editResetStrategy, ref, editLastResetAt || undefined) : null;
                   return next ? (
                     <p className="text-xs text-[hsl(var(--muted-foreground))]">
-                      下次重置：{formatExpireDate(next.toISOString())}
+                      {t("users.nextReset")} {formatExpireDate(next.toISOString())}
                     </p>
                   ) : null;
                 })()}
               </div>
             )}
 
-            {/* Note */}
             <div className="grid gap-2">
-              <Label htmlFor="edit-note">备注</Label>
+              <Label htmlFor="edit-note">{t("users.note")}</Label>
               <textarea
                 id="edit-note"
-                placeholder="可选备注信息"
+                placeholder={t("users.notePlaceholder")}
                 value={editNote}
                 onChange={(e) => setEditNote(e.target.value)}
                 rows={3}
@@ -1142,9 +1078,8 @@ export default function UsersPage() {
               />
             </div>
 
-            {/* Sub Token */}
             <div className="grid gap-2">
-              <Label htmlFor="edit-sub-token">订阅令牌</Label>
+              <Label htmlFor="edit-sub-token">{t("users.subToken")}</Label>
               <div className="flex gap-2">
                 <Input
                   id="edit-sub-token"
@@ -1163,7 +1098,7 @@ export default function UsersPage() {
                       copyText(editSubToken, container).catch(() => {});
                     }
                   }}
-                  title="复制"
+                  title={t("common.copy")}
                 >
                   <svg
                     xmlns="http://www.w3.org/2000/svg"
@@ -1192,23 +1127,22 @@ export default function UsersPage() {
                         {},
                       );
                       setEditSubToken(res.sub_token);
-                      toast("sub_token 已重新生成", "success");
+                      toast(t("users.subTokenRegenerated"), "success");
                     } catch (err) {
                       toast(
-                        `重生成失败：${err instanceof Error ? err.message : "未知错误"}`,
+                        `${t("users.regenerateFailed")}：${err instanceof Error ? err.message : t("common.unknownError")}`,
                         "error",
                       );
                     }
                   }}
                 >
-                  重新生成
+                  {t("users.regenerate")}
                 </Button>
               </div>
             </div>
 
-            {/* 全局凭证 */}
             <div className="grid gap-2">
-              <Label>全局凭证</Label>
+              <Label>{t("users.globalCredentials")}</Label>
               <div className="rounded-md border border-[hsl(var(--input))] bg-[hsl(var(--muted)/0.3)] p-3 space-y-2">
                 <div className="flex items-center gap-2">
                   <span className="w-14 shrink-0 text-xs text-[hsl(var(--muted-foreground))]">UUID</span>
@@ -1230,7 +1164,7 @@ export default function UsersPage() {
                   size="sm"
                   onClick={() => setShowCredentials((v) => !v)}
                 >
-                  {showCredentials ? "隐藏" : "显示"}
+                  {showCredentials ? t("common.hide") : t("common.show")}
                 </Button>
                 <Button
                   type="button"
@@ -1240,7 +1174,7 @@ export default function UsersPage() {
                   onClick={async () => {
                     if (!editingUser) return;
                     const ok = window.confirm(
-                      "重置后所有节点将使用新凭证，现有客户端需重新导入订阅。确认继续？"
+                      t("users.resetCredentialsConfirm")
                     );
                     if (!ok) return;
                     setResettingCredentials(true);
@@ -1253,32 +1187,31 @@ export default function UsersPage() {
                         u ? { ...u, uuid: updated.uuid, secret: updated.secret } : u
                       );
                       setShowCredentials(true);
-                      toast("凭证已重置，节点配置将自动下发", "success");
+                      toast(t("users.credentialsReset"), "success");
                       fetchUsers();
                     } catch (err) {
-                      toast(err instanceof Error ? err.message : "重置凭证失败", "error");
+                      toast(err instanceof Error ? err.message : t("users.resetCredentialsFailed"), "error");
                     } finally {
                       setResettingCredentials(false);
                     }
                   }}
                 >
-                  {resettingCredentials ? "重置中..." : "重置凭证"}
+                  {resettingCredentials ? t("users.resetting") : t("users.resetCredentials")}
                 </Button>
               </div>
             </div>
 
-            {/* 门户密码 */}
             <div className="grid gap-2">
-              <Label htmlFor="edit-portal-password">门户密码</Label>
+              <Label htmlFor="edit-portal-password">{t("users.portalPassword")}</Label>
               {clearPassword ? (
                 <div className="flex items-center gap-2 rounded-md border border-[hsl(var(--destructive))]/40 bg-[hsl(var(--destructive))]/5 px-3 py-2 text-xs text-[hsl(var(--destructive))]">
-                  <span className="flex-1">保存后将清除门户密码</span>
+                  <span className="flex-1">{t("users.passwordWillBeCleared")}</span>
                   <button
                     type="button"
                     className="text-[hsl(var(--muted-foreground))] hover:text-[hsl(var(--foreground))]"
                     onClick={() => setClearPassword(false)}
                   >
-                    撤销
+                    {t("common.undo")}
                   </button>
                 </div>
               ) : (
@@ -1286,7 +1219,7 @@ export default function UsersPage() {
                   <Input
                     id="edit-portal-password"
                     type="text"
-                    placeholder="留空保持不变；输入新密码覆盖"
+                    placeholder={t("users.passwordHint")}
                     value={editPassword}
                     onChange={(e) => setEditPassword(e.target.value)}
                     autoComplete="new-password"
@@ -1298,9 +1231,9 @@ export default function UsersPage() {
                     size="sm"
                     className="shrink-0"
                     onClick={() => setEditPassword(generatePassword())}
-                    title="随机生成密码"
+                    title={t("users.randomPassword")}
                   >
-                    随机
+                    {t("users.random")}
                   </Button>
                   <Button
                     type="button"
@@ -1309,34 +1242,32 @@ export default function UsersPage() {
                     className="shrink-0 text-[hsl(var(--destructive))] border-[hsl(var(--destructive))]/30 hover:bg-[hsl(var(--destructive))]/10"
                     onClick={() => { setClearPassword(true); setEditPassword(""); }}
                   >
-                    清除
+                    {t("common.clear")}
                   </Button>
                 </div>
               )}
             </div>
 
-            {/* On Hold Expire At — only when status is on_hold */}
             {editStatus === "on_hold" && (
               <div className="grid gap-2">
-                <Label>保留到期时间</Label>
+                <Label>{t("users.onHoldExpireTime")}</Label>
                 <DatePicker
                   value={editOnHoldExpireAt}
                   onChange={setEditOnHoldExpireAt}
-                  placeholder="选择日期"
+                  placeholder={t("common.selectDate")}
                 />
               </div>
             )}
 
-            {/* Inbound association */}
             <div className="grid gap-2">
-              <Label>入站关联</Label>
+              <Label>{t("users.inboundAssociation")}</Label>
               {inboundsLoading ? (
                 <p className="text-sm text-[hsl(var(--muted-foreground))]">
-                  加载中...
+                  {t("common.loading")}
                 </p>
               ) : allInbounds.length === 0 ? (
                 <p className="text-sm text-[hsl(var(--muted-foreground))]">
-                  暂无可用入站
+                  {t("users.noInbounds")}
                 </p>
               ) : (
                 <MultiSelect
@@ -1358,14 +1289,13 @@ export default function UsersPage() {
                       ),
                     };
                   })}
-                  placeholder="选择入站..."
-                  countLabel="已选 {n} 个入站"
+                  placeholder={t("users.selectInbounds")}
+                  countLabel={t("users.selectedInbounds")}
                 />
               )}
             </div>
 
 
-            {/* Error */}
             {formError && (
               <p className="text-sm text-[hsl(var(--destructive))]">{formError}</p>
             )}
@@ -1375,17 +1305,16 @@ export default function UsersPage() {
           <DialogFooter>
             <DialogClose asChild>
               <Button variant="outline" disabled={submitting}>
-                取消
+                {t("common.cancel")}
               </Button>
             </DialogClose>
             <Button onClick={handleEdit} disabled={submitting}>
-              {submitting ? "保存中..." : "保存"}
+              {submitting ? t("common.saving") : t("common.save")}
             </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
 
-      {/* ── Delete Confirmation Dialog ──────────────────────────── */}
       <Dialog
         open={deleteOpen}
         onOpenChange={(open) => {
@@ -1395,13 +1324,9 @@ export default function UsersPage() {
       >
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>确认删除</DialogTitle>
+            <DialogTitle>{t("users.confirmDelete")}</DialogTitle>
             <DialogDescription>
-              确定要删除用户{" "}
-              <span className="font-medium text-[hsl(var(--foreground))]">
-                {deletingUser?.username}
-              </span>{" "}
-              吗？此操作不可撤销。
+              {t("users.confirmDeleteMessage", { username: deletingUser?.username })}
             </DialogDescription>
           </DialogHeader>
 
@@ -1412,7 +1337,7 @@ export default function UsersPage() {
           <DialogFooter>
             <DialogClose asChild>
               <Button variant="outline" disabled={submitting}>
-                取消
+                {t("common.cancel")}
               </Button>
             </DialogClose>
             <Button
@@ -1420,20 +1345,18 @@ export default function UsersPage() {
               onClick={handleDelete}
               disabled={submitting}
             >
-              {submitting ? "删除中..." : "确认删除"}
+              {submitting ? t("users.deleting") : t("users.confirmDelete")}
             </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
 
-      {/* ── Sub Links Dialog ────────────────────────────────────── */}
       <SubLinksDialog
         open={subLinksOpen}
         onOpenChange={setSubLinksOpen}
         user={subLinksUser}
       />
 
-      {/* ── Sub Logs Dialog ─────────────────────────────────────── */}
       <SubLogsDialog
         open={subLogsOpen}
         onOpenChange={setSubLogsOpen}
@@ -1441,7 +1364,6 @@ export default function UsersPage() {
         handleAuthError={handleAuthError}
       />
 
-      {/* ── Node Usage Dialog ──────────────────────────────────── */}
       <NodeUsageDialog
         open={nodeUsageOpen}
         onOpenChange={setNodeUsageOpen}
@@ -1449,7 +1371,6 @@ export default function UsersPage() {
         handleAuthError={handleAuthError}
       />
 
-      {/* ── 加入/移出用户组 Dialog ─────────────────────────── */}
       <UserGroupsDialog
         open={userGroupsDialogOpen}
         onOpenChange={(v) => {
@@ -1464,25 +1385,19 @@ export default function UsersPage() {
       <ConfirmDialog
         open={resetTrafficUser !== null}
         onOpenChange={(open) => { if (!open) setResetTrafficUser(null); }}
-        title="确认重置流量"
+        title={t("users.confirmResetTraffic")}
         description={
           <>
-            确定要重置用户{" "}
-            <span className="font-medium text-[hsl(var(--foreground))]">
-              {resetTrafficUser?.username}
-            </span>{" "}
-            的流量吗？
+            {t("users.confirmResetTrafficMessage", { username: resetTrafficUser?.username })}
           </>
         }
-        confirmLabel="重置"
+        confirmLabel={t("users.reset")}
         variant="default"
         onConfirm={doResetTraffic}
       />
     </div>
   );
 }
-
-// ── Sub Logs Dialog Component ──────────────────────────────────
 
 function SubLogsDialog({
   open,
@@ -1495,6 +1410,7 @@ function SubLogsDialog({
   userId: string | null;
   handleAuthError: (err: unknown) => boolean;
 }) {
+  const { t } = useTranslation();
   const [logs, setLogs] = useState<SubAccessLog[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
@@ -1517,7 +1433,7 @@ function SubLogsDialog({
       } catch (err) {
         if (!cancelled) {
           if (!handleAuthError(err)) {
-            setError(err instanceof Error ? err.message : "加载日志失败");
+            setError(err instanceof Error ? err.message : t("users.loadLogsFailed"));
           }
         }
       } finally {
@@ -1529,7 +1445,7 @@ function SubLogsDialog({
     return () => {
       cancelled = true;
     };
-  }, [open, userId, handleAuthError]);
+  }, [open, userId, handleAuthError, t]);
 
   const formatLogTime = (iso: string) => {
     const d = new Date(iso);
@@ -1549,8 +1465,8 @@ function SubLogsDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-xl">
         <DialogHeader>
-          <DialogTitle>订阅访问日志</DialogTitle>
-          <DialogDescription>最近 50 条订阅链接访问记录。</DialogDescription>
+          <DialogTitle>{t("users.subAccessLogs")}</DialogTitle>
+          <DialogDescription>{t("users.subAccessLogsDesc")}</DialogDescription>
         </DialogHeader>
 
         <ScrollArea className="max-h-[60vh]">
@@ -1566,7 +1482,7 @@ function SubLogsDialog({
                 <TableRow>
                   <TableHead className="px-3">IP</TableHead>
                   <TableHead className="px-3">User Agent</TableHead>
-                  <TableHead className="px-3">时间</TableHead>
+                  <TableHead className="px-3">{t("users.time")}</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -1587,7 +1503,7 @@ function SubLogsDialog({
             </Table>
           ) : logs.length === 0 ? (
             <div className="flex h-32 items-center justify-center text-sm text-[hsl(var(--muted-foreground))]">
-              暂无访问日志
+              {t("users.noAccessLogs")}
             </div>
           ) : (
             <Table>
@@ -1595,7 +1511,7 @@ function SubLogsDialog({
                 <TableRow>
                   <TableHead className="px-3">IP</TableHead>
                   <TableHead className="px-3">User Agent</TableHead>
-                  <TableHead className="px-3">时间</TableHead>
+                  <TableHead className="px-3">{t("users.time")}</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -1622,15 +1538,13 @@ function SubLogsDialog({
 
         <DialogFooter>
           <DialogClose asChild>
-            <Button variant="outline">关闭</Button>
+            <Button variant="outline">{t("common.close")}</Button>
           </DialogClose>
         </DialogFooter>
       </DialogContent>
     </Dialog>
   );
 }
-
-// ── Sub Links Dialog Component ──────────────────────────────────
 
 const PROTOCOL_LABELS: Record<string, string> = {
   vless: "VLESS",
@@ -1664,6 +1578,7 @@ function SubLinksDialog({
   onOpenChange: (open: boolean) => void;
   user: User | null;
 }) {
+  const { t } = useTranslation();
   const [links, setLinks] = useState<string[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
@@ -1679,13 +1594,13 @@ function SubLinksDialog({
       setLinks([]);
       try {
         const res = await fetch(`/sub/${user.sub_token}`);
-        if (!res.ok) throw new Error(`请求失败 (${res.status})`);
+        if (!res.ok) throw new Error(`${t("common.requestFailed")} (${res.status})`);
         const text = await res.text();
         const decoded = atob(text.trim());
         const parsed = decoded.split("\n").map((l) => l.trim()).filter(Boolean);
         if (!cancelled) setLinks(parsed);
       } catch (err) {
-        if (!cancelled) setError(err instanceof Error ? err.message : "加载失败");
+        if (!cancelled) setError(err instanceof Error ? err.message : t("common.loadFailed"));
       } finally {
         if (!cancelled) setLoading(false);
       }
@@ -1693,7 +1608,7 @@ function SubLinksDialog({
 
     fetchLinks();
     return () => { cancelled = true; };
-  }, [open, user]);
+  }, [open, user, t]);
 
   const copyLink = (link: string, idx: number, container?: HTMLElement | null) => {
     copyText(link, container).then(() => {
@@ -1706,9 +1621,9 @@ function SubLinksDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-2xl">
         <DialogHeader>
-          <DialogTitle>订阅内容</DialogTitle>
+          <DialogTitle>{t("users.subContent")}</DialogTitle>
           <DialogDescription>
-            {user?.username} 的订阅中实际包含的代理链接。
+            {t("users.subContentDesc", { username: user?.username })}
           </DialogDescription>
         </DialogHeader>
 
@@ -1718,19 +1633,19 @@ function SubLinksDialog({
           )}
           {loading ? (
             <div className="flex h-32 items-center justify-center text-sm text-[hsl(var(--muted-foreground))]">
-              加载中…
+              {t("common.loading")}
             </div>
           ) : links.length === 0 && !error ? (
             <div className="flex h-32 items-center justify-center text-sm text-[hsl(var(--muted-foreground))]">
-              暂无可用链接
+              {t("users.noLinks")}
             </div>
           ) : (
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead className="px-3 w-[240px] max-w-[240px]">名称</TableHead>
-                  <TableHead className="px-3 w-[100px]">协议</TableHead>
-                  <TableHead className="px-3 w-px text-right">操作</TableHead>
+                  <TableHead className="px-3 w-[240px] max-w-[240px]">{t("common.name")}</TableHead>
+                  <TableHead className="px-3 w-[100px]">{t("users.protocol")}</TableHead>
+                  <TableHead className="px-3 w-px text-right">{t("users.action")}</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -1749,7 +1664,7 @@ function SubLinksDialog({
                         className="h-7 w-12 px-0 text-xs"
                         onClick={(e) => copyLink(link, idx, e.currentTarget.closest<HTMLElement>('[role="dialog"]'))}
                       >
-                        {copiedIdx === idx ? "已复制" : "复制"}
+                        {copiedIdx === idx ? t("users.copiedSub") : t("common.copy")}
                       </Button>
                     </TableCell>
                   </TableRow>
@@ -1761,15 +1676,13 @@ function SubLinksDialog({
 
         <DialogFooter>
           <DialogClose asChild>
-            <Button variant="outline">关闭</Button>
+            <Button variant="outline">{t("common.close")}</Button>
           </DialogClose>
         </DialogFooter>
       </DialogContent>
     </Dialog>
   );
 }
-
-// ── Node Usage Dialog Component ────────────────────────────────
 
 interface NodeUsageItem {
   node_id: string;
@@ -1790,6 +1703,7 @@ function NodeUsageDialog({
   userId: string | null;
   handleAuthError: (err: unknown) => boolean;
 }) {
+  const { t } = useTranslation();
   const [usage, setUsage] = useState<NodeUsageItem[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
@@ -1812,7 +1726,7 @@ function NodeUsageDialog({
       } catch (err) {
         if (!cancelled) {
           if (!handleAuthError(err)) {
-            setError(err instanceof Error ? err.message : "加载节点流量失败");
+            setError(err instanceof Error ? err.message : t("users.loadNodeUsageFailed"));
           }
         }
       } finally {
@@ -1824,7 +1738,7 @@ function NodeUsageDialog({
     return () => {
       cancelled = true;
     };
-  }, [open, userId, handleAuthError]);
+  }, [open, userId, handleAuthError, t]);
 
   const maxTotal = Math.max(...usage.map((u) => u.total_bytes), 1);
 
@@ -1832,8 +1746,8 @@ function NodeUsageDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-xl">
         <DialogHeader>
-          <DialogTitle>节点流量</DialogTitle>
-          <DialogDescription>该用户在各节点的流量使用详情。</DialogDescription>
+          <DialogTitle>{t("users.nodeTraffic")}</DialogTitle>
+          <DialogDescription>{t("users.nodeUsageDesc")}</DialogDescription>
         </DialogHeader>
 
         <ScrollArea className="max-h-[60vh]">
@@ -1847,11 +1761,11 @@ function NodeUsageDialog({
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead className="px-3">节点名称</TableHead>
-                  <TableHead className="px-3">上传</TableHead>
-                  <TableHead className="px-3">下载</TableHead>
-                  <TableHead className="px-3">总计</TableHead>
-                  <TableHead className="px-3 w-24">占比</TableHead>
+                  <TableHead className="px-3">{t("users.nodeName")}</TableHead>
+                  <TableHead className="px-3">{t("users.upload")}</TableHead>
+                  <TableHead className="px-3">{t("users.download")}</TableHead>
+                  <TableHead className="px-3">{t("users.total")}</TableHead>
+                  <TableHead className="px-3 w-24">{t("users.ratio")}</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -1878,17 +1792,17 @@ function NodeUsageDialog({
             </Table>
           ) : usage.length === 0 ? (
             <div className="flex h-32 items-center justify-center text-sm text-[hsl(var(--muted-foreground))]">
-              暂无节点流量数据
+              {t("users.noNodeUsage")}
             </div>
           ) : (
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead className="px-3">节点名称</TableHead>
-                  <TableHead className="px-3">上传</TableHead>
-                  <TableHead className="px-3">下载</TableHead>
-                  <TableHead className="px-3">总计</TableHead>
-                  <TableHead className="px-3 w-24">占比</TableHead>
+                  <TableHead className="px-3">{t("users.nodeName")}</TableHead>
+                  <TableHead className="px-3">{t("users.upload")}</TableHead>
+                  <TableHead className="px-3">{t("users.download")}</TableHead>
+                  <TableHead className="px-3">{t("users.total")}</TableHead>
+                  <TableHead className="px-3 w-24">{t("users.ratio")}</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -1923,15 +1837,13 @@ function NodeUsageDialog({
 
         <DialogFooter>
           <DialogClose asChild>
-            <Button variant="outline">关闭</Button>
+            <Button variant="outline">{t("common.close")}</Button>
           </DialogClose>
         </DialogFooter>
       </DialogContent>
     </Dialog>
   );
 }
-
-// ── UserGroupsDialog ─────────────────────────────────────────────
 
 interface UserGroupsDialogProps {
   open: boolean;
@@ -1942,6 +1854,7 @@ interface UserGroupsDialogProps {
 }
 
 function UserGroupsDialog({ open, onOpenChange, user, onSuccess, handleAuthError }: UserGroupsDialogProps) {
+  const { t } = useTranslation();
   const [allGroups, setAllGroups] = useState<UserGroup[]>([]);
   const [currentGroupIds, setCurrentGroupIds] = useState<Set<string>>(new Set());
   const [selectedGroupIds, setSelectedGroupIds] = useState<Set<string>>(new Set());
@@ -1957,7 +1870,6 @@ function UserGroupsDialog({ open, onOpenChange, user, onSuccess, handleAuthError
       .then(async (res) => {
         const groups = res.user_groups ?? [];
         setAllGroups(groups);
-        // 并行查询每个组的成员，确定当前用户所属组
         const memberResults = await Promise.all(
           groups.map((g) =>
             api.get<{ members: { user_id: string }[] }>(`/user-groups/${g.id}/members`)
@@ -1975,11 +1887,11 @@ function UserGroupsDialog({ open, onOpenChange, user, onSuccess, handleAuthError
       })
       .catch((err) => {
         if (!handleAuthError(err)) {
-          setError(err instanceof Error ? err.message : "加载用户组失败");
+          setError(err instanceof Error ? err.message : t("users.loadGroupsFailed"));
         }
       })
       .finally(() => setLoading(false));
-  }, [open, user, handleAuthError]);
+  }, [open, user, handleAuthError, t]);
 
   function toggleGroup(groupId: string) {
     setSelectedGroupIds((prev) => {
@@ -2007,15 +1919,15 @@ function UserGroupsDialog({ open, onOpenChange, user, onSuccess, handleAuthError
       ]);
 
       if (toAdd.length > 0 || toRemove.length > 0) {
-        toast.success(`用户组已更新：添加 ${toAdd.length} 个，移除 ${toRemove.length} 个`);
+        toast.success(t("users.groupsUpdated", { added: toAdd.length, removed: toRemove.length }));
       } else {
-        toast.success("无变更");
+        toast.success(t("common.noChanges"));
       }
       onOpenChange(false);
       onSuccess();
     } catch (err) {
       if (handleAuthError(err)) return;
-      setError(err instanceof Error ? err.message : "操作失败");
+      setError(err instanceof Error ? err.message : t("common.operationFailed"));
     } finally {
       setSubmitting(false);
     }
@@ -2025,13 +1937,9 @@ function UserGroupsDialog({ open, onOpenChange, user, onSuccess, handleAuthError
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
-          <DialogTitle>加入 / 移出用户组</DialogTitle>
+          <DialogTitle>{t("users.manageUserGroups")}</DialogTitle>
           <DialogDescription>
-            管理用户{" "}
-            <span className="font-medium text-[hsl(var(--foreground))]">
-              {user?.username}
-            </span>{" "}
-            所属的用户组。
+            {t("users.manageUserGroupsDesc", { username: user?.username })}
           </DialogDescription>
         </DialogHeader>
         <ScrollArea className="max-h-80">
@@ -2043,11 +1951,11 @@ function UserGroupsDialog({ open, onOpenChange, user, onSuccess, handleAuthError
           )}
           {loading ? (
             <div className="flex h-20 items-center justify-center text-sm text-[hsl(var(--muted-foreground))]">
-              加载中…
+              {t("common.loading")}
             </div>
           ) : allGroups.length === 0 ? (
             <div className="flex h-20 items-center justify-center text-sm text-[hsl(var(--muted-foreground))]">
-              暂无用户组
+              {t("users.noGroups")}
             </div>
           ) : (
             <div className="space-y-2">
@@ -2079,11 +1987,11 @@ function UserGroupsDialog({ open, onOpenChange, user, onSuccess, handleAuthError
         <DialogFooter>
           <DialogClose asChild>
             <Button type="button" variant="outline" disabled={submitting}>
-              取消
+              {t("common.cancel")}
             </Button>
           </DialogClose>
           <Button onClick={handleConfirm} disabled={submitting || loading}>
-            {submitting ? "保存中…" : "确认"}
+            {submitting ? t("common.saving") : t("common.confirm")}
           </Button>
         </DialogFooter>
       </DialogContent>

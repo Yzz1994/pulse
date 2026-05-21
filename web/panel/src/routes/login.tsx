@@ -1,4 +1,5 @@
 import { useState, useEffect, type FormEvent } from "react";
+import { useTranslation } from "react-i18next";
 import { getTheme, toggleTheme, type Theme } from "@/lib/theme";
 import { api } from "../lib/api";
 import { setToken } from "../lib/auth";
@@ -15,6 +16,7 @@ import {
 } from "@/components/ui";
 
 export default function LoginPage() {
+  const { t } = useTranslation();
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
@@ -57,7 +59,7 @@ export default function LoginPage() {
         { username, password },
       );
       if (!data?.token) {
-        setError("登录返回数据异常: " + JSON.stringify(data));
+        setError(t("login.loginDataError", { data: JSON.stringify(data) }));
         return;
       }
       setToken(data.token);
@@ -67,14 +69,14 @@ export default function LoginPage() {
     } catch (err) {
       if (err instanceof Error) {
         if (err.message.includes("429")) {
-          setError("登录尝试过多，请稍后再试");
+          setError(t("login.tooManyAttempts"));
         } else if (err.message.includes("401") || err.message.includes("invalid")) {
-          setError("用户名或密码错误");
+          setError(t("login.wrongCredentials"));
         } else {
           setError(err.message);
         }
       } else {
-        setError("登录失败");
+        setError(t("login.loginFailed"));
       }
     } finally {
       setLoading(false);
@@ -86,7 +88,7 @@ export default function LoginPage() {
       <button
         onClick={() => setTheme(toggleTheme())}
         className="fixed right-4 top-4 z-50 rounded-md p-2 bg-[hsl(var(--card))] border border-[hsl(var(--border))] text-[hsl(var(--muted-foreground))] hover:text-[hsl(var(--foreground))] shadow-sm transition-colors"
-        title={theme === "dark" ? "切换浅色模式" : "切换深色模式"}
+        title={theme === "dark" ? t("common.switchLight") : t("common.switchDark")}
       >
         {theme === "dark" ? (
           <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -117,15 +119,15 @@ export default function LoginPage() {
             />
           </svg>
           <h1 className="text-2xl font-bold text-[hsl(var(--foreground))]">Pulse</h1>
-          <p className="text-sm text-[hsl(var(--muted-foreground))]">管理面板</p>
+          <p className="text-sm text-[hsl(var(--muted-foreground))]">{t("login.title")}</p>
         </div>
 
         {/* Card */}
         <Card>
           <form onSubmit={handleSubmit}>
             <CardHeader>
-              <CardTitle>登录</CardTitle>
-              <CardDescription>输入凭据以访问管理面板</CardDescription>
+              <CardTitle>{t("login.login")}</CardTitle>
+              <CardDescription>{t("login.subtitle")}</CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
               {error && (
@@ -135,7 +137,7 @@ export default function LoginPage() {
               )}
 
               <div className="space-y-2">
-                <Label htmlFor="username">用户名</Label>
+                <Label htmlFor="username">{t("login.username")}</Label>
                 <Input
                   id="username"
                   type="text"
@@ -148,7 +150,7 @@ export default function LoginPage() {
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="password">密码</Label>
+                <Label htmlFor="password">{t("login.password")}</Label>
                 <Input
                   id="password"
                   type="password"
@@ -162,7 +164,7 @@ export default function LoginPage() {
             </CardContent>
             <CardFooter>
               <Button type="submit" className="w-full" disabled={loading}>
-                {loading ? "登录中…" : "登录"}
+                {loading ? t("login.loggingIn") : t("login.login")}
               </Button>
             </CardFooter>
           </form>
@@ -171,7 +173,7 @@ export default function LoginPage() {
               <div className="px-6 pb-2">
                 <div className="flex items-center gap-3">
                   <div className="flex-1 border-t border-[hsl(var(--border))]" />
-                  <span className="text-xs text-[hsl(var(--muted-foreground))]">或</span>
+                  <span className="text-xs text-[hsl(var(--muted-foreground))]">{t("login.or")}</span>
                   <div className="flex-1 border-t border-[hsl(var(--border))]" />
                 </div>
               </div>
@@ -184,7 +186,7 @@ export default function LoginPage() {
                   <svg className="mr-2 h-4 w-4" viewBox="0 0 32 32" fill="currentColor">
                     <path d="M16.1357 0C7.37855 0 0 7.03 0 15.7071C0 16.26 0.0314 32 0.0314 32L16.1357 31.9373C24.8929 31.9373 32 24.6937 32 15.9687C32 7.24363 24.8929 0 16.1357 0Z" />
                   </svg>
-                  通过 Discourse 登录
+                  {t("login.discourseLogin")}
                 </Button>
               </div>
             </>

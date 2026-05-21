@@ -1,4 +1,5 @@
 import { useEffect, useState, useCallback, useMemo, type FormEvent } from "react";
+import { useTranslation } from "react-i18next";
 import {
   Card,
   CardContent,
@@ -200,6 +201,7 @@ function SkeletonRow() {
 // ── Main page ────────────────────────────────────────────────────
 
 export default function RouteRulesPage() {
+  const { t } = useTranslation();
   const handleAuthError = useAuthErrorHandler();
 
   const [rules, setRules] = useState<RouteRule[]>([]);
@@ -287,7 +289,7 @@ export default function RouteRulesPage() {
       })
       .catch((err) => {
         if (handleAuthError(err)) return;
-        setError(err instanceof Error ? err.message : "加载失败");
+        setError(err instanceof Error ? err.message : t("common.loadFailed"));
       })
       .finally(() => setLoading(false));
   }, [handleAuthError]);
@@ -327,7 +329,7 @@ export default function RouteRulesPage() {
       fetchData();
     } catch (err) {
       if (handleAuthError(err)) return;
-      setFormError(err instanceof Error ? err.message : "创建失败");
+      setFormError(err instanceof Error ? err.message : t("common.createFailed"));
     } finally {
       setSubmitting(false);
     }
@@ -364,7 +366,7 @@ export default function RouteRulesPage() {
       fetchData();
     } catch (err) {
       if (handleAuthError(err)) return;
-      setFormError(err instanceof Error ? err.message : "更新失败");
+      setFormError(err instanceof Error ? err.message : t("common.updateFailed"));
     } finally {
       setSubmitting(false);
     }
@@ -389,7 +391,7 @@ export default function RouteRulesPage() {
       fetchData();
     } catch (err) {
       if (handleAuthError(err)) return;
-      setFormError(err instanceof Error ? err.message : "删除失败");
+      setFormError(err instanceof Error ? err.message : t("common.deleteFailed"));
     } finally {
       setSubmitting(false);
     }
@@ -406,13 +408,13 @@ export default function RouteRulesPage() {
               <AlertCircleIcon className="h-6 w-6" />
             </div>
             <p className="mb-1 font-semibold text-[hsl(var(--foreground))]">
-              加载失败
+              {t("common.loadFailed")}
             </p>
             <p className="mb-4 text-sm text-[hsl(var(--muted-foreground))]">
               {error}
             </p>
             <Button variant="outline" onClick={fetchData}>
-              重试
+              {t("common.retry")}
             </Button>
           </CardContent>
         </Card>
@@ -432,7 +434,7 @@ export default function RouteRulesPage() {
         )}
 
         <div className="space-y-2">
-          <Label htmlFor="rr-name">名称 *</Label>
+          <Label htmlFor="rr-name">{t("routerules.nameRequired")}</Label>
           <Input
             id="rr-name"
             required
@@ -443,7 +445,7 @@ export default function RouteRulesPage() {
         </div>
 
         <div className="space-y-2">
-          <Label htmlFor="rr-type">类型</Label>
+          <Label htmlFor="rr-type">{t("routerules.type")}</Label>
           <Select
             value={form.rule_type}
             onValueChange={(v) =>
@@ -454,9 +456,9 @@ export default function RouteRulesPage() {
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
-              {RULE_TYPES.map((t) => (
-                <SelectItem key={t} value={t}>
-                  {RULE_TYPE_LABELS[t]}
+              {RULE_TYPES.map((rt) => (
+                <SelectItem key={rt} value={rt}>
+                  {RULE_TYPE_LABELS[rt]}
                 </SelectItem>
               ))}
             </SelectContent>
@@ -465,36 +467,36 @@ export default function RouteRulesPage() {
 
         {form.rule_type !== "rule_set" && (
           <div className="space-y-2">
-            <Label htmlFor="rr-patterns">匹配模式 *</Label>
+            <Label htmlFor="rr-patterns">{t("routerules.matchPattern")}</Label>
             <Textarea
               id="rr-patterns"
               required
               value={form.patterns}
               onChange={(e) => patchForm({ patterns: e.target.value })}
-              placeholder="每行一个或逗号分隔"
+              placeholder={t("routerules.matchPatternHint")}
               rows={4}
             />
           </div>
         )}
 
         <div className="space-y-2">
-          <Label>入口</Label>
+          <Label>{t("routerules.inbound")}</Label>
           <MultiSelect
             value={form.inbound_ids}
             onChange={(ids) => patchForm({ inbound_ids: ids })}
             options={inboundOptions}
-            placeholder="所有入口（默认）"
-            countLabel="已选 {n} 个入口"
+            placeholder={t("routerules.allInbounds")}
+            countLabel={t("routerules.selectedInbounds")}
           />
         </div>
 
         <div className="space-y-2">
-          <Label>出口</Label>
+          <Label>{t("routerules.outbound")}</Label>
           <SingleSelect
             value={form.outbound_id || "__direct__"}
             onChange={(v) => patchForm({ outbound_id: v === "__direct__" ? "" : v })}
             options={[
-              { value: "__direct__", label: "direct (默认)" },
+              { value: "__direct__", label: t("routerules.directDefault") },
               ...outbounds.map((ob) => ({
                 value: ob.id,
                 label: `${ob.name} · ${ob.server} (${ob.protocol})`,
@@ -504,12 +506,12 @@ export default function RouteRulesPage() {
                 label: opt.label,
               })),
             ]}
-            placeholder="direct (默认)"
+            placeholder={t("routerules.directDefault")}
           />
         </div>
 
         <div className="space-y-2">
-          <Label htmlFor="rr-priority">优先级</Label>
+          <Label htmlFor="rr-priority">{t("routerules.priority")}</Label>
           <Input
             id="rr-priority"
             type="number"
@@ -537,7 +539,7 @@ export default function RouteRulesPage() {
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="rr-rulesetfmt">Rule Set 格式</Label>
+              <Label htmlFor="rr-rulesetfmt">{t("routerules.ruleSetFormat")}</Label>
               <Select
                 value={form.rule_set_format}
                 onValueChange={(v) =>
@@ -548,8 +550,8 @@ export default function RouteRulesPage() {
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="binary">binary（.srs 编译格式）</SelectItem>
-                  <SelectItem value="source">source（JSON 源文件）</SelectItem>
+                  <SelectItem value="binary">{t("routerules.binary")}</SelectItem>
+                  <SelectItem value="source">{t("routerules.source")}</SelectItem>
                 </SelectContent>
               </Select>
             </div>
@@ -572,10 +574,10 @@ export default function RouteRulesPage() {
       <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
         <div>
           <h1 className="text-2xl font-bold text-[hsl(var(--foreground))]">
-            路由规则
+            {t("routerules.title")}
           </h1>
           <p className="mt-1 text-sm text-[hsl(var(--muted-foreground))]">
-            管理代理路由规则，控制流量出口。
+            {t("routerules.subtitle")}
           </p>
         </div>
 
@@ -591,25 +593,25 @@ export default function RouteRulesPage() {
           }}
         >
           <DialogTrigger asChild>
-            <Button>+ 添加规则</Button>
+            <Button>{t("routerules.addRule")}</Button>
           </DialogTrigger>
           <DialogContent className="sm:max-w-lg">
             <form onSubmit={handleCreate}>
               <DialogHeader>
-                <DialogTitle>添加规则</DialogTitle>
+                <DialogTitle>{t("routerules.addRuleTitle")}</DialogTitle>
                 <DialogDescription>
-                  配置新的路由规则。
+                  {t("routerules.addRuleDesc")}
                 </DialogDescription>
               </DialogHeader>
               {renderFormFields()}
               <DialogFooter>
                 <DialogClose asChild>
                   <Button type="button" variant="outline">
-                    取消
+                    {t("common.cancel")}
                   </Button>
                 </DialogClose>
                 <Button type="submit" disabled={submitting}>
-                  {submitting ? "创建中…" : "创建"}
+                  {submitting ? t("common.creating") : t("common.create")}
                 </Button>
               </DialogFooter>
             </form>
@@ -622,11 +624,11 @@ export default function RouteRulesPage() {
         <Table containerClassName="flex-1 overflow-auto">
           <TableHeader className="sticky top-0 z-10 bg-[hsl(var(--card))]">
             <TableRow>
-              <TableHead className="px-4">优先级</TableHead>
-              <TableHead className="px-4">名称</TableHead>
-              <TableHead className="px-4">类型</TableHead>
-              <TableHead className="px-4">出口</TableHead>
-              <TableHead className="px-4">操作</TableHead>
+              <TableHead className="px-4">{t("routerules.priority")}</TableHead>
+              <TableHead className="px-4">{t("common.name")}</TableHead>
+              <TableHead className="px-4">{t("common.type")}</TableHead>
+              <TableHead className="px-4">{t("routerules.outbound")}</TableHead>
+              <TableHead className="px-4">{t("common.action")}</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -642,13 +644,13 @@ export default function RouteRulesPage() {
                 >
                   <div className="flex flex-col items-center gap-3">
                     <RouteIcon className="h-10 w-10 opacity-40" />
-                    <p>暂无路由规则</p>
+                    <p>{t("routerules.noRules")}</p>
                     <Button
                       variant="outline"
                       size="sm"
                       onClick={() => setCreateOpen(true)}
                     >
-                      + 添加规则
+                      {t("routerules.addRule")}
                     </Button>
                   </div>
                 </TableCell>
@@ -717,20 +719,20 @@ export default function RouteRulesPage() {
         <DialogContent className="sm:max-w-lg">
           <form onSubmit={handleEdit}>
             <DialogHeader>
-              <DialogTitle>编辑规则</DialogTitle>
+              <DialogTitle>{t("routerules.editRuleTitle")}</DialogTitle>
               <DialogDescription>
-                修改路由规则配置。
+                {t("routerules.editRuleDesc")}
               </DialogDescription>
             </DialogHeader>
             {renderFormFields()}
             <DialogFooter>
               <DialogClose asChild>
                 <Button type="button" variant="outline">
-                  取消
+                  {t("common.cancel")}
                 </Button>
               </DialogClose>
               <Button type="submit" disabled={submitting}>
-                {submitting ? "保存中…" : "保存"}
+                {submitting ? t("common.saving") : t("common.save")}
               </Button>
             </DialogFooter>
           </form>
@@ -750,13 +752,13 @@ export default function RouteRulesPage() {
       >
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
-            <DialogTitle>确认删除</DialogTitle>
+            <DialogTitle>{t("common.confirmDelete")}</DialogTitle>
             <DialogDescription>
-              确定要删除规则{" "}
+              {t("routerules.confirmDeleteRule")}{" "}
               <span className="font-semibold text-[hsl(var(--foreground))]">
                 {deletingRule?.name}
               </span>{" "}
-              吗？此操作不可撤销。
+              {t("common.irreversibleAction")}
             </DialogDescription>
           </DialogHeader>
           {formError && (
@@ -767,7 +769,7 @@ export default function RouteRulesPage() {
           <DialogFooter>
             <DialogClose asChild>
               <Button type="button" variant="outline">
-                取消
+                {t("common.cancel")}
               </Button>
             </DialogClose>
             <Button
@@ -775,7 +777,7 @@ export default function RouteRulesPage() {
               disabled={submitting}
               onClick={handleDelete}
             >
-              {submitting ? "删除中…" : "删除"}
+              {submitting ? t("common.deleting") : t("common.delete")}
             </Button>
           </DialogFooter>
         </DialogContent>

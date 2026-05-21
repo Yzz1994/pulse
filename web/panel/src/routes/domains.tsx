@@ -1,4 +1,5 @@
 import { useEffect, useState, useCallback, type FormEvent } from "react";
+import { useTranslation } from "react-i18next";
 import {
   Card,
   CardContent,
@@ -147,6 +148,7 @@ function AddDomainDialog({
   onOpenChange: (open: boolean) => void;
   onSuccess: () => void;
 }) {
+  const { t } = useTranslation();
   const handleAuthError = useAuthErrorHandler();
   const [step, setStep] = useState<"token" | "select">("token");
   const [cfToken, setCfToken] = useState("");
@@ -177,13 +179,13 @@ function AddDomainDialog({
       const res = await cfApi.verifyToken(cfToken.trim());
       setZones(res.zones ?? []);
       if ((res.zones ?? []).length === 0) {
-        setError("该 Token 下没有可用的域名");
+        setError(t("domains.noAvailableDomains"));
       } else {
         setStep("select");
       }
     } catch (err) {
       if (handleAuthError(err)) return;
-      setError(err instanceof Error ? err.message : "验证失败");
+      setError(err instanceof Error ? err.message : t("domains.verifyFailed"));
     } finally {
       setVerifying(false);
     }
@@ -216,12 +218,12 @@ function AddDomainDialog({
           remark: remark.trim(),
         });
       }
-      toast.success(`成功添加 ${selected.size} 个域名`);
+      toast.success(t("domains.addedCount", { count: selected.size }));
       onOpenChange(false);
       onSuccess();
     } catch (err) {
       if (handleAuthError(err)) return;
-      setError(err instanceof Error ? err.message : "添加失败");
+      setError(err instanceof Error ? err.message : t("domains.addFailed"));
     } finally {
       setSubmitting(false);
     }
@@ -237,11 +239,11 @@ function AddDomainDialog({
     >
       <DialogContent className="sm:max-w-lg">
         <DialogHeader>
-          <DialogTitle>添加域名</DialogTitle>
+          <DialogTitle>{t("domains.addDomainTitle")}</DialogTitle>
           <DialogDescription>
             {step === "token"
-              ? "输入 Cloudflare API Token，验证后选择要管理的域名。"
-              : "选择要添加的域名，可多选。"}
+              ? t("domains.addDomainDesc1")
+              : t("domains.addDomainDesc2")}
           </DialogDescription>
         </DialogHeader>
 
@@ -255,28 +257,28 @@ function AddDomainDialog({
           {step === "token" && (
             <form onSubmit={handleVerify} className="grid gap-4">
               <div className="space-y-2">
-                <Label htmlFor="cf-token">CF API Token *</Label>
+                <Label htmlFor="cf-token">{t("domains.cfTokenLabel")}</Label>
                 <Input
                   id="cf-token"
                   type="password"
                   required
                   value={cfToken}
                   onChange={(e) => setCfToken(e.target.value)}
-                  placeholder="输入 Cloudflare API Token"
+                  placeholder={t("domains.cfTokenPlaceholder")}
                 />
               </div>
               <div className="space-y-2">
-                <Label htmlFor="cf-remark">备注</Label>
+                <Label htmlFor="cf-remark">{t("domains.remark")}</Label>
                 <Input
                   id="cf-remark"
                   value={remark}
                   onChange={(e) => setRemark(e.target.value)}
-                  placeholder="可选，如「主账号」"
+                  placeholder={t("domains.remarkPlaceholder")}
                 />
               </div>
               <Button type="submit" disabled={verifying || !cfToken.trim()}>
                 {verifying && <IconLoader className="mr-2 h-4 w-4 animate-spin" />}
-                {verifying ? "验证中…" : "验证 Token"}
+                {verifying ? t("domains.verifying") : t("domains.verifyToken")}
               </Button>
             </form>
           )}
@@ -288,8 +290,8 @@ function AddDomainDialog({
                   <TableHeader>
                     <TableRow>
                       <TableHead className="w-10 px-4" />
-                      <TableHead className="px-4">域名</TableHead>
-                      <TableHead className="px-4">状态</TableHead>
+                      <TableHead className="px-4">{t("common.name")}</TableHead>
+                      <TableHead className="px-4">{t("common.status")}</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -320,12 +322,12 @@ function AddDomainDialog({
               </ScrollArea>
 
               <div className="space-y-2">
-                <Label htmlFor="cf-remark-2">备注</Label>
+                <Label htmlFor="cf-remark-2">{t("domains.remark")}</Label>
                 <Input
                   id="cf-remark-2"
                   value={remark}
                   onChange={(e) => setRemark(e.target.value)}
-                  placeholder="可选"
+                  placeholder={t("common.remark")}
                 />
               </div>
             </>
@@ -342,12 +344,12 @@ function AddDomainDialog({
                 setSelected(new Set());
               }}
             >
-              上一步
+              {t("domains.prevStep")}
             </Button>
           )}
           <DialogClose asChild>
             <Button type="button" variant="outline">
-              取消
+              {t("common.cancel")}
             </Button>
           </DialogClose>
           {step === "select" && (
@@ -356,7 +358,7 @@ function AddDomainDialog({
               disabled={submitting || selected.size === 0}
               onClick={handleSubmit}
             >
-              {submitting ? "添加中…" : `添加 (${selected.size})`}
+              {submitting ? t("domains.adding") : t("domains.addCount", { count: selected.size })}
             </Button>
           )}
         </DialogFooter>
@@ -398,6 +400,7 @@ function RecordFormDialog({
   editingRecord: CFDNSRecord | null;
   onSuccess: () => void;
 }) {
+  const { t } = useTranslation();
   const handleAuthError = useAuthErrorHandler();
   const isEdit = editingRecord !== null;
   const [form, setForm] = useState<RecordFormState>(EMPTY_RECORD_FORM);
@@ -440,16 +443,16 @@ function RecordFormDialog({
     try {
       if (isEdit && editingRecord) {
         await cfApi.updateRecord(domainId, editingRecord.id, body);
-        toast.success("DNS 记录已更新");
+        toast.success(t("domains.dnsUpdated"));
       } else {
         await cfApi.createRecord(domainId, body);
-        toast.success("DNS 记录已添加");
+        toast.success(t("domains.dnsAdded"));
       }
       onOpenChange(false);
       onSuccess();
     } catch (err) {
       if (handleAuthError(err)) return;
-      setError(err instanceof Error ? err.message : "操作失败");
+      setError(err instanceof Error ? err.message : t("common.operationFailed"));
     } finally {
       setSubmitting(false);
     }
@@ -460,7 +463,7 @@ function RecordFormDialog({
       <DialogContent className="sm:max-w-lg">
         <form onSubmit={handleSubmit}>
           <DialogHeader>
-            <DialogTitle>{isEdit ? "编辑 DNS 记录" : "添加 DNS 记录"}</DialogTitle>
+            <DialogTitle>{isEdit ? t("domains.editDNS") : t("domains.addDNS")}</DialogTitle>
             <DialogDescription>
               {zoneName}
             </DialogDescription>
@@ -474,7 +477,7 @@ function RecordFormDialog({
             )}
 
             <div className="space-y-2">
-              <Label htmlFor="rec-type">类型</Label>
+              <Label htmlFor="rec-type">{t("domains.typeLabel")}</Label>
               <Select
                 value={form.type}
                 onValueChange={(v) => patchForm({ type: v })}
@@ -493,19 +496,19 @@ function RecordFormDialog({
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="rec-name">名称 *</Label>
+              <Label htmlFor="rec-name">{t("domains.nameRequired")}</Label>
               <Input
                 id="rec-name"
                 required
                 value={form.name}
                 onChange={(e) => patchForm({ name: e.target.value })}
-                placeholder={`sub.${zoneName} 或 @ 表示根域名`}
+                  placeholder={t("domains.namePlaceholder", { zone: zoneName })}
               />
             </div>
 
             <div className="space-y-2">
               <Label htmlFor="rec-content">
-                {form.type === "CNAME" ? "目标 *" : "IP 地址 *"}
+                {form.type === "CNAME" ? t("domains.targetRequired") : t("domains.ipRequired")}
               </Label>
               <Input
                 id="rec-content"
@@ -523,7 +526,7 @@ function RecordFormDialog({
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="rec-ttl">TTL</Label>
+              <Label htmlFor="rec-ttl">{t("domains.ttlLabel")}</Label>
               <Select
                 value={form.ttl}
                 onValueChange={(v) => patchForm({ ttl: v })}
@@ -533,11 +536,11 @@ function RecordFormDialog({
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="1">Auto</SelectItem>
-                  <SelectItem value="60">1 分钟</SelectItem>
-                  <SelectItem value="300">5 分钟</SelectItem>
-                  <SelectItem value="600">10 分钟</SelectItem>
-                  <SelectItem value="3600">1 小时</SelectItem>
-                  <SelectItem value="86400">1 天</SelectItem>
+                  <SelectItem value="60">{t("domains.ttl1min")}</SelectItem>
+                  <SelectItem value="300">{t("domains.ttl5min")}</SelectItem>
+                  <SelectItem value="600">{t("domains.ttl10min")}</SelectItem>
+                  <SelectItem value="3600">{t("domains.ttl1hour")}</SelectItem>
+                  <SelectItem value="86400">{t("domains.ttl1day")}</SelectItem>
                 </SelectContent>
               </Select>
             </div>
@@ -550,7 +553,7 @@ function RecordFormDialog({
               />
               <Label htmlFor="rec-proxied" className="flex items-center gap-2">
                 <IconCloud proxied={form.proxied} className="h-5 w-5" />
-                Cloudflare 代理
+                {t("domains.cfProxy")}
               </Label>
             </div>
           </div>
@@ -558,11 +561,11 @@ function RecordFormDialog({
           <DialogFooter>
             <DialogClose asChild>
               <Button type="button" variant="outline">
-                取消
+                {t("common.cancel")}
               </Button>
             </DialogClose>
             <Button type="submit" disabled={submitting}>
-              {submitting ? "保存中…" : "保存"}
+              {submitting ? t("common.saving") : t("common.save")}
             </Button>
           </DialogFooter>
         </form>
@@ -574,6 +577,7 @@ function RecordFormDialog({
 // ── DNS 记录面板 ────────────────────────────────────────────────
 
 function DnsRecordsPanel({ domain }: { domain: CFDomain }) {
+  const { t } = useTranslation();
   const handleAuthError = useAuthErrorHandler();
   const [records, setRecords] = useState<CFDNSRecord[]>([]);
   const [loading, setLoading] = useState(true);
@@ -598,7 +602,7 @@ function DnsRecordsPanel({ domain }: { domain: CFDomain }) {
       .then((res) => setRecords(res.records ?? []))
       .catch((err) => {
         if (handleAuthError(err)) return;
-        setError(err instanceof Error ? err.message : "加载失败");
+        setError(err instanceof Error ? err.message : t("common.loadFailed"));
       })
       .finally(() => setLoading(false));
   }, [domain.id, filterType, handleAuthError]);
@@ -612,13 +616,13 @@ function DnsRecordsPanel({ domain }: { domain: CFDomain }) {
     setDeleting(true);
     try {
       await cfApi.deleteRecord(domain.id, deletingRecord.id);
-      toast.success("DNS 记录已删除");
+      toast.success(t("domains.dnsDeleted"));
       setDeleteOpen(false);
       setDeletingRecord(null);
       fetchRecords();
     } catch (err) {
       if (handleAuthError(err)) return;
-      toast.error(err instanceof Error ? err.message : "删除失败");
+      toast.error(err instanceof Error ? err.message : t("common.deleteFailed"));
     } finally {
       setDeleting(false);
     }
@@ -644,7 +648,7 @@ function DnsRecordsPanel({ domain }: { domain: CFDomain }) {
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="all">全部</SelectItem>
+            <SelectItem value="all">{t("domains.all")}</SelectItem>
             {DNS_RECORD_TYPES.map((t) => (
               <SelectItem key={t} value={t}>
                 {t}
@@ -661,7 +665,7 @@ function DnsRecordsPanel({ domain }: { domain: CFDomain }) {
           }}
         >
           <IconPlus className="mr-1 h-3.5 w-3.5" />
-          添加记录
+          {t("domains.addRecord")}
         </Button>
       </div>
 
@@ -669,8 +673,8 @@ function DnsRecordsPanel({ domain }: { domain: CFDomain }) {
       {error && (
         <div className="rounded-lg border border-[hsl(var(--destructive))]/50 bg-[hsl(var(--destructive))]/10 px-4 py-2.5 text-sm text-[hsl(var(--destructive))]">
           {error}
-          <Button variant="ghost" size="sm" className="ml-2" onClick={fetchRecords}>
-            重试
+            <Button variant="ghost" size="sm" className="ml-2" onClick={fetchRecords}>
+              {t("common.retry")}
           </Button>
         </div>
       )}
@@ -680,12 +684,12 @@ function DnsRecordsPanel({ domain }: { domain: CFDomain }) {
         <Table>
           <TableHeader>
             <TableRow>
-              <TableHead className="w-20 px-4">类型</TableHead>
-              <TableHead className="px-4">名称</TableHead>
-              <TableHead className="px-4">内容</TableHead>
+              <TableHead className="w-20 px-4">{t("domains.typeLabel")}</TableHead>
+              <TableHead className="px-4">{t("common.name")}</TableHead>
+              <TableHead className="px-4">{t("domains.contentTarget")}</TableHead>
               <TableHead className="hidden w-20 px-4 sm:table-cell">TTL</TableHead>
-              <TableHead className="hidden w-16 px-4 sm:table-cell">代理</TableHead>
-              <TableHead className="w-24 px-4">操作</TableHead>
+              <TableHead className="hidden w-16 px-4 sm:table-cell">{t("domains.proxyCol")}</TableHead>
+              <TableHead className="w-24 px-4">{t("common.action")}</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -705,7 +709,7 @@ function DnsRecordsPanel({ domain }: { domain: CFDomain }) {
                   colSpan={6}
                   className="h-24 text-center text-[hsl(var(--muted-foreground))]"
                 >
-                  暂无 DNS 记录
+                  {t("domains.noDNSRecords")}
                 </TableCell>
               </TableRow>
             ) : (
@@ -772,17 +776,17 @@ function DnsRecordsPanel({ domain }: { domain: CFDomain }) {
       <ConfirmDialog
         open={deleteOpen}
         onOpenChange={setDeleteOpen}
-        title="删除 DNS 记录"
+        title={t("domains.deleteRecord")}
         description={
           <>
-            确定要删除{" "}
+            {t("domains.confirmDeleteRecord")}{" "}
             <span className="font-semibold text-[hsl(var(--foreground))]">
               {deletingRecord?.type} {deletingRecord?.name}
             </span>{" "}
-            吗？此操作不可撤销。
+            {t("common.irreversibleAction")}
           </>
         }
-        confirmLabel="删除"
+        confirmLabel={t("common.delete")}
         variant="destructive"
         loading={deleting}
         onConfirm={handleDeleteRecord}
@@ -794,6 +798,7 @@ function DnsRecordsPanel({ domain }: { domain: CFDomain }) {
 // ── 节点映射面板 ────────────────────────────────────────────────
 
 function NodeMappingPanel({ domain, nodes }: { domain: CFDomain; nodes: Node[] }) {
+  const { t } = useTranslation();
   const handleAuthError = useAuthErrorHandler();
   const [records, setRecords] = useState<NodeDomain[]>([]);
   const [loading, setLoading] = useState(true);
@@ -806,7 +811,7 @@ function NodeMappingPanel({ domain, nodes }: { domain: CFDomain; nodes: Node[] }
       .then((res) => setRecords(res.node_domains ?? []))
       .catch((err) => {
         if (handleAuthError(err)) return;
-        toast.error(err instanceof Error ? err.message : "加载失败");
+        toast.error(err instanceof Error ? err.message : t("common.loadFailed"));
       })
       .finally(() => setLoading(false));
   }, [domain.id, handleAuthError]);
@@ -819,11 +824,11 @@ function NodeMappingPanel({ domain, nodes }: { domain: CFDomain; nodes: Node[] }
     setSyncing(true);
     try {
       const res = await nodeDomainApi.sync({ cf_domain_id: domain.id });
-      toast.success(`同步完成，共 ${res.synced} 条记录`);
+      toast.success(t("domains.syncComplete", { count: res.synced }));
       fetchRecords();
     } catch (err) {
       if (handleAuthError(err)) return;
-      toast.error(err instanceof Error ? err.message : "同步失败");
+      toast.error(err instanceof Error ? err.message : t("common.operationFailed"));
     } finally {
       setSyncing(false);
     }
@@ -835,7 +840,7 @@ function NodeMappingPanel({ domain, nodes }: { domain: CFDomain; nodes: Node[] }
       setRecords((prev) => prev.map((r) => (r.id === id ? updated : r)));
     } catch (err) {
       if (handleAuthError(err)) return;
-      toast.error(err instanceof Error ? err.message : "更新失败");
+      toast.error(err instanceof Error ? err.message : t("common.updateFailed"));
     }
   }
 
@@ -843,10 +848,10 @@ function NodeMappingPanel({ domain, nodes }: { domain: CFDomain; nodes: Node[] }
     try {
       await nodeDomainApi.delete(id);
       setRecords((prev) => prev.filter((r) => r.id !== id));
-      toast.success("已删除");
+      toast.success(t("common.delete"));
     } catch (err) {
       if (handleAuthError(err)) return;
-      toast.error(err instanceof Error ? err.message : "删除失败");
+      toast.error(err instanceof Error ? err.message : t("common.deleteFailed"));
     }
   }
 
@@ -866,10 +871,10 @@ function NodeMappingPanel({ domain, nodes }: { domain: CFDomain; nodes: Node[] }
               <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15" />
             </svg>
           )}
-          从 CF 同步
+          {t("domains.syncFromCF")}
         </Button>
         <span className="text-sm text-[hsl(var(--muted-foreground))]">
-          共 {records.length} 条，按 IP 自动匹配节点
+          {t("domains.syncCount", { count: records.length })}
         </span>
       </div>
 
@@ -878,12 +883,12 @@ function NodeMappingPanel({ domain, nodes }: { domain: CFDomain; nodes: Node[] }
         <Table>
           <TableHeader>
             <TableRow>
-              <TableHead className="w-20 px-4">类型</TableHead>
-              <TableHead className="px-4">域名</TableHead>
-              <TableHead className="px-4">内容（IP/目标）</TableHead>
-              <TableHead className="hidden w-16 px-4 sm:table-cell">代理</TableHead>
-              <TableHead className="px-4">节点</TableHead>
-              <TableHead className="w-16 px-4">操作</TableHead>
+              <TableHead className="w-20 px-4">{t("domains.typeLabel")}</TableHead>
+              <TableHead className="px-4">{t("common.name")}</TableHead>
+              <TableHead className="px-4">{t("domains.contentTarget")}</TableHead>
+              <TableHead className="hidden w-16 px-4 sm:table-cell">{t("domains.proxyCol")}</TableHead>
+              <TableHead className="px-4">{t("common.node")}</TableHead>
+              <TableHead className="w-16 px-4">{t("common.action")}</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -900,7 +905,7 @@ function NodeMappingPanel({ domain, nodes }: { domain: CFDomain; nodes: Node[] }
             ) : records.length === 0 ? (
               <TableRow>
                 <TableCell colSpan={6} className="h-24 text-center text-[hsl(var(--muted-foreground))]">
-                  暂无记录，点击"从 CF 同步"导入
+                  {t("domains.noRecordsSync")}
                 </TableCell>
               </TableRow>
             ) : (
@@ -926,13 +931,13 @@ function NodeMappingPanel({ domain, nodes }: { domain: CFDomain; nodes: Node[] }
                       <SelectTrigger className="h-7 w-40 text-sm">
                         <SelectValue>
                           {rec.node_id ? (nodeMap[rec.node_id] ?? rec.node_id) : (
-                            <span className="text-[hsl(var(--muted-foreground))]">未分配</span>
+                            <span className="text-[hsl(var(--muted-foreground))]">{t("domains.unassigned")}</span>
                           )}
                         </SelectValue>
                       </SelectTrigger>
                       <SelectContent>
                         <SelectItem value="__unassigned__">
-                          <span className="text-[hsl(var(--muted-foreground))]">未分配</span>
+                          <span className="text-[hsl(var(--muted-foreground))]">{t("domains.unassigned")}</span>
                         </SelectItem>
                         {nodes.map((n) => (
                           <SelectItem key={n.id} value={n.id}>
@@ -973,6 +978,7 @@ function DomainCard({
   nodes: Node[];
   onDelete: (domain: CFDomain) => void;
 }) {
+  const { t } = useTranslation();
   const [expanded, setExpanded] = useState(false);
   const [activeTab, setActiveTab] = useState<"dns" | "nodes">("dns");
 
@@ -1018,12 +1024,11 @@ function DomainCard({
               onClick={() => onDelete(domain)}
             >
               <IconTrash className="mr-1 h-3.5 w-3.5" />
-              删除
+              {t("common.delete")}
             </Button>
           </div>
         </div>
 
-        {/* 展开区域 */}
         {expanded && (
           <div className="border-t border-[hsl(var(--border))]">
             {/* Tab 切换 */}
@@ -1037,7 +1042,7 @@ function DomainCard({
                 }`}
                 onClick={() => setActiveTab("dns")}
               >
-                DNS 记录
+                {t("domains.dnsRecords")}
               </button>
               <button
                 type="button"
@@ -1048,7 +1053,7 @@ function DomainCard({
                 }`}
                 onClick={() => setActiveTab("nodes")}
               >
-                节点映射
+                {t("domains.nodeMapping")}
               </button>
             </div>
 
@@ -1069,6 +1074,7 @@ function DomainCard({
 // ── 主页面 ──────────────────────────────────────────────────────
 
 export default function DomainsPage() {
+  const { t } = useTranslation();
   const handleAuthError = useAuthErrorHandler();
 
   // CF 域名状态
@@ -1096,7 +1102,7 @@ export default function DomainsPage() {
       })
       .catch((err) => {
         if (handleAuthError(err)) return;
-        setError(err instanceof Error ? err.message : "加载失败");
+        setError(err instanceof Error ? err.message : t("common.loadFailed"));
       })
       .finally(() => {
         setLoading(false);
@@ -1112,19 +1118,18 @@ export default function DomainsPage() {
     setDeleting(true);
     try {
       await cfApi.deleteDomain(deletingDomain.id);
-      toast.success(`已删除域名 ${deletingDomain.zone_name}`);
+      toast.success(t("domains.domainDeleted", { name: deletingDomain.zone_name }));
       setDeleteOpen(false);
       setDeletingDomain(null);
       fetchDomains();
     } catch (err) {
       if (handleAuthError(err)) return;
-      toast.error(err instanceof Error ? err.message : "删除失败");
+      toast.error(err instanceof Error ? err.message : t("common.deleteFailed"));
     } finally {
       setDeleting(false);
     }
   }
 
-  // 加载失败全屏错误
   if (error && !domains.length) {
     return (
       <div className="flex h-full items-center justify-center p-8">
@@ -1147,13 +1152,13 @@ export default function DomainsPage() {
               </svg>
             </div>
             <p className="mb-1 font-semibold text-[hsl(var(--foreground))]">
-              加载失败
+              {t("common.loadFailed")}
             </p>
             <p className="mb-4 text-sm text-[hsl(var(--muted-foreground))]">
               {error}
             </p>
             <Button variant="outline" onClick={fetchDomains}>
-              重试
+              {t("common.retry")}
             </Button>
           </CardContent>
         </Card>
@@ -1166,11 +1171,11 @@ export default function DomainsPage() {
       {/* 标题栏 */}
       <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
         <h1 className="text-2xl font-bold text-[hsl(var(--foreground))]">
-          域名管理
+          {t("domains.title")}
         </h1>
         <Button onClick={() => setAddOpen(true)}>
           <IconPlus className="mr-1 h-4 w-4" />
-          添加域名
+          {t("domains.addDomain")}
         </Button>
       </div>
 
@@ -1181,7 +1186,7 @@ export default function DomainsPage() {
         ) : domains.length === 0 ? (
           <Card>
             <CardContent className="flex h-40 items-center justify-center text-[hsl(var(--muted-foreground))]">
-              暂无域名，点击右上角添加
+              {t("domains.noDomainsYet")}
             </CardContent>
           </Card>
         ) : (
@@ -1213,17 +1218,17 @@ export default function DomainsPage() {
           setDeleteOpen(open);
           if (!open) setDeletingDomain(null);
         }}
-        title="删除域名"
+        title={t("domains.deleteDomain")}
         description={
           <>
-            确定要删除域名{" "}
+            {t("domains.confirmDeleteDomain")}{" "}
             <span className="font-semibold text-[hsl(var(--foreground))]">
               {deletingDomain?.zone_name}
             </span>{" "}
-            吗？删除后将无法管理该域名的 DNS 记录。
+            {t("domains.domainDeleteWarning")}
           </>
         }
-        confirmLabel="删除"
+        confirmLabel={t("common.delete")}
         variant="destructive"
         loading={deleting}
         onConfirm={handleDelete}
