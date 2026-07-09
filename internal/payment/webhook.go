@@ -144,6 +144,7 @@ func (d *WebhookDeps) provisionNewUser(order *orders.Order, plan plans.Plan, now
 		Username:               baseUsername,
 		Status:                 users.StatusActive,
 		TrafficLimit:           plan.TrafficLimit,
+		PlanTrafficLimit:       plan.TrafficLimit,
 		DataLimitResetStrategy: plan.DataLimitResetStrategy,
 		ExpireAt:               &expireAt,
 		CreatedAt:              now,
@@ -198,23 +199,35 @@ func (d *WebhookDeps) renewExistingUser(order orders.Order, plan plans.Plan, now
 		return fmt.Errorf("get user %s: %w", order.UserID, err)
 	}
 
-	// 到期时间：统一从现在起算
+	// 到期时间：未过期则从当前到期时间延长，已过期则从现在起算
 	notExpired := user.ExpireAt != nil && user.ExpireAt.After(now)
-	expireAt := now.Add(time.Duration(plan.DurationDays) * 24 * time.Hour)
+	base := now
+	if notExpired {
+		base = *user.ExpireAt
+	}
+	expireAt := base.Add(time.Duration(plan.DurationDays) * 24 * time.Hour)
 	user.ExpireAt = &expireAt
 
-	// 流量：未过期则叠加，已过期则重置为套餐额度并清零已用量
-	if notExpired {
-		if plan.TrafficLimit > 0 {
-			user.TrafficLimit += plan.TrafficLimit
-		}
+	// 流量：剩余量叠加到新套餐额度，清零计数器以保证 SyncUsage delta 正确
+	user.PlanTrafficLimit = plan.TrafficLimit
+	if plan.TrafficLimit == 0 {
+		user.TrafficLimit = 0 // 新套餐无限流量
 	} else {
-		user.TrafficLimit = plan.TrafficLimit
-		user.UploadBytes = 0
-		user.DownloadBytes = 0
-		user.UsedBytes = 0
-		user.RawUploadBytes = 0
-		user.RawDownloadBytes = 0
+		remaining := user.TrafficLimit - user.UsedBytes
+		if remaining < 0 {
+			remaining = 0
+		}
+		user.TrafficLimit = remaining + plan.TrafficLimit
+	}
+	user.UploadBytes = 0
+	user.DownloadBytes = 0
+	user.UsedBytes = 0
+	user.RawUploadBytes = 0
+	user.RawDownloadBytes = 0
+	// 未过期续费时以旧 ExpireAt 为锚点，确保下次定时重置与套餐周期对齐
+	if notExpired {
+		user.LastTrafficResetAt = user.ExpireAt
+	} else {
 		user.LastTrafficResetAt = &now
 	}
 	user.DataLimitResetStrategy = plan.DataLimitResetStrategy
@@ -224,10 +237,8 @@ func (d *WebhookDeps) renewExistingUser(order orders.Order, plan plans.Plan, now
 	if _, err := d.UserStore.UpsertUser(user); err != nil {
 		return fmt.Errorf("update user %s: %w", user.ID, err)
 	}
-	if !notExpired {
-		if err := d.UserStore.ClearUserNodeDailyUsage(user.ID); err != nil {
-			log.Printf("payment: renew clear daily usage user %s: %v", user.ID, err)
-		}
+	if err := d.UserStore.ClearUserNodeDailyUsage(user.ID); err != nil {
+		log.Printf("payment: renew clear daily usage user %s: %v", user.ID, err)
 	}
 
 	// 加入套餐绑定的用户组
@@ -239,8 +250,9 @@ func (d *WebhookDeps) renewExistingUser(order orders.Order, plan plans.Plan, now
 		if err := d.AddUserToGroups(user.ID, gIDs); err != nil {
 			log.Printf("payment: renew add user to groups: %v", err)
 		}
-	} else if d.ApplyUserNodes != nil {
-		// 无用户组时 AddUserToGroups 不会触发下发，需单独推送
+	}
+	// 无论组操作结果如何，统一触发节点下发（流量/到期已变更）
+	if d.ApplyUserNodes != nil {
 		go d.ApplyUserNodes(user.ID)
 	}
 
@@ -309,7 +321,17 @@ func (d *WebhookDeps) handleInvoicePaid(event stripe.Event) {
 	user.ExpireAt = &expireAt
 	user.Status = users.StatusActive
 
-	// 续费时重置流量（含原始游标，否则 SyncUsage delta 会将历史流量计入新周期）
+	// 流量：剩余量叠加到套餐额度，清零计数器以保证 SyncUsage delta 正确
+	user.PlanTrafficLimit = plan.TrafficLimit
+	if plan.TrafficLimit == 0 {
+		user.TrafficLimit = 0 // 套餐无限流量
+	} else {
+		remaining := user.TrafficLimit - user.UsedBytes
+		if remaining < 0 {
+			remaining = 0
+		}
+		user.TrafficLimit = remaining + plan.TrafficLimit
+	}
 	user.UploadBytes = 0
 	user.DownloadBytes = 0
 	user.UsedBytes = 0
@@ -354,6 +376,10 @@ func (d *WebhookDeps) handleInvoicePaymentFailed(event stripe.Event) {
 		user.Status = users.StatusOnHold
 		if _, err := d.UserStore.UpsertUser(user); err != nil {
 			log.Printf("payment: set user %s on_hold: %v", user.ID, err)
+			return
+		}
+		if d.ApplyUserNodes != nil {
+			go d.ApplyUserNodes(user.ID)
 		}
 		return
 	}
@@ -370,6 +396,10 @@ func (d *WebhookDeps) handleInvoicePaymentFailed(event stripe.Event) {
 	user.Status = users.StatusOnHold
 	if _, err := d.UserStore.UpsertUser(user); err != nil {
 		log.Printf("payment: set user %s on_hold: %v", user.ID, err)
+		return
+	}
+	if d.ApplyUserNodes != nil {
+		go d.ApplyUserNodes(user.ID)
 	}
 }
 
@@ -401,6 +431,10 @@ func (d *WebhookDeps) handleSubscriptionDeleted(event stripe.Event) {
 		user.Status = users.StatusDisabled
 		if _, err := d.UserStore.UpsertUser(user); err != nil {
 			log.Printf("payment: disable user %s: %v", user.ID, err)
+			return
+		}
+		if d.ApplyUserNodes != nil {
+			go d.ApplyUserNodes(user.ID)
 		}
 		return
 	}
@@ -417,6 +451,10 @@ func (d *WebhookDeps) handleSubscriptionDeleted(event stripe.Event) {
 	user.Status = users.StatusDisabled
 	if _, err := d.UserStore.UpsertUser(user); err != nil {
 		log.Printf("payment: disable user %s: %v", user.ID, err)
+		return
+	}
+	if d.ApplyUserNodes != nil {
+		go d.ApplyUserNodes(user.ID)
 	}
 }
 

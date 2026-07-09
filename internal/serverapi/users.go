@@ -31,6 +31,7 @@ type userAPI struct {
 	inboundStore  inbounds.InboundStore
 	outboundStore outbounds.Store
 	base          *API
+	dial          jobs.NodeDialer    // 带 hub 的节点拨号器，用于配置下发
 	applyOpts     jobs.ApplyOptions
 	geoDB         *geoip.DB          // 可为 nil，nil 时跳过地理位置查询
 	sessions      PortalSessionStore // 可为 nil，nil 时跳过 session 失效
@@ -57,6 +58,8 @@ type updateUserRequest struct {
 	LastTrafficResetAt     *time.Time `json:"last_traffic_reset_at,omitempty"`
 	ClearLastTrafficReset  bool       `json:"clear_last_traffic_reset_at,omitempty"`
 	InboundIDs             *[]string  `json:"inbound_ids,omitempty"`
+	// PlanTrafficLimit 非 nil 时覆盖套餐基础额度（周期重置目标）；0 表示与 TrafficLimit 相同。
+	PlanTrafficLimit *int64 `json:"plan_traffic_limit_bytes,omitempty"`
 	// Password 非 nil 时更新门户密码：空字符串清除密码，非空字符串设置新密码。
 	Password *string `json:"password,omitempty"`
 }
@@ -69,13 +72,14 @@ type createAccessRequest struct {
 	Secret    string `json:"secret,omitempty"` // 可留空自动生成
 }
 
-func newUserAPI(usersStore users.Store, nodesStore nodes.Store, ibStore inbounds.InboundStore, outboundStore outbounds.Store, base *API, applyOpts jobs.ApplyOptions, geoDB *geoip.DB) *userAPI {
+func newUserAPI(usersStore users.Store, nodesStore nodes.Store, ibStore inbounds.InboundStore, outboundStore outbounds.Store, base *API, dial jobs.NodeDialer, applyOpts jobs.ApplyOptions, geoDB *geoip.DB) *userAPI {
 	return &userAPI{
 		users:         usersStore,
 		nodes:         nodesStore,
 		inboundStore:  ibStore,
 		outboundStore: outboundStore,
 		base:          base,
+		dial:          dial,
 		applyOpts:     applyOpts,
 		geoDB:         geoDB,
 	}
@@ -122,6 +126,7 @@ func (a *userAPI) handleUsers(w http.ResponseWriter, r *http.Request) {
 			ExpireAt:               req.ExpireAt,
 			DataLimitResetStrategy: req.DataLimitResetStrategy,
 			TrafficLimit:           req.TrafficLimit,
+			PlanTrafficLimit:       req.TrafficLimit,
 			SubToken:               randomToken(16),
 			UUID:                   randomUUID(),
 			Secret:                 randomToken(16),
@@ -277,8 +282,18 @@ func (a *userAPI) handleUpdateUser(w http.ResponseWriter, r *http.Request, userI
 		}
 		user.DataLimitResetStrategy = req.DataLimitResetStrategy
 	}
+	// 在字段赋值前记录变更，避免赋值后比较恒为 false
+	proxyFieldChanged := req.Status != "" ||
+		req.ExpireAt != nil ||
+		(req.TrafficLimit >= 0 && req.TrafficLimit != user.TrafficLimit) ||
+		req.DataLimitResetStrategy != ""
+
 	if req.TrafficLimit >= 0 && req.TrafficLimit != user.TrafficLimit {
 		user.TrafficLimit = req.TrafficLimit
+		user.PlanTrafficLimit = req.TrafficLimit
+	}
+	if req.PlanTrafficLimit != nil {
+		user.PlanTrafficLimit = *req.PlanTrafficLimit
 	}
 	if req.Note != nil {
 		user.Note = strings.TrimSpace(*req.Note)
@@ -334,6 +349,11 @@ func (a *userAPI) handleUpdateUser(w http.ResponseWriter, r *http.Request, userI
 			return
 		}
 		a.applyNodes(affected)
+	} else if proxyFieldChanged {
+		// 仅改了状态/流量/到期时间，需推送到已关联的节点
+		if err := a.triggerUserApply(userID); err != nil {
+			log.Printf("handleUpdateUser: trigger apply %s: %v", userID, err)
+		}
 	}
 	writeJSON(w, http.StatusOK, updated)
 }
@@ -388,6 +408,7 @@ func (a *userAPI) handleUserInbounds(w http.ResponseWriter, r *http.Request, use
 			internalError(w, r, err)
 			return
 		}
+		a.applyNodes([]string{ib.NodeID})
 		writeJSON(w, http.StatusOK, acc)
 	default:
 		writeMethodNotAllowed(w, http.MethodGet+", "+http.MethodPost)
@@ -421,6 +442,7 @@ func (a *userAPI) handleUserInbound(w http.ResponseWriter, r *http.Request, user
 			writeUserInboundError(w, err)
 			return
 		}
+		a.applyNodes([]string{acc.NodeID})
 		writeJSON(w, http.StatusOK, map[string]any{"deleted": true})
 	default:
 		writeMethodNotAllowed(w, http.MethodGet+", "+http.MethodDelete)
@@ -810,11 +832,15 @@ func (a *userAPI) triggerUserApply(userID string) error {
 
 // applyNodes pushes config to affected nodes after inbound association changes.
 func (a *userAPI) applyNodes(nodeIDs []string) {
+	dial := a.dial
+	if dial == nil {
+		dial = a.base.Dial
+	}
 	for _, nodeID := range nodeIDs {
 		go func(id string) {
 			ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 			defer cancel()
-			if err := jobs.ApplyNode(ctx, id, a.nodes, a.users, a.inboundStore, a.outboundStore, a.base.Dial, a.applyOpts); err != nil {
+			if err := jobs.ApplyNode(ctx, id, a.nodes, a.users, a.inboundStore, a.outboundStore, dial, a.applyOpts); err != nil {
 				log.Printf("applyNodes: %s: %v", id, err)
 			}
 		}(nodeID)

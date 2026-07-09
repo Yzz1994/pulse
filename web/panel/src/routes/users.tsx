@@ -188,6 +188,11 @@ interface UserInboundsResponse {
   total: number;
 }
 
+// ── 创建用户后暂存凭证（密码仅此时可知）───────────────────────────
+type PortalCreds = { userId: string; password: string };
+
+// ── Main Component ───────────────────────────────────────────────
+
 export default function UsersPage() {
   const { t } = useTranslation();
   const [users, setUsers] = useState<User[]>([]);
@@ -221,6 +226,7 @@ export default function UsersPage() {
 
   const [editStatus, setEditStatus] = useState<UserStatus>("active");
   const [editTrafficGb, setEditTrafficGb] = useState("");
+  const [editPlanTrafficGb, setEditPlanTrafficGb] = useState("");
   const [editExpireAt, setEditExpireAt] = useState("");
   const [editResetStrategy, setEditResetStrategy] = useState<ResetStrategy>("no_reset");
   const [editNote, setEditNote] = useState("");
@@ -233,6 +239,13 @@ export default function UsersPage() {
   const [editPassword, setEditPassword] = useState("");
   const [clearPassword, setClearPassword] = useState(false);
 
+  // ── 创建后暂存凭证 state ──────────────────────────────────────
+  const [portalCreds, setPortalCreds] = useState<PortalCreds | null>(null);
+
+  // ── 账户信息 dialog state ─────────────────────────────────────
+  const [accountInfoUser, setAccountInfoUser] = useState<User | null>(null);
+
+  // ── Copy sub link state ────────────────────────────────────
   const [copiedUserId, setCopiedUserId] = useState<string | null>(null);
 
   const [subLogsOpen, setSubLogsOpen] = useState(false);
@@ -366,7 +379,7 @@ export default function UsersPage() {
     const plan = allPlans.find((p) => p.id === planId);
     if (!plan) return;
     if (plan.traffic_limit > 0) {
-      setCreateTrafficGb(String(parseFloat((plan.traffic_limit / 1e9).toFixed(2))));
+      setCreateTrafficGb(String(parseFloat(bytesToGb(plan.traffic_limit).toFixed(2))));
     }
     if (plan.duration_days > 0) {
       const expiry = new Date();
@@ -424,7 +437,11 @@ export default function UsersPage() {
         body.password = createPassword.trim();
       }
 
-      await api.post<User>("/users", body);
+      const createdUser = await api.post<User>("/users", body);
+      // 创建成功后暂存凭证（密码仅此时可知）
+      if (createPassword.trim()) {
+        setPortalCreds({ userId: createdUser.id, password: createPassword.trim() });
+      }
       setCreateOpen(false);
       fetchUsers();
     } catch (err) {
@@ -443,6 +460,11 @@ export default function UsersPage() {
     setEditTrafficGb(
       user.traffic_limit_bytes > 0
         ? String(parseFloat(bytesToGb(user.traffic_limit_bytes).toFixed(2)))
+        : "",
+    );
+    setEditPlanTrafficGb(
+      user.plan_traffic_limit_bytes > 0 && user.plan_traffic_limit_bytes !== user.traffic_limit_bytes
+        ? String(parseFloat(bytesToGb(user.plan_traffic_limit_bytes).toFixed(2)))
         : "",
     );
     setEditExpireAt(isoToDateInput(user.expire_at));
@@ -487,6 +509,14 @@ export default function UsersPage() {
         body.traffic_limit_bytes = gbToBytes(trafficGb);
       } else {
         body.traffic_limit_bytes = 0;
+      }
+
+      const planTrafficGb = parseFloat(editPlanTrafficGb);
+      if (editPlanTrafficGb && !isNaN(planTrafficGb) && planTrafficGb > 0) {
+        body.plan_traffic_limit_bytes = gbToBytes(planTrafficGb);
+      } else if (editingUser && editingUser.plan_traffic_limit_bytes !== editingUser.traffic_limit_bytes) {
+        // 用户清空了覆盖字段，重置为与流量限额相同（让后端同步）
+        body.plan_traffic_limit_bytes = body.traffic_limit_bytes ?? 0;
       }
 
       if (editExpireAt) {
@@ -778,6 +808,10 @@ export default function UsersPage() {
                           </Button>
                         </DropdownMenuTrigger>
                         <DropdownMenuContent align="end">
+                          <DropdownMenuItem onClick={() => setAccountInfoUser(user)}>
+                            账户信息
+                          </DropdownMenuItem>
+                          <DropdownMenuSeparator />
                           <DropdownMenuItem
                             onClick={() => copySubLink(user)}
                             disabled={!user.sub_token}
@@ -1017,6 +1051,24 @@ export default function UsersPage() {
                 value={editTrafficGb}
                 onChange={(e) => setEditTrafficGb(e.target.value)}
               />
+              <div className="grid gap-1">
+                <Label htmlFor="edit-plan-traffic" className="text-xs text-muted-foreground">
+                  重置目标（GB）
+                </Label>
+                <Input
+                  id="edit-plan-traffic"
+                  type="number"
+                  min="0"
+                  step="0.1"
+                  placeholder="留空则与流量限额相同"
+                  value={editPlanTrafficGb}
+                  onChange={(e) => setEditPlanTrafficGb(e.target.value)}
+                  className="h-8 text-sm"
+                />
+                <p className="text-xs text-muted-foreground">
+                  叠加后下个周期恢复的基础额度，留空时等同于流量限额
+                </p>
+              </div>
             </div>
 
             <div className="grid gap-2">
@@ -1396,9 +1448,175 @@ export default function UsersPage() {
         variant="default"
         onConfirm={doResetTraffic}
       />
+
+      {/* ── 账户信息 Dialog ────────────────────────────────────── */}
+      <AccountInfoDialog
+        user={accountInfoUser}
+        portalCreds={portalCreds}
+        onOpenChange={(open) => {
+          if (!open) setAccountInfoUser(null);
+        }}
+      />
     </div>
   );
 }
+
+// ── 账户信息 Dialog Component ──────────────────────────────────
+
+function AccountInfoDialog({
+  user,
+  portalCreds,
+  onOpenChange,
+}: {
+  user: User | null;
+  portalCreds: PortalCreds | null;
+  onOpenChange: (open: boolean) => void;
+}) {
+  // 记录刚刚复制的字段名，1.5s 后清空
+  const [copiedField, setCopiedField] = useState<string | null>(null);
+
+  // 关闭时重置复制状态
+  useEffect(() => {
+    if (!user) setCopiedField(null);
+  }, [user]);
+
+  if (!user) return null;
+
+  const portalUrl = `${window.location.origin}/user/${user.sub_token}`;
+  const password =
+    portalCreds?.userId === user.id ? portalCreds.password : null;
+
+  const copyField = (field: string, text: string, container?: HTMLElement | null) => {
+    copyText(text, container).then(() => {
+      setCopiedField(field);
+      setTimeout(() => setCopiedField(null), 1500);
+    }).catch(() => {});
+  };
+
+  const copyAll = (container?: HTMLElement | null) => {
+    const lines = [
+      `门户地址：${portalUrl}`,
+      `用户名：${user.username}`,
+    ];
+    if (password) lines.push(`密码：${password}`);
+    copyText(lines.join("\n"), container).then(() => {
+      setCopiedField("all");
+      setTimeout(() => setCopiedField(null), 1500);
+    }).catch(() => {});
+  };
+
+  // 复制图标 SVG
+  const CopyIcon = () => (
+    <svg
+      xmlns="http://www.w3.org/2000/svg"
+      className="h-4 w-4"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      <rect x="9" y="9" width="13" height="13" rx="2" ry="2" />
+      <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
+    </svg>
+  );
+
+  return (
+    <Dialog open={!!user} onOpenChange={onOpenChange}>
+      <DialogContent className="sm:max-w-lg">
+        <DialogHeader>
+          <DialogTitle>账户信息</DialogTitle>
+          <DialogDescription>
+            用户{" "}
+            <span className="font-medium text-[hsl(var(--foreground))]">
+              {user.username}
+            </span>{" "}
+            的门户登录信息。
+          </DialogDescription>
+        </DialogHeader>
+
+        <div className="grid gap-4 py-2">
+          {/* 门户地址 */}
+          <div className="grid gap-1.5">
+            <span className="text-xs font-medium text-[hsl(var(--muted-foreground))]">门户地址</span>
+            <div className="flex items-center gap-2">
+              <code className="flex-1 rounded-md border border-[hsl(var(--input))] bg-[hsl(var(--muted)/0.3)] px-3 py-1.5 font-mono text-xs break-all">
+                {portalUrl}
+              </code>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="shrink-0"
+                title="复制门户地址"
+                onClick={(e) => copyField("url", portalUrl, e.currentTarget.closest<HTMLElement>('[role="dialog"]'))}
+              >
+                {copiedField === "url" ? "已复制" : <CopyIcon />}
+              </Button>
+            </div>
+          </div>
+
+          {/* 用户名 */}
+          <div className="grid gap-1.5">
+            <span className="text-xs font-medium text-[hsl(var(--muted-foreground))]">用户名</span>
+            <div className="flex items-center gap-2">
+              <code className="flex-1 rounded-md border border-[hsl(var(--input))] bg-[hsl(var(--muted)/0.3)] px-3 py-1.5 font-mono text-xs break-all">
+                {user.username}
+              </code>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="shrink-0"
+                title="复制用户名"
+                onClick={(e) => copyField("username", user.username, e.currentTarget.closest<HTMLElement>('[role="dialog"]'))}
+              >
+                {copiedField === "username" ? "已复制" : <CopyIcon />}
+              </Button>
+            </div>
+          </div>
+
+          {/* 密码 */}
+          <div className="grid gap-1.5">
+            <span className="text-xs font-medium text-[hsl(var(--muted-foreground))]">密码</span>
+            <div className="flex items-center gap-2">
+              <code className="flex-1 rounded-md border border-[hsl(var(--input))] bg-[hsl(var(--muted)/0.3)] px-3 py-1.5 font-mono text-xs break-all">
+                {password ?? "—"}
+              </code>
+              {password && (
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="shrink-0"
+                  title="复制密码"
+                  onClick={(e) => copyField("password", password, e.currentTarget.closest<HTMLElement>('[role="dialog"]'))}
+                >
+                  {copiedField === "password" ? "已复制" : <CopyIcon />}
+                </Button>
+              )}
+            </div>
+          </div>
+        </div>
+
+        <DialogFooter className="flex-row justify-between sm:justify-between">
+          <Button
+            variant="outline"
+            onClick={(e) => copyAll(e.currentTarget.closest<HTMLElement>('[role="dialog"]'))}
+          >
+            {copiedField === "all" ? "已复制" : "一键复制全部"}
+          </Button>
+          <DialogClose asChild>
+            <Button variant="ghost">关闭</Button>
+          </DialogClose>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+// ── Sub Logs Dialog Component ──────────────────────────────────
 
 function SubLogsDialog({
   open,

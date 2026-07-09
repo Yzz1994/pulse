@@ -116,6 +116,8 @@ CREATE TABLE IF NOT EXISTS users (
     email                     TEXT NOT NULL DEFAULT '',
     uuid                      TEXT NOT NULL DEFAULT '',
     secret                    TEXT NOT NULL DEFAULT '',
+    plan_traffic_limit_bytes  BIGINT NOT NULL DEFAULT 0
+    secret                    TEXT NOT NULL DEFAULT '',
     is_admin                  BOOLEAN NOT NULL DEFAULT false
 );
 

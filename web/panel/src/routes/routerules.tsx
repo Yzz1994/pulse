@@ -136,7 +136,6 @@ const RULE_TYPES: RouteRuleType[] = [
   "domain_keyword",
   "domain",
   "ip_cidr",
-  "rule_set",
 ];
 
 const RULE_TYPE_LABELS: Record<RouteRuleType, string> = {
@@ -144,7 +143,6 @@ const RULE_TYPE_LABELS: Record<RouteRuleType, string> = {
   domain_keyword: "Domain Keyword",
   domain: "Domain",
   ip_cidr: "IP CIDR",
-  rule_set: "Rule Set",
 };
 
 const RULE_TYPE_BADGE_VARIANT: Record<
@@ -155,10 +153,7 @@ const RULE_TYPE_BADGE_VARIANT: Record<
   domain_keyword: "secondary",
   domain: "outline",
   ip_cidr: "secondary",
-  rule_set: "default",
 };
-
-const RULE_SET_FORMATS = ["binary", "source"] as const;
 
 // ── Empty form state ─────────────────────────────────────────────
 
@@ -168,19 +163,15 @@ interface RouteRuleForm {
   patterns: string;
   outbound_id: string;
   priority: number;
-  rule_set_url: string;
-  rule_set_format: string;
   inbound_ids: string[];
 }
 
 const EMPTY_FORM: RouteRuleForm = {
   name: "",
-  rule_type: "rule_set",
+  rule_type: "domain_suffix",
   patterns: "",
   outbound_id: "",
   priority: 100,
-  rule_set_url: "",
-  rule_set_format: "binary",
   inbound_ids: [],
 };
 
@@ -301,7 +292,7 @@ export default function RouteRulesPage() {
   // ── Build request body ──────────────────────────────────────────
 
   function buildBody(): Omit<RouteRule, "id"> {
-    const body: Omit<RouteRule, "id"> = {
+    return {
       name: form.name.trim(),
       rule_type: form.rule_type,
       patterns: form.patterns.trim(),
@@ -309,11 +300,6 @@ export default function RouteRulesPage() {
       priority: Number(form.priority) || 100,
       inbound_ids: form.inbound_ids.join(","),
     };
-    if (form.rule_type === "rule_set") {
-      body.rule_set_url = form.rule_set_url.trim();
-      body.rule_set_format = form.rule_set_format;
-    }
-    return body;
   }
 
   // ── Create ──────────────────────────────────────────────────────
@@ -345,8 +331,6 @@ export default function RouteRulesPage() {
       patterns: rule.patterns,
       outbound_id: rule.outbound_id,
       priority: rule.priority,
-      rule_set_url: rule.rule_set_url ?? "",
-      rule_set_format: rule.rule_set_format ?? "binary",
       inbound_ids: rule.inbound_ids ? rule.inbound_ids.split(",").filter(Boolean) : [],
     });
     setFormError(null);
@@ -465,19 +449,17 @@ export default function RouteRulesPage() {
           </Select>
         </div>
 
-        {form.rule_type !== "rule_set" && (
-          <div className="space-y-2">
-            <Label htmlFor="rr-patterns">{t("routerules.matchPattern")}</Label>
-            <Textarea
+        <div className="space-y-2">
+          <Label htmlFor="rr-patterns">{t("routerules.matchPattern")}</Label>
+          <Textarea
               id="rr-patterns"
               required
               value={form.patterns}
               onChange={(e) => patchForm({ patterns: e.target.value })}
               placeholder={t("routerules.matchPatternHint")}
               rows={4}
-            />
-          </div>
-        )}
+          />
+        </div>
 
         <div className="space-y-2">
           <Label>{t("routerules.inbound")}</Label>
@@ -524,39 +506,6 @@ export default function RouteRulesPage() {
           />
         </div>
 
-        {form.rule_type === "rule_set" && (
-          <>
-            <div className="space-y-2">
-              <Label htmlFor="rr-ruleseturl">Rule Set URL</Label>
-              <Input
-                id="rr-ruleseturl"
-                value={form.rule_set_url}
-                onChange={(e) =>
-                  patchForm({ rule_set_url: e.target.value })
-                }
-                placeholder="https://example.com/ruleset.srs"
-              />
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="rr-rulesetfmt">{t("routerules.ruleSetFormat")}</Label>
-              <Select
-                value={form.rule_set_format}
-                onValueChange={(v) =>
-                  patchForm({ rule_set_format: v })
-                }
-              >
-                <SelectTrigger id="rr-rulesetfmt">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="binary">{t("routerules.binary")}</SelectItem>
-                  <SelectItem value="source">{t("routerules.source")}</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-          </>
-        )}
       </div>
     );
   }
