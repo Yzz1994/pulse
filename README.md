@@ -16,7 +16,7 @@
 **Server**
 
 ```bash
-bash <(curl -fsSL https://raw.githubusercontent.com/0xUnixIO/pulse/main/scripts/install.sh) server
+bash <(curl -fsSL https://raw.githubusercontent.com/Yzz1994/pulse/main/scripts/install.sh) server
 ```
 
 **Node**

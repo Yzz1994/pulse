@@ -12,14 +12,14 @@ Pulse 由两个二进制组成：
 最简形式（脚本会自动检测并安装本机 PostgreSQL，使用本地 socket 创建数据库）：
 
 ```bash
-bash <(curl -fsSL https://raw.githubusercontent.com/0xUnixIO/pulse/main/scripts/install.sh) server
+bash <(curl -fsSL https://raw.githubusercontent.com/Yzz1994/pulse/main/scripts/install.sh) server
 ```
 
 使用已有 PostgreSQL：
 
 ```bash
 PULSE_DATABASE_URL='postgres://user:pass@host:5432/pulse?sslmode=disable' \
-  bash <(curl -fsSL https://raw.githubusercontent.com/0xUnixIO/pulse/main/scripts/install.sh) server
+  bash <(curl -fsSL https://raw.githubusercontent.com/Yzz1994/pulse/main/scripts/install.sh) server
 ```
 
 启用 Stripe 商店：
@@ -27,7 +27,7 @@ PULSE_DATABASE_URL='postgres://user:pass@host:5432/pulse?sslmode=disable' \
 ```bash
 PULSE_STRIPE_SECRET_KEY='sk_live_xxx' \
   PULSE_STRIPE_WEBHOOK_SECRET='whsec_xxx' \
-  bash <(curl -fsSL https://raw.githubusercontent.com/0xUnixIO/pulse/main/scripts/install.sh) server
+  bash <(curl -fsSL https://raw.githubusercontent.com/Yzz1994/pulse/main/scripts/install.sh) server
 ```
 
 安装完成后会打印：
@@ -98,7 +98,7 @@ systemctl restart pulse-server
 将上一步复制的命令粘贴到节点机器上执行，例如：
 
 ```bash
-bash <(curl -fsSL https://raw.githubusercontent.com/0xUnixIO/pulse/main/scripts/install.sh) node \
+bash <(curl -fsSL https://raw.githubusercontent.com/Yzz1994/pulse/main/scripts/install.sh) node \
   --server https://<控制面板地址> \
   --node-id <节点ID> \
   --token <ENROLL_TOKEN>
@@ -107,7 +107,7 @@ bash <(curl -fsSL https://raw.githubusercontent.com/0xUnixIO/pulse/main/scripts/
 也可以从 stdin 传入 token（避免 token 进入 shell history）：
 
 ```bash
-echo "$ENROLL_TOKEN" | bash <(curl -fsSL https://raw.githubusercontent.com/0xUnixIO/pulse/main/scripts/install.sh) node \
+echo "$ENROLL_TOKEN" | bash <(curl -fsSL https://raw.githubusercontent.com/Yzz1994/pulse/main/scripts/install.sh) node \
   --server https://<控制面板地址> --node-id <节点ID> --token-file -
 ```
 
@@ -174,7 +174,7 @@ NodeGate 是节点内置的 SNI 代理，无需安装 Nginx 或 Caddy。**当节
 ## 卸载
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/0xUnixIO/pulse/main/scripts/uninstall.sh | sh
+curl -fsSL https://raw.githubusercontent.com/Yzz1994/pulse/main/scripts/uninstall.sh | sh
 ```
 
 卸载脚本停止并删除 systemd 服务、所有二进制、配置文件及数据目录（`/var/lib/pulse`）。
