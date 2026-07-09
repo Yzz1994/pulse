@@ -25,7 +25,7 @@ import (
 const maxBinarySize int64 = 512 << 20 // 512 MiB
 
 const (
-	PulseRepo       = "0xUnixIO/pulse"
+	PulseRepo       = "Yzz1994/pulse"
 	cacheTTL        = 30 * time.Minute
 	downloadTimeout = 5 * time.Minute
 )

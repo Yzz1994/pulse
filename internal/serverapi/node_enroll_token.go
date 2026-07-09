@@ -23,7 +23,7 @@ type ServerURLResolver func(r *http.Request) string
 const (
 	defaultEnrollTokenTTL = time.Hour
 	maxEnrollTokenTTL     = 24 * time.Hour
-	installScriptURL      = "https://raw.githubusercontent.com/0xUnixIO/pulse/main/scripts/install.sh"
+	installScriptURL      = "https://raw.githubusercontent.com/Yzz1994/pulse/main/scripts/install.sh"
 )
 
 type enrollTokenRequest struct {

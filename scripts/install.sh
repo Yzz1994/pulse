@@ -27,19 +27,19 @@ usage() {
 
 示例:
   # 安装控制面板（server）
-  bash <(curl -fsSL https://raw.githubusercontent.com/0xUnixIO/pulse/main/scripts/install.sh) server
+  bash <(curl -fsSL https://raw.githubusercontent.com/Yzz1994/pulse/main/scripts/install.sh) server
 
   # 重置密码
-  bash <(curl -fsSL https://raw.githubusercontent.com/0xUnixIO/pulse/main/scripts/install.sh) server --reset-password
+  bash <(curl -fsSL https://raw.githubusercontent.com/Yzz1994/pulse/main/scripts/install.sh) server --reset-password
 
   # 安装节点（推荐：从控制面板"添加节点"页面复制生成的命令）
-  bash <(curl -fsSL https://raw.githubusercontent.com/0xUnixIO/pulse/main/scripts/install.sh) node \
+  bash <(curl -fsSL https://raw.githubusercontent.com/Yzz1994/pulse/main/scripts/install.sh) node \
     --server https://<控制面板地址> \
     --node-id <节点ID> \
     --token <ENROLL_TOKEN>
 
   # 从 stdin 传 token（避免命令行参数泄露到 shell history）
-  echo "$ENROLL_TOKEN" | bash <(curl -fsSL https://raw.githubusercontent.com/0xUnixIO/pulse/main/scripts/install.sh) node \
+  echo "$ENROLL_TOKEN" | bash <(curl -fsSL https://raw.githubusercontent.com/Yzz1994/pulse/main/scripts/install.sh) node \
     --server https://<控制面板地址> --node-id <节点ID> --token-file -
 
 EOF
