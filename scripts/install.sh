@@ -343,7 +343,7 @@ need_cmd curl
 need_cmd tar
 need_cmd install
 
-repo="0xUnixIO/pulse"
+repo="Yzz1994/pulse"
 
 os="linux"
 cpu="$(arch)"
