@@ -41,7 +41,7 @@ export function DatePicker({
   fromDate,
   className,
 }: DatePickerProps) {
-  const { t, i18n } = useTranslation("datePicker");
+  const { t, i18n } = useTranslation();
   const locale = i18n.language.startsWith("zh") ? zhCN : enUS;
   const [open, setOpen] = React.useState(false);
 
@@ -69,7 +69,7 @@ export function DatePicker({
           )}
         >
           <CalendarIcon className="mr-2 shrink-0 opacity-60" />
-          {selected ? format(selected, t("dateFormat"), { locale }) : (placeholder || t("selectDate"))}
+          {selected ? format(selected, t("datePicker.dateFormat"), { locale }) : (placeholder || t("datePicker.selectDate"))}
         </Button>
       </PopoverTrigger>
       <PopoverContent className="w-auto p-0" align="start">
